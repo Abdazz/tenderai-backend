@@ -1,0 +1,64 @@
+# Use Python 3.11 slim base image
+FROM python:3.11-slim
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    gcc \
+    g++ \
+    libc6-dev \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN groupadd -r tenderai && useradd -r -g tenderai tenderai
+
+# Set work directory
+WORKDIR /app
+
+# Install Poetry
+RUN pip install poetry==1.8.3
+
+# Configure Poetry
+ENV POETRY_NO_INTERACTION=1 \
+    POETRY_VIRTUALENVS_CREATE=false \
+    POETRY_CACHE_DIR=/tmp/poetry_cache
+
+# Copy dependency files
+COPY pyproject.toml poetry.lock* README.md ./
+
+# Install dependencies
+RUN poetry install --only=main --no-root && rm -rf $POETRY_CACHE_DIR
+
+# Copy application code
+COPY src/ src/
+COPY alembic/ alembic/
+COPY alembic.ini ./
+
+# Install the package itself in editable mode
+RUN pip install -e .
+
+# Create necessary directories with proper permissions
+RUN mkdir -p logs cache temp reports && \
+    chmod -R 777 logs cache temp reports && \
+    chown -R tenderai:tenderai /app
+
+# Switch to non-root user
+USER tenderai
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Expose port
+EXPOSE 8000
+
+# Run FastAPI with uvicorn
+CMD ["uvicorn", "tenderai_bf.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

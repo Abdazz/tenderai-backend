@@ -1,0 +1,182 @@
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "tenderai-bf"
+version = "0.1.0"
+description = "Multi-agent RFP harvester for Burkina Faso IT/Engineering tenders"
+authors = ["YULCOM Technologies <dev@yulcom.com>"]
+license = "Proprietary"
+readme = "README.md"
+packages = [{include = "tenderai_bf", from = "src"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+# LangChain & LangGraph
+langchain = "^0.2.0"
+langgraph = "^0.1.0"
+langchain-community = "^0.2.0"
+langchain-groq = "^0.1.0"
+langchain-openai = "^0.1.0"
+
+# Web & HTTP
+httpx = "^0.27.0"
+selectolax = "^0.3.17"
+beautifulsoup4 = "^4.12.2"
+playwright = {version = "^1.40.0", optional = true}
+
+# Document processing
+pdfminer-six = "^20231228"
+docling = "^1.0.0"
+python-docx = "^1.1.0"
+
+# Data & ML
+rapidfuzz = "^3.5.2"
+spacy = {version = "^3.7.2", optional = true}
+
+# Database & Storage
+sqlalchemy = "^2.0.23"
+alembic = "^1.13.0"
+psycopg2-binary = "^2.9.9"
+boto3 = "^1.34.0"
+aioboto3 = "^12.3.0"
+
+# Web API & UI
+fastapi = "^0.109.0"
+uvicorn = {extras = ["standard"], version = "^0.27.0"}
+python-jose = {extras = ["cryptography"], version = "^3.3.0"}
+passlib = {extras = ["bcrypt"], version = "^1.7.4"}
+bcrypt = "4.1.3"  # Pin to 4.x for passlib compatibility
+python-multipart = "^0.0.9"
+gradio = "^4.44.0"
+
+# Configuration & Settings
+pydantic = "^2.5.0"
+pydantic-settings = "^2.1.0"
+pyyaml = "^6.0.1"
+
+# Email
+email-validator = "^2.1.0"
+
+# Scheduling & Background tasks
+apscheduler = "^3.10.4"
+pytz = "^2023.3"
+
+# Logging & Monitoring
+structlog = "^23.2.0"
+prometheus-client = "^0.19.0"
+
+# CLI
+click = "^8.1.7"
+
+# Development dependencies
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.3"
+pytest-asyncio = "^0.21.1"
+pytest-cov = "^4.1.0"
+ruff = "^0.2.2"
+black = "^23.11.0"
+mypy = "^1.7.1"
+pre-commit = "^3.5.0"
+
+# Optional dependencies for specific features
+[tool.poetry.extras]
+spacy = ["spacy"]
+playwright = ["playwright"]
+full = ["spacy", "playwright"]
+
+[tool.poetry.scripts]
+tenderai = "tenderai_bf.cli:main"
+tenderai-api = "tenderai_bf.api.main:app"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+]
+ignore = [
+    "E501",  # line too long, handled by black
+    "B008",  # do not perform function calls in argument defaults
+    "C901",  # too complex
+]
+
+[tool.ruff.isort]
+known-first-party = ["tenderai_bf"]
+
+[tool.black]
+target-version = ['py311']
+line-length = 88
+skip-string-normalization = true
+
+[tool.mypy]
+python_version = "3.11"
+check_untyped_defs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_return_any = true
+strict_optional = true
+no_implicit_reexport = true
+
+[[tool.mypy.overrides]]
+module = [
+    "docling.*",
+    "selectolax.*",
+    "rapidfuzz.*",
+    "boto3.*",
+    "aioboto3.*",
+    "gradio.*",
+    "apscheduler.*",
+    "structlog.*",
+    "prometheus_client.*",
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "--cov=tenderai_bf",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "--cov-fail-under=80",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+]
+
+[tool.coverage.run]
+source = ["src"]
+omit = [
+    "*/tests/*",
+    "*/migrations/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
