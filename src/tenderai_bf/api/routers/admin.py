@@ -90,7 +90,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     user = authenticate_user(form_data.username, form_data.password)
     
     if not user:
-        logger.warning("Failed login attempt", username=form_data.username)
+        logger.error("Failed login attempt", username=form_data.username)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
@@ -119,7 +119,7 @@ async def login_simple(request: LoginRequest):
     user = authenticate_user(request.username, request.password)
     
     if not user:
-        logger.warning("Failed login attempt", username=request.username)
+        logger.error("Failed login attempt", username=request.username)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password"

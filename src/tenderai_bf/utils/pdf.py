@@ -47,7 +47,7 @@ class PDFProcessor:
                 )
                 logger.info("Docling converter initialized successfully")
             except Exception as e:
-                logger.warning("Failed to initialize Docling converter", error=str(e))
+                logger.error("Failed to initialize Docling converter", error=str(e))
                 self.docling_converter = None
     
     def extract_text(self, pdf_path: str, method: str = "auto") -> str:
@@ -70,7 +70,7 @@ class PDFProcessor:
                 try:
                     return self._extract_with_docling(pdf_path)
                 except Exception as e:
-                    logger.warning(
+                    logger.error(
                         "Docling extraction failed, falling back to pdfminer",
                         pdf_path=pdf_path,
                         error=str(e)
@@ -221,7 +221,7 @@ class PDFProcessor:
                 # Note: Full metadata extraction would require more complex parsing
                 
         except Exception as e:
-            logger.warning(
+            logger.error(
                 "Failed to get PDF info",
                 pdf_path=pdf_path,
                 error=str(e)
@@ -388,7 +388,7 @@ def extract_pdf_metadata(pdf_path: str) -> Dict[str, str]:
                 metadata[key] = str(value)
         
     except Exception as e:
-        logger.warning(
+        logger.error(
             "Failed to extract PDF metadata",
             pdf_path=pdf_path,
             error=str(e)

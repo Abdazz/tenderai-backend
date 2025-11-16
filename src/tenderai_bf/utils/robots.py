@@ -40,7 +40,7 @@ class RobotsChecker:
             return rp.can_fetch(user_agent, url)
         
         except Exception as e:
-            logger.warning(
+            logger.error(
                 "Error checking robots.txt",
                 url=url,
                 error=str(e)
@@ -70,7 +70,7 @@ class RobotsChecker:
             return rp.crawl_delay(user_agent)
         
         except Exception as e:
-            logger.warning(
+            logger.error(
                 "Error getting crawl delay",
                 url=url,
                 error=str(e)
@@ -99,7 +99,7 @@ class RobotsChecker:
             return rp.request_rate(user_agent)
         
         except Exception as e:
-            logger.warning(
+            logger.error(
                 "Error getting request rate",
                 url=url,
                 error=str(e)
@@ -137,7 +137,7 @@ class RobotsChecker:
             return rp
         
         except Exception as e:
-            logger.warning(
+            logger.error(
                 "Failed to load robots.txt",
                 base_url=base_url,
                 error=str(e)

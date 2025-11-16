@@ -8,12 +8,16 @@ from ...config import settings
 from ...db import get_db_context
 from ...logging import get_logger
 from ...models import Source
+from ...utils.node_logger import clear_node_output, log_node_output
 
 logger = get_logger(__name__)
 
 
 def load_sources_node(state) -> Dict:
     """Load active sources from configuration and database."""
+    
+    # Clear output file at start
+    clear_node_output("load_sources")
     
     logger.info("Starting load_sources step", run_id=state.run_id)
     start_time = time.time()
@@ -36,6 +40,69 @@ def load_sources_node(state) -> Dict:
         logger.info(
             "Loaded sources from configuration",
             count=len(config_sources),
+            use_database=settings.use_database_sources,
+            run_id=state.run_id
+        )
+        
+        # MODE 1: Direct from YAML (Development/Testing)
+        if not settings.use_database_sources:
+            logger.info(
+                "Using sources directly from settings.yaml (development mode)",
+                run_id=state.run_id
+            )
+            
+            # Convert config sources to the expected format
+            for idx, config_source in enumerate(config_sources):
+                source_data = {
+                    'id': idx + 1,  # Temporary ID for non-DB mode
+                    'name': config_source.get('name', 'Unknown'),
+                    'base_url': config_source.get('base_url', ''),
+                    'list_url': config_source.get('list_url', ''),
+                    'parser_type': config_source.get('parser', 'html'),
+                    'rate_limit': config_source.get('rate_limit', '10/m'),
+                    'patterns': config_source.get('patterns', {}),
+                    'last_seen_at': None,
+                    'last_success_at': None,
+                    'last_error_at': None,
+                    'last_error_message': None
+                }
+                
+                if config_source.get('enabled', True):
+                    sources.append(source_data)
+                    logger.debug(
+                        "Source loaded from YAML",
+                        source_name=source_data['name'],
+                        run_id=state.run_id
+                    )
+            
+            # Update state
+            state.sources = sources
+            state.update_stats(sources_checked=len(sources))
+            
+            # Log output to JSON
+            log_node_output("load_sources", sources, run_id=state.run_id)
+            
+            duration = time.time() - start_time
+            logger.info(
+                "Load sources completed (YAML mode)",
+                sources_loaded=len(sources),
+                duration_seconds=duration,
+                run_id=state.run_id
+            )
+            
+            if not sources:
+                state.add_error(
+                    "load_sources",
+                    "No active sources found in settings.yaml",
+                    config_sources_count=len(config_sources)
+                )
+                state.should_continue = False
+            
+            return state
+        
+        # MODE 2: Database sync (Production)
+        logger.info(
+            "Syncing sources with database (production mode)",
             run_id=state.run_id
         )
         
@@ -127,10 +194,13 @@ def load_sources_node(state) -> Dict:
         state.sources = sources
         state.update_stats(sources_checked=len(sources))
         
+        # Log output to JSON
+        log_node_output("load_sources", sources, run_id=state.run_id)
+        
         # Log completion
         duration = time.time() - start_time
         logger.info(
-            "Load sources completed",
+            "Load sources completed (Database mode)",
             sources_loaded=len(sources),
             duration_seconds=duration,
             run_id=state.run_id

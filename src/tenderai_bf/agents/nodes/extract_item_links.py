@@ -10,6 +10,7 @@ from selectolax.parser import HTMLParser
 
 from ...config import settings
 from ...logging import get_logger
+from ...utils.node_logger import clear_node_output, log_node_output
 
 logger = get_logger(__name__)
 
@@ -161,17 +162,22 @@ def is_likely_tender_link(url: str, link_text: str = "") -> bool:
 def extract_item_links_node(state) -> Dict:
     """Extract individual item links from fetched listing pages."""
     
+    # Clear output file at start
+    clear_node_output("extract_item_links")
+    
     logger.info("Starting extract_item_links step", run_id=state.run_id)
     start_time = time.time()
     
     try:
         if not state.items_raw:
-            logger.warning("No raw items to process", run_id=state.run_id)
+            logger.error("No raw items to process", run_id=state.run_id)
             state.add_error("extract_item_links", "No raw items available to process")
             state.should_continue = False
             return state
         
-        all_links = set()
+        all_links = []  # Changed from set to list to support dict items
+        seen_urls = set()  # Track URLs to avoid duplicates
+        seen_pdf_parsers = set()  # Track (url, parser_type) tuples for PDFs to allow different parsers
         source_link_counts = {}
         
         # Process each successful fetch
@@ -181,14 +187,76 @@ def extract_item_links_node(state) -> Dict:
             
             source = item['source']
             source_name = source['name']
-            base_url = source['base_url']
+            base_url = source.get('base_url', item['url'])
             content = item['content']
             patterns = source.get('patterns', {})
-            parser_type = source.get('parser_type', 'html')
+            parser_type = source.get('parser_type', 'html')  # Changed from 'parser' to 'parser_type'
             
             try:
                 # Extract links based on parser type
-                if parser_type == 'html':
+                if parser_type == 'pdf_quotidien':
+                    # For quotidiens (DGCMEF), the PDF is already downloaded
+                    # Create a single "link" representing the quotidien PDF
+                    links = [{
+                        'url': item['url'],
+                        'type': 'quotidien_pdf',
+                        'title': item.get('quotidien_title', 'Quotidien'),
+                        'filename': item.get('quotidien_filename', 'quotidien.pdf'),
+                        'content': content  # Pass the PDF content directly
+                    }]
+                    logger.info(
+                        "Quotidien PDF ready for parsing",
+                        source_name=source_name,
+                        title=item.get('quotidien_title'),
+                        size_mb=round(len(content) / (1024 * 1024), 2),
+                        run_id=state.run_id
+                    )
+                
+                elif parser_type == 'pdf_rag':
+                    # For RAG-based PDF parsing (DGCMEF RAG), the PDF is already downloaded
+                    # Create a single "link" representing the RAG PDF
+                    links = [{
+                        'url': item['url'],
+                        'source_name': source_name,  # Preserve source_name for downstream processing
+                        'type': 'pdf_rag',
+                        'title': item.get('quotidien_title', 'PDF Document'),
+                        'filename': item.get('quotidien_filename', 'document.pdf'),
+                        'content': content  # Pass the PDF content directly
+                    }]
+                    logger.info(
+                        "RAG PDF ready for parsing",
+                        source_name=source_name,
+                        title=item.get('quotidien_title'),
+                        size_mb=round(len(content) / (1024 * 1024), 2),
+                        run_id=state.run_id
+                    )
+                    logger.debug(
+                        "DEBUG: RAG PDF link created",
+                        links_count=len(links),
+                        first_link_type=links[0].get('type') if links else None,
+                        first_link_url=links[0].get('url') if links else None,
+                        run_id=state.run_id
+                    )
+                
+                elif parser_type == 'html-listing' and 'joffres' in source_name.lower():
+                    # For joffres.net listings (already parsed)
+                    import json
+                    try:
+                        listings = json.loads(content) if isinstance(content, str) else item.get('listings', [])
+                        links = listings
+                        logger.info(
+                            f"Processing {len(listings)} joffres.net listings",
+                            source_name=source_name,
+                            count=len(listings),
+                            run_id=state.run_id
+                        )
+                    except json.JSONDecodeError:
+                        logger.error(
+                            "Failed to parse joffres listings JSON",
+                            source_name=source_name
+                        )
+                        links = []
+                elif parser_type == 'html':
                     links = extract_links_from_html(content, base_url, patterns)
                 elif parser_type == 'html-pdf-mixed':
                     # Try both HTML and PDF extraction
@@ -199,7 +267,7 @@ def extract_item_links_node(state) -> Dict:
                     # For direct PDF sources, use the source URL itself
                     links = [item['url']]
                 else:
-                    logger.warning(
+                    logger.error(
                         "Unknown parser type",
                         parser_type=parser_type,
                         source_name=source_name
@@ -209,13 +277,48 @@ def extract_item_links_node(state) -> Dict:
                 # Filter and validate links
                 valid_links = []
                 for link in links:
-                    # Basic URL validation
-                    parsed = urlparse(link)
-                    if parsed.scheme in ('http', 'https') and parsed.netloc:
-                        valid_links.append(link)
+                    # Handle quotidien PDFs (already dict format)
+                    if isinstance(link, dict) and link.get('type') == 'quotidien_pdf':
+                        url = link.get('url')
+                        url_parser_key = (url, 'quotidien_pdf')
+                        if url and url_parser_key not in seen_pdf_parsers:
+                            valid_links.append(link)
+                            seen_urls.add(url)
+                            seen_pdf_parsers.add(url_parser_key)
+                    # Handle joffres.net listings (dict format with url, title, slug)
+                    elif isinstance(link, dict) and link.get('source') == 'joffres.net':
+                        url = link.get('url')
+                        if url and url not in seen_urls:
+                            # Add the joffres listing dict as-is for fetch_items to process
+                            valid_links.append(link)
+                            seen_urls.add(url)
+                    # Handle RAG PDFs (dict format with type='pdf_rag')
+                    elif isinstance(link, dict) and link.get('type') == 'pdf_rag':
+                        url = link.get('url')
+                        url_parser_key = (url, 'pdf_rag')
+                        if url and url_parser_key not in seen_pdf_parsers:
+                            # Add the RAG PDF dict for fetch_items to process
+                            valid_links.append(link)
+                            seen_urls.add(url)
+                            seen_pdf_parsers.add(url_parser_key)
+                    # Handle quotidien PDFs (dict format with type='quotidien_pdf')
+                    elif isinstance(link, dict) and link.get('type') == 'quotidien_pdf':
+                        url = link.get('url')
+                        if url and url not in seen_urls:
+                            # Add the quotidien PDF dict for fetch_items to process
+                            valid_links.append(link)
+                            seen_urls.add(url)
+                    # Handle regular URL strings
+                    elif isinstance(link, str):
+                        # Basic URL validation
+                        parsed = urlparse(link)
+                        if parsed.scheme in ('http', 'https') and parsed.netloc:
+                            if link not in seen_urls:
+                                valid_links.append(link)
+                                seen_urls.add(link)
                 
-                # Add to global set
-                all_links.update(valid_links)
+                # Add to global list
+                all_links.extend(valid_links)
                 source_link_counts[source_name] = len(valid_links)
                 
                 logger.info(
@@ -239,13 +342,13 @@ def extract_item_links_node(state) -> Dict:
                     source_name=source_name
                 )
         
-        # Convert to list and limit if necessary
-        discovered_links = list(all_links)
+        # Use the list as-is (already contains validated items)
+        discovered_links = all_links
         
         # Apply max items limit
         max_items = settings.processing.max_items_per_run
         if len(discovered_links) > max_items:
-            logger.warning(
+            logger.error(
                 "Too many links discovered, limiting",
                 total_found=len(discovered_links),
                 limit=max_items,
@@ -256,6 +359,9 @@ def extract_item_links_node(state) -> Dict:
         # Update state
         state.discovered_links = discovered_links
         state.update_stats(links_discovered=len(discovered_links))
+        
+        # Log output to JSON
+        log_node_output("extract_item_links", discovered_links, run_id=state.run_id)
         
         # Log completion
         duration = time.time() - start_time
@@ -270,7 +376,7 @@ def extract_item_links_node(state) -> Dict:
         
         # Check if we found any links
         if not discovered_links:
-            logger.warning("No item links discovered", run_id=state.run_id)
+            logger.error("No item links discovered", run_id=state.run_id)
             state.add_error(
                 "extract_item_links",
                 "No item links discovered from any source",

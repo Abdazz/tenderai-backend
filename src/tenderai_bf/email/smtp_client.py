@@ -151,7 +151,7 @@ class SMTPClient:
             data = attachment.get('data')
             
             if data is None:
-                logger.warning("Attachment data is None", filename=filename)
+                logger.error("Attachment data is None", filename=filename)
                 return
             
             # Create attachment part

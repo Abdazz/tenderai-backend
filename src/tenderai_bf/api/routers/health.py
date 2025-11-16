@@ -87,7 +87,7 @@ async def health_check():
             "smtp_server": f"{settings.smtp.host}:{settings.smtp.port}"
         }
     except Exception as e:
-        logger.warning("Email health check failed", error=str(e))
+        logger.error("Email health check failed", error=str(e))
         components["email"] = {
             "status": "not_configured",
             "error": str(e)

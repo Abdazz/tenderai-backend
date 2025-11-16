@@ -52,10 +52,10 @@ class TenderAIUI:
                     self.auth_token = result.get("access_token")
                     logger.info("UI auto-login successful")
                 else:
-                    logger.warning(f"UI auto-login failed: {response.status_code}")
+                    logger.error(f"UI auto-login failed: {response.status_code}")
         
         except Exception as e:
-            logger.warning(f"UI auto-login error: {e}")
+            logger.error(f"UI auto-login error: {e}")
     
     def _get_headers(self) -> dict:
         """Get HTTP headers with auth token."""

@@ -2,6 +2,7 @@
 
 import hashlib
 import io
+import unicodedata
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import BinaryIO, Dict, List, Optional, Union
@@ -15,6 +16,22 @@ from ..config import settings
 from ..logging import get_logger
 
 logger = get_logger(__name__)
+
+
+def sanitize_s3_metadata(value: str) -> str:
+    """Sanitize string for S3 metadata (ASCII only).
+    
+    S3 metadata can only contain ASCII characters.
+    This function removes accents and converts to ASCII.
+    """
+    if not value:
+        return value
+    
+    # Normalize unicode characters (decompose accented chars)
+    nfd = unicodedata.normalize('NFD', value)
+    # Keep only ASCII characters
+    ascii_str = nfd.encode('ascii', 'ignore').decode('ascii')
+    return ascii_str
 
 
 class MinIOClient:
@@ -120,7 +137,7 @@ class MinIOClient:
             )
             logger.info("Bucket policy set for public report access")
         except ClientError as e:
-            logger.warning("Failed to set bucket policy", error=str(e))
+            logger.error("Failed to set bucket policy", error=str(e))
     
     def put_object(self, 
                    key: str,
@@ -203,7 +220,7 @@ class MinIOClient:
         except ClientError as e:
             error_code = e.response['Error']['Code']
             if error_code == 'NoSuchKey':
-                logger.warning("Object not found", key=key, bucket=self.bucket_name)
+                logger.error("Object not found", key=key, bucket=self.bucket_name)
             else:
                 logger.error(
                     "Failed to download object",
@@ -391,14 +408,14 @@ class MinIOClient:
         ext = "html" if "html" in content_type else "pdf" if "pdf" in content_type else "txt"
         key = f"snapshots/{run_id}/{source_name}/{timestamp}_{url_hash}.{ext}"
         
-        # Store snapshot
+        # Store snapshot with sanitized metadata (S3 requires ASCII only)
         success = self.put_object(
             key=key,
             data=content,
             content_type=content_type,
             metadata={
                 'run_id': run_id,
-                'source_name': source_name,
+                'source_name': sanitize_s3_metadata(source_name),
                 'source_url': url,
                 'captured_at': datetime.utcnow().isoformat()
             }

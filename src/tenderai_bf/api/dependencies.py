@@ -48,7 +48,7 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> Opt
         return {"username": username, "email": payload.get("email")}
     
     except JWTError as e:
-        logger.warning("Invalid JWT token", error=str(e))
+        logger.error("Invalid JWT token", error=str(e))
         return None
 
 

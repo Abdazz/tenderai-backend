@@ -98,19 +98,30 @@ async def trigger_run(
     # Execute in background
     def run_pipeline():
         try:
+            # Prepare sources override if specified
+            sources_override = None
+            if request.sources:
+                # TODO: Load full source data from DB based on names/IDs
+                sources_override = request.sources
+            
             result = pipeline.run(
                 triggered_by=request.triggered_by,
                 triggered_by_user=triggered_by_user,
-                sources_filter=request.sources,
-                send_email=request.send_email,
-                dry_run=request.dry_run
+                sources_override=sources_override,
+                send_email=request.send_email
             )
+            
+            # result is a dict from LangGraph
+            result_run_id = result.get("run_id") if isinstance(result, dict) else result.run_id
+            error_occurred = result.get("error_occurred", False) if isinstance(result, dict) else result.error_occurred
+            stats = result.get("stats") if isinstance(result, dict) else result.stats
+            unique_items = stats.unique_items if stats and hasattr(stats, 'unique_items') else 0
             
             logger.info(
                 "Pipeline run completed",
-                run_id=result.run_id,
-                status="success" if not result.error_occurred else "failed",
-                items=result.stats.unique_items if result.stats else 0
+                run_id=result_run_id,
+                status="success" if not error_occurred else "failed",
+                items=unique_items
             )
             
         except Exception as e:
@@ -158,8 +169,8 @@ async def get_run_status(run_id: str, db: DatabaseSession):
     if run.started_at and run.finished_at:
         duration = (run.finished_at - run.started_at).total_seconds()
     
-    # Parse stats from metadata
-    stats = run.metadata.get("stats") if run.metadata else None
+    # Get stats from counts_json instead of metadata
+    stats = run.counts_json if run.counts_json else None
     
     return RunStatusResponse(
         run_id=str(run.id),
@@ -169,8 +180,8 @@ async def get_run_status(run_id: str, db: DatabaseSession):
         duration_seconds=duration,
         triggered_by=run.triggered_by or "unknown",
         triggered_by_user=run.triggered_by_user,
-        error_occurred=run.error_occurred or False,
-        errors_count=run.error_count or 0,
+        error_occurred=run.status == "failed",
+        errors_count=0,  # TODO: Add error tracking to Run model
         stats=stats,
         report_url=run.report_url
     )
@@ -207,7 +218,7 @@ async def list_runs(
         if run.started_at and run.finished_at:
             duration = (run.finished_at - run.started_at).total_seconds()
         
-        stats = run.metadata.get("stats") if run.metadata else None
+        stats = run.counts_json if run.counts_json else None
         
         run_responses.append(RunStatusResponse(
             run_id=str(run.id),
@@ -217,8 +228,8 @@ async def list_runs(
             duration_seconds=duration,
             triggered_by=run.triggered_by or "unknown",
             triggered_by_user=run.triggered_by_user,
-            error_occurred=run.error_occurred or False,
-            errors_count=run.error_count or 0,
+            error_occurred=run.status == "failed",
+            errors_count=0,  # TODO: Add error tracking
             stats=stats,
             report_url=run.report_url
         ))
@@ -269,7 +280,7 @@ async def get_run_statistics(db: DatabaseSession):
         if last_run.started_at and last_run.finished_at:
             duration = (last_run.finished_at - last_run.started_at).total_seconds()
         
-        stats = last_run.metadata.get("stats") if last_run.metadata else None
+        stats = last_run.counts_json if last_run.counts_json else None
         
         last_run_response = RunStatusResponse(
             run_id=str(last_run.id),
@@ -279,8 +290,8 @@ async def get_run_statistics(db: DatabaseSession):
             duration_seconds=duration,
             triggered_by=last_run.triggered_by or "unknown",
             triggered_by_user=last_run.triggered_by_user,
-            error_occurred=last_run.error_occurred or False,
-            errors_count=last_run.error_count or 0,
+            error_occurred=last_run.status == "failed",
+            errors_count=0,  # TODO: Add error tracking
             stats=stats,
             report_url=last_run.report_url
         )

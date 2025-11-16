@@ -34,7 +34,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
         if check_database_health():
             logger.info("Database connection established")
         else:
-            logger.warning("Database health check failed")
+            logger.error("Database health check failed")
     except Exception as e:
         logger.error("Failed to initialize database", error=str(e))
     
@@ -45,7 +45,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
         if storage_client.health_check():
             logger.info("Storage connection established")
         else:
-            logger.warning("Storage health check failed")
+            logger.error("Storage health check failed")
     except Exception as e:
         logger.error("Failed to initialize storage", error=str(e))
     

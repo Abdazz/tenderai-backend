@@ -3,7 +3,7 @@
 import time
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from langgraph.graph import StateGraph, END
 from pydantic import BaseModel, Field
@@ -38,7 +38,7 @@ class TenderAIState(BaseModel):
     
     # Pipeline data
     sources: List[Dict[str, Any]] = Field(default_factory=list)
-    discovered_links: List[str] = Field(default_factory=list)
+    discovered_links: List[Union[str, Dict[str, Any]]] = Field(default_factory=list)  # Can be URL strings or quotidien dicts
     items_raw: List[Dict[str, Any]] = Field(default_factory=list)
     items_parsed: List[Dict[str, Any]] = Field(default_factory=list)
     relevant_items: List[Dict[str, Any]] = Field(default_factory=list)
@@ -57,6 +57,7 @@ class TenderAIState(BaseModel):
     # Control flow
     should_continue: bool = True
     error_occurred: bool = False
+    send_email: bool = True  # Whether to send email report at the end
     
     class Config:
         arbitrary_types_allowed = True
@@ -123,9 +124,8 @@ def router(state: TenderAIState) -> str:
     if not state.should_continue:
         return END
     
-    # Normal flow routing logic would go here
-    # For now, we'll use simple sequential routing
-    return "continue"
+    # Normal flow: pipeline completed successfully
+    return END
 
 
 class TenderAIGraph:
@@ -187,7 +187,8 @@ class TenderAIGraph:
     def run(self, 
             triggered_by: str = "scheduler",
             triggered_by_user: Optional[str] = None,
-            sources_override: Optional[List[Dict]] = None) -> TenderAIState:
+            sources_override: Optional[List[Dict]] = None,
+            send_email: bool = True) -> TenderAIState:
         """Execute the complete pipeline."""
         
         # Initialize state
@@ -201,6 +202,27 @@ class TenderAIGraph:
             triggered_by_user=triggered_by_user,
             sources_count=len(sources_override) if sources_override else len(settings.get_active_sources())
         )
+        
+        # Log LLM configuration at pipeline start
+        llm_provider = settings.llm.provider
+        llm_model = None
+        log_params = {
+            "run_id": run_id,
+            "llm_provider": llm_provider,
+            "temperature": settings.llm.temperature,
+            "max_tokens": settings.llm.max_tokens
+        }
+        
+        if llm_provider == "groq":
+            llm_model = settings.llm.groq_model
+        elif llm_provider == "openai":
+            llm_model = settings.llm.openai_model
+        elif llm_provider == "ollama":
+            llm_model = settings.llm.ollama_model
+            log_params["ollama_base_url"] = getattr(settings.llm, 'ollama_base_url', 'http://localhost:11434')
+        
+        log_params["llm_model"] = llm_model
+        logger.info("Pipeline starting with LLM configuration", **log_params)
         
         # Create run record in database
         try:
@@ -221,33 +243,50 @@ class TenderAIGraph:
         if sources_override:
             state.sources = sources_override
         
+        # Set send_email flag
+        state.send_email = send_email
+        
         try:
-            # Execute pipeline
+            # Execute pipeline (pass state as dict for LangGraph)
             start_time = time.time()
-            final_state = self.app.invoke(state)
+            final_state = self.app.invoke(state.dict())
             duration = time.time() - start_time
             
-            # Update statistics
-            final_state.stats.total_time_seconds = duration
+            # Update statistics (final_state is a dict, not an object)
+            if "stats" in final_state and final_state["stats"]:
+                # final_state["stats"] is a dict, not an object
+                if isinstance(final_state["stats"], dict):
+                    final_state["stats"]["total_time_seconds"] = duration
+                else:
+                    final_state["stats"].total_time_seconds = duration
             
             # Update run record
             with get_db_context() as session:
                 run = session.query(Run).filter(Run.id == run_id).first()
                 if run:
-                    run.status = "completed" if not final_state.error_occurred else "failed"
+                    run.status = "completed" if not final_state.get("error_occurred", False) else "failed"
                     run.finished_at = datetime.utcnow()
-                    run.counts_json = final_state.stats.dict()
-                    run.report_url = final_state.report_url
-                    if final_state.errors:
-                        run.error_message = final_state.errors[-1]['error']
+                    if "stats" in final_state and final_state["stats"]:
+                        # Convert stats to dict if it's an object
+                        if isinstance(final_state["stats"], dict):
+                            run.counts_json = final_state["stats"]
+                        else:
+                            run.counts_json = final_state["stats"].dict()
+                    run.report_url = final_state.get("report_url")
+                    if final_state.get("errors"):
+                        run.error_message = final_state["errors"][-1]['error']
                     session.commit()
             
             # Log completion
-            if not final_state.error_occurred:
+            if not final_state.get("error_occurred", False):
+                if isinstance(final_state.get("stats"), dict):
+                    stats_dict = final_state["stats"]
+                else:
+                    stats_dict = final_state["stats"].dict() if "stats" in final_state and final_state["stats"] else {}
                 log_run_complete(
                     run_id,
                     duration,
-                    final_state.stats.dict()
+                    stats_dict
                 )
             
             return final_state
@@ -271,9 +310,10 @@ class TenderAIGraph:
             # Log error
             log_run_error(run_id, e)
             
-            # Return state with error
+            # Return state with error as dict
             state.add_error("pipeline", str(e))
-            return state
+            state.error_occurred = True
+            return state.dict()
     
     def run_step(self, step_name: str, state: TenderAIState) -> TenderAIState:
         """Execute a single step of the pipeline for testing/debugging."""

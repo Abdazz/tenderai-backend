@@ -6,19 +6,32 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app \
     PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    HF_HOME=/app/cache/huggingface \
+    TRANSFORMERS_CACHE=/app/cache/huggingface \
+    TORCH_HOME=/app/cache/torch \
+    EASYOCR_MODULE_PATH=/app/cache/easyocr
 
-# Install system dependencies
+# Install system dependencies (including those needed for Docling)
 RUN apt-get update && apt-get install -y \
     curl \
     gcc \
     g++ \
     libc6-dev \
     libpq-dev \
+    libgomp1 \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgl1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
 RUN groupadd -r tenderai && useradd -r -g tenderai tenderai
+
+# Create home directory for tenderai user
+RUN mkdir -p /home/tenderai && chown -R tenderai:tenderai /home/tenderai
 
 # Set work directory
 WORKDIR /app
@@ -45,8 +58,16 @@ COPY alembic.ini ./
 # Install the package itself in editable mode
 RUN pip install -e .
 
+# Fix permissions for GLM models directory (required by deepsearch_glm)
+RUN mkdir -p /usr/local/lib/python3.11/site-packages/deepsearch_glm/resources/models/crf/part-of-speech && \
+    chmod -R 777 /usr/local/lib/python3.11/site-packages/deepsearch_glm/resources || true
+
+# Fix permissions for rapidocr models directory (required by Docling OCR)
+RUN chmod -R 777 /usr/local/lib/python3.11/site-packages/rapidocr || true
+
 # Create necessary directories with proper permissions
-RUN mkdir -p logs cache temp reports && \
+RUN mkdir -p logs cache temp reports \
+    cache/huggingface cache/torch cache/easyocr && \
     chmod -R 777 logs cache temp reports && \
     chown -R tenderai:tenderai /app
 

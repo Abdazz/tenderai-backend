@@ -142,7 +142,7 @@ def drop_database():
     
     engine = get_engine()
     Base.metadata.drop_all(bind=engine)
-    logger.warning("All database tables dropped")
+    logger.error("All database tables dropped")
 
 
 def check_database_health() -> bool:

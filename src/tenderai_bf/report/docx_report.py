@@ -15,6 +15,42 @@ from ..logging import get_logger
 logger = get_logger(__name__)
 
 
+def _add_formatted_text(paragraph, text: str):
+    """Add text with markdown-style formatting to a paragraph.
+    
+    Supports:
+    - **bold**
+    - *italic*
+    - Line breaks
+    """
+    import re
+    
+    # Split by markdown bold/italic patterns
+    # Pattern: **text** or *text*
+    parts = re.split(r'(\*\*.*?\*\*|\*.*?\*)', text)
+    
+    for part in parts:
+        if not part:
+            continue
+        
+        # Bold: **text**
+        if part.startswith('**') and part.endswith('**'):
+            run = paragraph.add_run(part[2:-2])
+            run.font.bold = True
+        # Italic: *text*
+        elif part.startswith('*') and part.endswith('*') and len(part) > 2:
+            run = paragraph.add_run(part[1:-1])
+            run.font.italic = True
+        # Regular text
+        else:
+            # Replace line breaks
+            lines = part.split('\n')
+            for i, line in enumerate(lines):
+                paragraph.add_run(line)
+                if i < len(lines) - 1:
+                    paragraph.add_run('\n')
+
+
 def add_hyperlink(paragraph, text: str, url: str):
     """Add a hyperlink to a paragraph."""
     
@@ -54,15 +90,15 @@ def build_report(data: Dict[str, Any]) -> Optional[bytes]:
         document = Document()
         
         # Set document properties
-        document.core_properties.title = "RFP Watch – Burkina Faso"
-        document.core_properties.author = "TenderAI BF"
+        document.core_properties.title = "TenderAI – YULCOM Technologies"
+        document.core_properties.author = "TenderAI"
         document.core_properties.subject = "Rapport de veille des appels d'offres IT/Ingénierie"
         document.core_properties.created = data['generated_at']
         
         # Build report sections
         _add_title_page(document, data)
-        _add_executive_summary(document, data)
         _add_table_of_contents(document, data)
+        _add_executive_summary(document, data)
         _add_notices_section(document, data)
         _add_sources_section(document, data)
         _add_appendices(document, data)
@@ -100,7 +136,7 @@ def _add_title_page(document: Document, data: Dict[str, Any]) -> None:
     # Title
     title = document.add_heading('', level=0)
     title_run = title.runs[0] if title.runs else title.add_run()
-    title_run.text = "RFP Watch – Burkina Faso"
+    title_run.text = "TenderAI – YULCOM Technologies"
     title_run.font.size = Pt(24)
     title_run.font.bold = True
     title_run.font.color.rgb = RGBColor(0x2E, 0x74, 0xB5)
@@ -139,7 +175,7 @@ def _add_title_page(document: Document, data: Dict[str, Any]) -> None:
     brand_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
     
     brand_desc = document.add_paragraph()
-    brand_desc_run = brand_desc.add_run("Système autonome de veille technologique")
+    brand_desc_run = brand_desc.add_run("Système autonome de veille des appels d'offres")
     brand_desc_run.font.size = Pt(10)
     brand_desc_run.font.italic = True
     brand_desc.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -186,16 +222,14 @@ def _add_executive_summary(document: Document, data: Dict[str, Any]) -> None:
             for run in paragraph.runs:
                 run.font.bold = True
     
-    # Add data rows
+    # Add data rows - excluding reports_generated, emails_sent, and total_time 
+    # as they are not available at report generation time
     metrics = [
         ('Sources consultées', str(stats.get('sources_checked', 0))),
         ('Liens découverts', str(stats.get('links_discovered', 0))),
         ('Items analysés', str(stats.get('items_parsed', 0))),
         ('Avis pertinents', str(stats.get('relevant_items', 0))),
         ('Avis uniques (après dédoublonnage)', str(stats.get('unique_items', 0))),
-        ('Rapports générés', str(stats.get('reports_generated', 0))),
-        ('Emails envoyés', str(stats.get('emails_sent', 0))),
-        ('Temps total d\'exécution', f"{stats.get('total_time_seconds', 0):.1f} secondes"),
     ]
     
     for metric, value in metrics:
@@ -237,7 +271,7 @@ def _add_table_of_contents(document: Document, data: Dict[str, Any]) -> None:
 
 
 def _add_notices_section(document: Document, data: Dict[str, Any]) -> None:
-    """Add notices section with individual cards."""
+    """Add notices section with individual cards, grouped by type."""
     
     notices = data.get('notices', [])
     
@@ -255,9 +289,45 @@ def _add_notices_section(document: Document, data: Dict[str, Any]) -> None:
         f"pour les domaines IT/Ingénierie au Burkina Faso."
     )
     
-    # Add each notice as a card
-    for i, notice in enumerate(notices, 1):
-        _add_notice_card(document, notice, i)
+    # Group notices by type
+    from collections import defaultdict
+    notices_by_type = defaultdict(list)
+    for notice in notices:
+        notice_type = notice.get('type', 'appel_offres')
+        notices_by_type[notice_type].append(notice)
+    
+    # Type labels in French
+    type_labels = {
+        'appel_offres': 'Appels d\'offres',
+        'rectificatif': 'Rectificatifs',
+        'prorogation': 'Prorogations',
+        'communique': 'Communiqués',
+        'annulation': 'Annulations',
+        'autre': 'Autres'
+    }
+    
+    # Display "appel_offres" first, then other types
+    notice_index = 1
+    
+    # First: appel_offres
+    if 'appel_offres' in notices_by_type:
+        document.add_paragraph()
+        section_heading = document.add_heading('Appels d\'offres', level=2)
+        
+        for notice in notices_by_type['appel_offres']:
+            _add_notice_card(document, notice, notice_index)
+            notice_index += 1
+    
+    # Then: other types
+    for notice_type in ['rectificatif', 'prorogation', 'communique', 'annulation', 'autre']:
+        if notice_type in notices_by_type:
+            document.add_paragraph()
+            section_label = type_labels.get(notice_type, notice_type.title())
+            section_heading = document.add_heading(section_label, level=2)
+            
+            for notice in notices_by_type[notice_type]:
+                _add_notice_card(document, notice, notice_index)
+                notice_index += 1
     
     document.add_page_break()
 
@@ -265,21 +335,23 @@ def _add_notices_section(document: Document, data: Dict[str, Any]) -> None:
 def _add_notice_card(document: Document, notice: Dict[str, Any], index: int) -> None:
     """Add a single notice card."""
     
-    # Notice title
-    title_heading = document.add_heading(f"{index}. {notice.get('title', 'Titre non disponible')}", level=2)
+    # Add notice heading with title or tender_object
+    notice_title = notice.get('tender_object', notice.get('title', 'Titre non disponible'))
+    title_heading = document.add_heading(f"{index}. {notice_title}", level=2)
     
     # Create info table
-    table = document.add_table(rows=6, cols=2)
+    table = document.add_table(rows=8, cols=2)
     table.style = 'Table Grid'
     
     # Populate table
     info_items = [
-        ('Référence', notice.get('ref_no', 'N/A')),
+        ('Objet', notice.get('tender_object', notice.get('title', 'N/A'))),
+        ('Référence', notice.get('reference', notice.get('ref_no', 'N/A'))),
         ('Entité', notice.get('entity', 'N/A')),
         ('Catégorie', notice.get('category', 'N/A')),
         ('Localisation', notice.get('location', 'N/A')),
         ('Date de publication', notice.get('published_at', 'N/A')),
-        ('Date limite', notice.get('deadline_at', 'N/A')),
+        ('Date limite', notice.get('deadline', notice.get('deadline_at', 'N/A'))),
     ]
     
     for i, (label, value) in enumerate(info_items):
@@ -299,20 +371,23 @@ def _add_notice_card(document: Document, notice: Dict[str, Any], index: int) -> 
     document.add_paragraph()
     summary_heading = document.add_heading('Résumé', level=3)
     
-    summary_text = notice.get('summary_fr', notice.get('description', 'Résumé non disponible'))
+    summary_text = notice.get('description', notice.get('summary_fr', 'Résumé non disponible'))
+    
+    # Parse markdown-style formatting in summary
     summary_para = document.add_paragraph()
-    summary_para.add_run(summary_text)
+    _add_formatted_text(summary_para, summary_text)
     
     # Add source URL
     document.add_paragraph()
     url_para = document.add_paragraph()
     url_para.add_run("Source : ")
     
-    url = notice.get('url', '')
+    # Try source_url first (for PDF quotidiens), then url (for web scraping)
+    url = notice.get('source_url') or notice.get('url', '')
     if url:
         try:
             add_hyperlink(url_para, url, url)
-        except:
+        except Exception:
             url_para.add_run(url)
     else:
         url_para.add_run("URL non disponible")
@@ -325,8 +400,8 @@ def _add_notice_card(document: Document, notice: Dict[str, Any], index: int) -> 
         score_run.font.size = Pt(9)
         score_run.font.color.rgb = RGBColor(0x70, 0x70, 0x70)
     
-    # Add separator
-    document.add_paragraph("─" * 50)
+    # Add separator (use simple hyphens instead of unicode box drawing)
+    document.add_paragraph("-" * 80)
     document.add_paragraph()
 
 
@@ -343,8 +418,7 @@ def _add_sources_section(document: Document, data: Dict[str, Any]) -> None:
     
     overview_para = document.add_paragraph()
     overview_para.add_run(
-        f"Cette section liste les {len(sources)} sources de données consultées "
-        f"lors de cette exécution."
+        "Cette section liste les sources de données consultées lors de cette exécution."
     )
     
     # Create sources table
@@ -419,11 +493,31 @@ def _add_appendices(document: Document, data: Dict[str, Any]) -> None:
             for run in paragraph.runs:
                 run.font.bold = True
     
-    # Add all stats
+    # Add all stats with proper formatting
     for key, value in stats.items():
         row_cells = stats_table.add_row().cells
         row_cells[0].text = key.replace('_', ' ').title()
-        row_cells[1].text = str(value)
+        
+        # Format time values (keys ending with '_seconds')
+        if key.endswith('_seconds') and isinstance(value, (int, float)):
+            if value < 0.01:
+                # Very small values in milliseconds
+                row_cells[1].text = f"{value * 1000:.2f} ms"
+            elif value < 60:
+                # Seconds
+                row_cells[1].text = f"{value:.2f} s"
+            elif value < 3600:
+                # Minutes
+                minutes = int(value // 60)
+                seconds = value % 60
+                row_cells[1].text = f"{minutes} min {seconds:.1f} s"
+            else:
+                # Hours
+                hours = int(value // 3600)
+                minutes = int((value % 3600) // 60)
+                row_cells[1].text = f"{hours} h {minutes} min"
+        else:
+            row_cells[1].text = str(value)
     
     # Footer
     document.add_paragraph()
