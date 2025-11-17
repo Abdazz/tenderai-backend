@@ -358,6 +358,21 @@ def parse_pdf_with_rag(
                             )
                             tender_dict['content_hash'] = hashlib.sha256(hash_content.encode()).hexdigest()
                             
+                            # Set source_url and url from metadata (for reporting)
+                            if metadata and metadata.get('url'):
+                                tender_dict['source_url'] = metadata['url']
+                            else:
+                                tender_dict['source_url'] = pdf_path
+                            
+                            tender_dict['url'] = tender_dict.get('source_url', pdf_path)
+                            
+                            # Extract published_at from quotidien title if available
+                            if metadata and metadata.get('title'):
+                                import re
+                                date_match = re.search(r'(\d{2}/\d{2}/\d{4})', metadata['title'])
+                                if date_match:
+                                    tender_dict['published_at'] = date_match.group(1)
+                            
                             chunk_tenders.append(tender_dict)
                         
                         all_tenders.extend(chunk_tenders)
