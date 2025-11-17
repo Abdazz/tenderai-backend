@@ -382,7 +382,8 @@ class Settings(BaseSettings):
                     if "processing" in yaml_config:
                         processing_config = yaml_config["processing"]
                         if "min_relevance_score" in processing_config:
-                            self.processing.min_relevance_score = processing_config["min_relevance_score"]
+                            # Ensure it's converted to float (env vars are strings)
+                            self.processing.min_relevance_score = float(processing_config["min_relevance_score"])
                         if "use_llm_classification" in processing_config:
                             self.processing.use_llm_classification = processing_config["use_llm_classification"]
                     
