@@ -494,8 +494,14 @@ def parse_pdf_with_rag(
                 # ref_no: Map from reference
                 tender['ref_no'] = tender.get('reference', 'N/A')
                 
-                # url: Map from source_url, or use pdf_path
-                tender['url'] = tender.get('source_url') or metadata.get('url') if metadata else pdf_path
+                # source_url: Get from metadata (URL of the PDF quotidien)
+                if metadata and metadata.get('url'):
+                    tender['source_url'] = metadata['url']
+                else:
+                    tender['source_url'] = pdf_path
+                
+                # url: Also set url field for backward compatibility
+                tender['url'] = tender.get('source_url', pdf_path)
                 
                 # deadline_at: Keep deadline as is
                 tender['deadline_at'] = tender.get('deadline', 'N/A')
@@ -509,7 +515,7 @@ def parse_pdf_with_rag(
                     date_match = re.search(r'(\d{2}/\d{2}/\d{4})', metadata['title'])
                     if date_match:
                         published_at = date_match.group(1)
-                tender.setdefault('published_at', published_at)
+                tender['published_at'] = published_at
                 
                 # is_relevant: Based on relevance_score
                 relevance_score = tender.get('relevance_score', 0.0)
