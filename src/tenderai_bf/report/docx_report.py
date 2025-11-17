@@ -82,6 +82,51 @@ def add_hyperlink(paragraph, text: str, url: str):
     paragraph._p.append(hyperlink)
 
 
+def add_bookmark(paragraph, bookmark_id: str, bookmark_name: str):
+    """Add a bookmark to a paragraph for internal linking."""
+    p = paragraph._p
+    
+    # Add bookmark start
+    bookmark_start = OxmlElement('w:bookmarkStart')
+    bookmark_start.set(qn('w:id'), str(bookmark_id))
+    bookmark_start.set(qn('w:name'), bookmark_name)
+    p.insert(0, bookmark_start)
+    
+    # Add bookmark end
+    bookmark_end = OxmlElement('w:bookmarkEnd')
+    bookmark_end.set(qn('w:id'), str(bookmark_id))
+    p.append(bookmark_end)
+
+
+def add_internal_hyperlink(paragraph, text: str, bookmark_name: str):
+    """Add an internal hyperlink to a bookmark within the document."""
+    hyperlink = OxmlElement('w:hyperlink')
+    hyperlink.set(qn('w:anchor'), bookmark_name)
+    
+    # Create run element
+    run = OxmlElement('w:r')
+    run_props = OxmlElement('w:rPr')
+    
+    # Add hyperlink styling (blue and underlined)
+    color = OxmlElement('w:color')
+    color.set(qn('w:val'), '0000FF')
+    run_props.append(color)
+    
+    underline = OxmlElement('w:u')
+    underline.set(qn('w:val'), 'single')
+    run_props.append(underline)
+    
+    run.append(run_props)
+    
+    # Add text
+    text_elem = OxmlElement('w:t')
+    text_elem.text = text
+    run.append(text_elem)
+    
+    hyperlink.append(run)
+    paragraph._p.append(hyperlink)
+
+
 def build_report(data: Dict[str, Any]) -> Optional[bytes]:
     """Build a DOCX report from pipeline data."""
     
@@ -188,8 +233,9 @@ def _add_title_page(document: Document, data: Dict[str, Any]) -> None:
 def _add_executive_summary(document: Document, data: Dict[str, Any]) -> None:
     """Add executive summary section."""
     
-    # Section title
-    document.add_heading('Résumé exécutif', level=1)
+    # Section title with bookmark
+    heading = document.add_heading('I. Résumé exécutif', level=1)
+    add_bookmark(heading, 0, 'section_I')
     
     # Statistics
     stats = data.get('statistics', {})
@@ -250,24 +296,27 @@ def _add_executive_summary(document: Document, data: Dict[str, Any]) -> None:
 
 
 def _add_table_of_contents(document: Document, data: Dict[str, Any]) -> None:
-    """Add table of contents (placeholder)."""
+    """Add table of contents with clickable internal links."""
     
     document.add_heading('Table des matières', level=1)
     
     toc_items = [
-        "I. Résumé exécutif",
-        "II. Avis d'appels d'offres pertinents",
-        "III. Autres Avis",
-        "IV. Sources consultées",
-        "V. Annexes",
-        "   V.1. Journal des erreurs",
-        "   V.2. Statistiques détaillées"
+        ("I. Résumé exécutif", "section_I"),
+        ("II. Avis d'appels d'offres pertinents", "section_II"),
+        ("III. Autres Avis", "section_III"),
+        ("IV. Sources consultées", "section_IV"),
+        ("V. Annexes", "section_V"),
     ]
     
-    for item in toc_items:
+    # Main sections with internal hyperlinks
+    for item, bookmark in toc_items:
         para = document.add_paragraph()
-        para.add_run(item)
-        para.style = 'List Bullet' if item.startswith('   ') else 'Normal'
+        para.style = 'Normal'
+        add_internal_hyperlink(para, item, bookmark)
+    
+    # Subsections (not clickable, just for reference)
+    document.add_paragraph("   V.1. Journal des erreurs", style='Normal')
+    document.add_paragraph("   V.2. Statistiques détaillées", style='Normal')
     
     document.add_page_break()
 
@@ -277,7 +326,9 @@ def _add_notices_section(document: Document, data: Dict[str, Any]) -> None:
     
     notices = data.get('notices', [])
     
-    document.add_heading('Avis d\'appels d\'offres pertinents', level=1)
+    # Section heading with bookmark
+    heading = document.add_heading('II. Avis d\'appels d\'offres pertinents', level=1)
+    add_bookmark(heading, 1, 'section_II')
     
     if not notices:
         no_notices = document.add_paragraph()
@@ -327,7 +378,8 @@ def _add_other_notices_section(document: Document, data: Dict[str, Any]) -> None
     
     # If no other notices, add a message and return
     if not notices_by_type:
-        document.add_heading('Autres Avis', level=1)
+        heading = document.add_heading('III. Autres Avis', level=1)
+        add_bookmark(heading, 2, 'section_III')
         no_notices = document.add_paragraph()
         no_notices.add_run("Aucun autre avis (rectificatif, prorogation, communiqué, annulation) trouvé pour cette période.")
         no_notices.runs[0].font.italic = True
@@ -337,7 +389,9 @@ def _add_other_notices_section(document: Document, data: Dict[str, Any]) -> None
     # Count other notices
     other_count = sum(len(notices) for notices in notices_by_type.values())
     
-    document.add_heading('Autres Avis', level=1)
+    # Section heading with bookmark
+    heading = document.add_heading('III. Autres Avis', level=1)
+    add_bookmark(heading, 2, 'section_III')
     
     overview_para = document.add_paragraph()
     overview_para.add_run(
@@ -448,7 +502,9 @@ def _add_sources_section(document: Document, data: Dict[str, Any]) -> None:
     
     sources = data.get('sources', [])
     
-    document.add_heading('Sources consultées', level=1)
+    # Section heading with bookmark
+    heading = document.add_heading('IV. Sources consultées', level=1)
+    add_bookmark(heading, 3, 'section_IV')
     
     if not sources:
         document.add_paragraph("Aucune source consultée.")
@@ -494,11 +550,13 @@ def _add_sources_section(document: Document, data: Dict[str, Any]) -> None:
 def _add_appendices(document: Document, data: Dict[str, Any]) -> None:
     """Add appendices section."""
     
-    document.add_heading('Annexes', level=1)
+    # Section heading with bookmark
+    heading = document.add_heading('V. Annexes', level=1)
+    add_bookmark(heading, 4, 'section_V')
     
     # Error log
     errors = data.get('errors', [])
-    document.add_heading('Journal des erreurs', level=2)
+    document.add_heading('V.1. Journal des erreurs', level=2)
     
     if not errors:
         document.add_paragraph("Aucune erreur signalée.")
@@ -516,7 +574,7 @@ def _add_appendices(document: Document, data: Dict[str, Any]) -> None:
     
     # Detailed statistics
     document.add_paragraph()
-    document.add_heading('Statistiques détaillées', level=2)
+    document.add_heading('V.2. Statistiques détaillées', level=2)
     
     stats = data.get('statistics', {})
     stats_table = document.add_table(rows=1, cols=2)
