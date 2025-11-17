@@ -100,6 +100,7 @@ def build_report(data: Dict[str, Any]) -> Optional[bytes]:
         _add_table_of_contents(document, data)
         _add_executive_summary(document, data)
         _add_notices_section(document, data)
+        _add_other_notices_section(document, data)
         _add_sources_section(document, data)
         _add_appendices(document, data)
         
@@ -254,12 +255,13 @@ def _add_table_of_contents(document: Document, data: Dict[str, Any]) -> None:
     document.add_heading('Table des matières', level=1)
     
     toc_items = [
-        "1. Résumé exécutif",
-        "2. Avis d'appels d'offres pertinents",
-        "3. Sources consultées",
-        "4. Annexes",
-        "   4.1. Journal des erreurs",
-        "   4.2. Statistiques détaillées"
+        "I. Résumé exécutif",
+        "II. Avis d'appels d'offres pertinents",
+        "III. Autres Avis",
+        "IV. Sources consultées",
+        "V. Annexes",
+        "   V.1. Journal des erreurs",
+        "   V.2. Statistiques détaillées"
     ]
     
     for item in toc_items:
@@ -271,7 +273,7 @@ def _add_table_of_contents(document: Document, data: Dict[str, Any]) -> None:
 
 
 def _add_notices_section(document: Document, data: Dict[str, Any]) -> None:
-    """Add notices section with individual cards, grouped by type."""
+    """Add notices section with appel_offres only."""
     
     notices = data.get('notices', [])
     
@@ -283,9 +285,12 @@ def _add_notices_section(document: Document, data: Dict[str, Any]) -> None:
         no_notices.runs[0].font.italic = True
         return
     
+    # Count appel_offres
+    appel_offres_count = sum(1 for n in notices if n.get('type', 'appel_offres') == 'appel_offres')
+    
     overview_para = document.add_paragraph()
     overview_para.add_run(
-        f"Cette section présente les {len(notices)} avis d'appels d'offres identifiés comme pertinents "
+        f"Cette section présente les {appel_offres_count} appel(s) d'offre(s) identifié(s) comme pertinent(s) "
         f"pour les domaines IT/Ingénierie au Burkina Faso."
     )
     
@@ -296,9 +301,52 @@ def _add_notices_section(document: Document, data: Dict[str, Any]) -> None:
         notice_type = notice.get('type', 'appel_offres')
         notices_by_type[notice_type].append(notice)
     
+    # Display only appel_offres in this section
+    notice_index = 1
+    
+    if 'appel_offres' in notices_by_type:
+        for notice in notices_by_type['appel_offres']:
+            _add_notice_card(document, notice, notice_index)
+            notice_index += 1
+    
+    document.add_page_break()
+
+
+def _add_other_notices_section(document: Document, data: Dict[str, Any]) -> None:
+    """Add other notices section (Rectificatifs, Prorogations, Communiqués, Annulations, Autres)."""
+    
+    notices = data.get('notices', [])
+    
+    # Group notices by type
+    from collections import defaultdict
+    notices_by_type = defaultdict(list)
+    for notice in notices:
+        notice_type = notice.get('type', 'appel_offres')
+        if notice_type != 'appel_offres':  # Only non-appel_offres
+            notices_by_type[notice_type].append(notice)
+    
+    # If no other notices, add a message and return
+    if not notices_by_type:
+        document.add_heading('Autres Avis', level=1)
+        no_notices = document.add_paragraph()
+        no_notices.add_run("Aucun autre avis (rectificatif, prorogation, communiqué, annulation) trouvé pour cette période.")
+        no_notices.runs[0].font.italic = True
+        document.add_page_break()
+        return
+    
+    # Count other notices
+    other_count = sum(len(notices) for notices in notices_by_type.values())
+    
+    document.add_heading('Autres Avis', level=1)
+    
+    overview_para = document.add_paragraph()
+    overview_para.add_run(
+        f"Cette section présente les {other_count} autre(s) avis (rectificatif, prorogation, communiqué, annulation) "
+        f"identifié(s) comme pertinent(s) pour les domaines IT/Ingénierie au Burkina Faso."
+    )
+    
     # Type labels in French
     type_labels = {
-        'appel_offres': 'Appels d\'offres',
         'rectificatif': 'Rectificatifs',
         'prorogation': 'Prorogations',
         'communique': 'Communiqués',
@@ -306,24 +354,14 @@ def _add_notices_section(document: Document, data: Dict[str, Any]) -> None:
         'autre': 'Autres'
     }
     
-    # Display "appel_offres" first, then other types
+    # Display in order: rectificatif, prorogation, communique, annulation, autre
     notice_index = 1
     
-    # First: appel_offres
-    if 'appel_offres' in notices_by_type:
-        document.add_paragraph()
-        section_heading = document.add_heading('Appels d\'offres', level=2)
-        
-        for notice in notices_by_type['appel_offres']:
-            _add_notice_card(document, notice, notice_index)
-            notice_index += 1
-    
-    # Then: other types
     for notice_type in ['rectificatif', 'prorogation', 'communique', 'annulation', 'autre']:
         if notice_type in notices_by_type:
             document.add_paragraph()
             section_label = type_labels.get(notice_type, notice_type.title())
-            section_heading = document.add_heading(section_label, level=2)
+            document.add_heading(section_label, level=2)
             
             for notice in notices_by_type[notice_type]:
                 _add_notice_card(document, notice, notice_index)
@@ -337,7 +375,7 @@ def _add_notice_card(document: Document, notice: Dict[str, Any], index: int) -> 
     
     # Add notice heading with title or tender_object
     notice_title = notice.get('tender_object', notice.get('title', 'Titre non disponible'))
-    title_heading = document.add_heading(f"{index}. {notice_title}", level=2)
+    document.add_heading(f"{index}. {notice_title}", level=2)
     
     # Create info table
     table = document.add_table(rows=8, cols=2)
@@ -369,7 +407,7 @@ def _add_notice_card(document: Document, notice: Dict[str, Any], index: int) -> 
     
     # Add summary
     document.add_paragraph()
-    summary_heading = document.add_heading('Résumé', level=3)
+    document.add_heading('Résumé', level=3)
     
     summary_text = notice.get('description', notice.get('summary_fr', 'Résumé non disponible'))
     
