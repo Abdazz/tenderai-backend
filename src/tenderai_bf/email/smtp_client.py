@@ -348,6 +348,11 @@ Pour vous désabonner ou modifier vos préférences, contactez l'administrateur.
             border-radius: 8px 8px 0 0;
             text-align: center;
         }}
+        .logo {{
+            max-width: 200px;
+            height: auto;
+            margin-bottom: 15px;
+        }}
         .content {{
             background: #f8f9fa;
             border: 1px solid #dee2e6;
@@ -396,15 +401,16 @@ Pour vous désabonner ou modifier vos préférences, contactez l'administrateur.
             font-size: 0.9em;
             color: #6c757d;
         }}
-        .logo {{
-            max-width: 150px;
-            margin-bottom: 10px;
-        }}
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>🔍 RFP Watch – Burkina Faso</h1>
+    <div class="header">"""
+    
+    # Add logo if configured
+    if settings.email.logo_url:
+        html_body += f'\n        <img src="{settings.email.logo_url}" alt="YULCOM Logo" class="logo">\n'
+    
+    html_body += f"""        <h1>🔍 RFP Watch – Burkina Faso</h1>
         <p>Rapport quotidien de veille des appels d'offres</p>
     </div>
     
