@@ -589,7 +589,13 @@ def _add_appendices(document: Document, data: Dict[str, Any]) -> None:
                 run.font.bold = True
     
     # Add all stats with proper formatting
+    # Skip report_time_seconds, email_time_seconds, and total_time_seconds
+    excluded_keys = {'report_time_seconds', 'email_time_seconds', 'total_time_seconds'}
+    
     for key, value in stats.items():
+        if key in excluded_keys:
+            continue
+            
         row_cells = stats_table.add_row().cells
         row_cells[0].text = key.replace('_', ' ').title()
         
