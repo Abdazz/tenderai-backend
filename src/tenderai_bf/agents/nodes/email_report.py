@@ -39,7 +39,31 @@ def email_report_node(state) -> Dict:
         
         # Prepare email data
         stats = state.stats.dict()
-        recipients = [settings.email.to_address]  # TODO: Load from database
+        
+        # Load recipients from settings.yaml
+        recipients = []
+        
+        # Always include primary to_address
+        if settings.email.to_address:
+            recipients.append(settings.email.to_address)
+        
+        # Add configured recipients from settings.recipients
+        if settings.recipients:
+            # Extract email addresses from recipients list in settings
+            for recipient in settings.recipients:
+                if 'email' in recipient and recipient['email'] not in recipients:
+                    recipients.append(recipient['email'])
+        
+        # Ensure we have at least one recipient
+        if not recipients:
+            raise Exception("No email recipients configured")
+        
+        logger.info(
+            "Report recipients loaded",
+            recipients_count=len(recipients),
+            recipients=recipients,
+            run_id=state.run_id
+        )
         
         # Send email
         success = send_report_email(
