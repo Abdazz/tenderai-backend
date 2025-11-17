@@ -90,7 +90,7 @@ class EmailSettings(BaseSettings):
     reply_to: Optional[str] = Field(default="support@yulcom.com")
     subject_prefix: str = Field(default="RFP Watch – Burkina Faso")
     signature: str = Field(default="YULCOM Technologies")
-    logo_url: Optional[str] = Field(default=None)
+    logo_url: Optional[str] = Field(default=None, validation_alias="EMAIL_LOGO_URL")
     
     model_config = SettingsConfigDict(env_prefix='EMAIL_', case_sensitive=False)
 
