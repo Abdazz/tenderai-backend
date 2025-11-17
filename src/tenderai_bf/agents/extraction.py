@@ -1,11 +1,10 @@
 """LLM-based extraction with Pydantic schema enforcement."""
 
 import json
-from typing import Optional
 
 from tenderai_bf.logging import get_logger
 from tenderai_bf.utils.llm_utils import get_llm_instance
-from tenderai_bf.schemas import Tender, TenderExtraction
+from tenderai_bf.schemas import TenderExtraction
 from tenderai_bf.config import settings
 
 logger = get_logger(__name__)
@@ -43,8 +42,22 @@ def extract_tenders_structured(
         llm_provider = settings.llm.provider
         
         # Create structured LLM with Pydantic schema enforcement
+        # For Groq, we need to ensure the schema is correctly defined
         try:
-            structured_llm = llm.with_structured_output(TenderExtraction)
+            # Use method='json_schema' for better Groq compatibility
+            # This generates a proper JSON Schema that Groq can understand
+            structured_llm = llm.with_structured_output(
+                TenderExtraction,
+                method="json_schema" if llm_provider.lower() == "groq" else "tool_choice"
+            )
+        except TypeError:
+            # Fallback if method parameter not supported
+            try:
+                structured_llm = llm.with_structured_output(TenderExtraction)
+            except AttributeError:
+                # Fallback to JSON mode if with_structured_output not available
+                logger.error("LLM does not support with_structured_output, using JSON mode fallback")
+                return _extract_tenders_json_fallback(context, source_name, llm, max_retries)
         except AttributeError:
             # Fallback to JSON mode if with_structured_output not available
             logger.error("LLM does not support with_structured_output, using JSON mode fallback")
@@ -80,7 +93,8 @@ def extract_tenders_structured(
                     logger.error(
                         "LLM returned unexpected type",
                         attempt=attempt + 1,
-                        type=type(extraction).__name__
+                        type=type(extraction).__name__,
+                        value=str(extraction)[:200]
                     )
                     continue
                 
@@ -114,11 +128,19 @@ def extract_tenders_structured(
                 return extraction
                 
             except Exception as e:
+                error_msg = str(e)
                 logger.error(
                     "Structured extraction attempt failed",
                     attempt=attempt + 1,
-                    error=str(e)
+                    error=error_msg,
+                    error_type=type(e).__name__
                 )
+                
+                # If it's a validation error from Groq tool calling, try JSON fallback
+                if 'tool_use_failed' in error_msg or 'did not match schema' in error_msg:
+                    logger.error("Tool schema validation failed, falling back to JSON mode")
+                    return _extract_tenders_json_fallback(context, source_name, llm, max_retries)
+                
                 if attempt < max_retries - 1:
                     logger.info("Retrying extraction...")
                     continue
