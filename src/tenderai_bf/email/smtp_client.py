@@ -296,7 +296,7 @@ def _generate_report_email_body(stats: Dict, report_url: str, run_id: str) -> tu
     # Text version
     text_body = f"""Bonjour,
 
-Voici le rapport quotidien de veille des appels d'offres IT/Ingénierie au Burkina Faso.
+Voici le rapport quotidien de veille des appels d'offres IT/Ingénierie pour YULCOM Burkina.
 
 RÉSUMÉ DE L'EXÉCUTION
 ━━━━━━━━━━━━━━━━━━━━━
@@ -308,8 +308,6 @@ RÉSUMÉ DE L'EXÉCUTION
 
 Le rapport complet est disponible en pièce jointe au format Word (.docx).
 
-Vous pouvez également télécharger le rapport à l'adresse suivante :
-{report_url}
 
 ━━━━━━━━━━━━━━━━━━━━━
 
@@ -320,7 +318,7 @@ L'équipe TenderAI BF
 YULCOM Technologies
 
 ---
-Cet email a été généré automatiquement par le système TenderAI BF.
+Cet email a été généré automatiquement par le système TenderAI.
 Pour vous désabonner ou modifier vos préférences, contactez l'administrateur.
 """
     
@@ -410,7 +408,7 @@ Pour vous désabonner ou modifier vos préférences, contactez l'administrateur.
     if settings.email.logo_url:
         html_body += f'\n        <img src="{settings.email.logo_url}" alt="YULCOM Logo" class="logo">\n'
     
-    html_body += f"""        <h1>🔍 RFP Watch – Burkina Faso</h1>
+    html_body += f"""        <h1>🔍 TenderAI – YULCOM Technologies</h1>
         <p>Rapport quotidien de veille des appels d'offres</p>
     </div>
     
@@ -451,7 +449,7 @@ Pour vous désabonner ou modifier vos préférences, contactez l'administrateur.
         <div class="footer">
             <p>Pour toute question ou support technique, n'hésitez pas à nous contacter.</p>
             <p><strong>Cordialement,</strong><br>
-            L'équipe TenderAI BF<br>
+            L'équipe TenderAI<br>
             YULCOM Technologies</p>
             
             <hr style="margin: 20px 0;">
