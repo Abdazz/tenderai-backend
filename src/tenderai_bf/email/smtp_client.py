@@ -443,8 +443,6 @@ Pour vous désabonner ou modifier vos préférences, contactez l'administrateur.
         
         <p>Le rapport complet est disponible en <strong>pièce jointe</strong> au format Word (.docx).</p>
         
-        <p>Vous pouvez également télécharger le rapport directement :</p>
-        <a href="{report_url}" class="download-btn">📄 Télécharger le rapport</a>
         
         <div class="footer">
             <p>Pour toute question ou support technique, n'hésitez pas à nous contacter.</p>

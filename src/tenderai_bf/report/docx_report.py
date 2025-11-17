@@ -437,7 +437,6 @@ def _add_notice_card(document: Document, notice: Dict[str, Any], index: int) -> 
     
     # Populate table
     info_items = [
-        ('Objet', notice.get('tender_object', notice.get('title', 'N/A'))),
         ('Référence', notice.get('reference', notice.get('ref_no', 'N/A'))),
         ('Entité', notice.get('entity', 'N/A')),
         ('Catégorie', notice.get('category', 'N/A')),
