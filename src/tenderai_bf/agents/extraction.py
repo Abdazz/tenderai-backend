@@ -69,7 +69,10 @@ def extract_tenders_structured(
         user_template = extraction_prompts.get('user_template', '{context}')
         
         # Build the complete prompt
+        # Important: For Groq json_mode, the word "json" must appear in the prompt
         prompt = f"""{system_prompt}
+
+IMPORTANT: Respond with valid JSON output.
 
 {user_template.format(context=context)}"""
         
