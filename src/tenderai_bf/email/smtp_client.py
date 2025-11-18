@@ -452,7 +452,7 @@ Pour vous désabonner ou modifier vos préférences, contactez l'administrateur.
             
             <hr style="margin: 20px 0;">
             <p style="font-size: 0.8em;">
-                Cet email a été généré automatiquement par le système TenderAI BF.<br>
+                Cet email a été généré automatiquement par le système TenderAI de YULCOM Technologies.<br>
                 Pour vous désabonner ou modifier vos préférences, contactez l'administrateur.
             </p>
         </div>
