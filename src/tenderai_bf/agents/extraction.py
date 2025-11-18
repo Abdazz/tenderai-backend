@@ -44,11 +44,11 @@ def extract_tenders_structured(
         # Create structured LLM with Pydantic schema enforcement
         # For Groq, we need to ensure the schema is correctly defined
         try:
-            # Use method='json_schema' for better Groq compatibility
-            # This generates a proper JSON Schema that Groq can understand
+            # Use method='json_mode' for Groq compatibility
+            # Groq supports 'function_calling' or 'json_mode'
             structured_llm = llm.with_structured_output(
                 TenderExtraction,
-                method="json_schema" if llm_provider.lower() == "groq" else "tool_choice"
+                method="json_mode" if llm_provider.lower() == "groq" else "function_calling"
             )
         except TypeError:
             # Fallback if method parameter not supported
