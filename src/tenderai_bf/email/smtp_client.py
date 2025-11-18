@@ -293,9 +293,20 @@ def _generate_report_email_body(stats: Dict, report_url: str, run_id: str) -> tu
     # Generate timestamp
     timestamp = datetime.utcnow().strftime('%d/%m/%Y à %H:%M UTC')
     
+    # Add development indicator if in dev environment
+    dev_warning = ""
+    dev_warning_html = ""
+    if settings.environment == "development":
+        dev_warning = "\n⚠️ [TEST] - Cet email a été généré dans l'environnement de développement.\n"
+        dev_warning_html = """
+        <div style="background: #fff3cd; border: 2px solid #ffc107; border-radius: 6px; padding: 15px; margin: 15px 0;">
+            <p style="color: #856404; font-weight: bold; margin: 0;">⚠️ EMAIL DE TEST (Environnement de développement)</p>
+            <p style="color: #856404; margin: 5px 0 0 0; font-size: 0.9em;">Cet email a été généré dans l'environnement de développement. Les données peuvent être de test ou incomplètes.</p>
+        </div>"""
+    
     # Text version
     text_body = f"""Bonjour,
-
+{dev_warning}
 Voici le rapport quotidien de veille des appels d'offres IT/Ingénierie pour YULCOM Burkina.
 
 RÉSUMÉ DE L'EXÉCUTION
@@ -323,8 +334,7 @@ Pour vous désabonner ou modifier vos préférences, contactez l'administrateur.
 """
     
     # HTML version
-    html_body = f"""
-<!DOCTYPE html>
+    html_body = f"""<!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
@@ -413,6 +423,7 @@ Pour vous désabonner ou modifier vos préférences, contactez l'administrateur.
     </div>
     
     <div class="content">
+        {dev_warning_html}
         <p>Bonjour,</p>
         
         <p>Voici le rapport quotidien de veille des appels d'offres IT/Ingénierie au Burkina Faso.</p>
@@ -483,8 +494,9 @@ def send_report_email(report_data: bytes,
         timestamp = datetime.utcnow()
         timestamp_str = timestamp.strftime('%Y-%m-%d-%H-%M')
         
-        # Generate subject
-        subject = f"{settings.email.subject_prefix} – {timestamp_str}"
+        # Generate subject with [TEST] prefix if in development environment
+        subject_prefix = f"[TEST] {settings.email.subject_prefix}" if settings.environment == "development" else settings.email.subject_prefix
+        subject = f"{subject_prefix} – {timestamp_str}"
         
         # Generate email body
         text_body, html_body = _generate_report_email_body(stats, report_url, run_id)
