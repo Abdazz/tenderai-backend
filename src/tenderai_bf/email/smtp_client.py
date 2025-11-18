@@ -305,8 +305,9 @@ def _generate_report_email_body(stats: Dict, report_url: str, run_id: str) -> tu
         </div>"""
     
     # Text version
-    text_body = f"""Bonjour,
-{dev_warning}
+    text_body = f"""{dev_warning}
+Bonjour,
+
 Voici le rapport quotidien de veille des appels d'offres IT/Ingénierie pour YULCOM Burkina.
 
 RÉSUMÉ DE L'EXÉCUTION
@@ -424,6 +425,7 @@ Pour vous désabonner ou modifier vos préférences, contactez l'administrateur.
     
     <div class="content">
         {dev_warning_html}
+        
         <p>Bonjour,</p>
         
         <p>Voici le rapport quotidien de veille des appels d'offres IT/Ingénierie au Burkina Faso.</p>
