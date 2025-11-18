@@ -320,15 +320,15 @@ class Tender(BaseModel):
         default="appel_offres",
         description="Type d'élément : appel_offres, rectificatif, prorogation, communique, annulation, autre"
     )
-    entity: str = Field(
+    entity: Optional[str] = Field(
         default="Inconnu",
         description="Entité ou organisme émettant l'appel d'offres"
     )
-    reference: str = Field(
+    reference: Optional[str] = Field(
         default="Inconnu",
         description="Numéro de référence ou identifiant de l'appel d'offres"
     )
-    tender_object: str = Field(
+    tender_object: Optional[str] = Field(
         default="Inconnu",
         description="Objet de l'appel d'offres tel qu'il apparaît dans le document (titre/phrase résumant l'objet principal)"
     )
@@ -336,11 +336,11 @@ class Tender(BaseModel):
         default=None,
         description="Date limite de soumission au format DD-MM-YYYY (optionnelle)"
     )
-    description: str = Field(
+    description: Optional[str] = Field(
         default="",
         description="Description détaillée de l'appel d'offres incluant nature des travaux, lieux d'exécution, lots, conditions de participation, etc."
     )
-    category: str = Field(
+    category: Optional[str] = Field(
         default="Autre",
         description="Catégorie de l'appel d'offres (IT, Ingénierie, Services, Biens, Travaux, Autre)"
     )
