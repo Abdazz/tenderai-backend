@@ -172,11 +172,12 @@ Est-ce pertinent pour les secteurs IT ou Ingénierie ?"""
         for item in state.items_parsed:
             try:
                 # Prepare item data
-                entity = item.get('entity', item.get('title', ''))
-                reference = item.get('reference', item.get('ref_no', ''))
-                objet = item.get('tender_object', item.get('title', ''))[:200]  # Use tender_object, fallback to title
-                description = item.get('description', '')[:500]  # Limit context
-                keywords = ', '.join(item.get('keywords', [])) if isinstance(item.get('keywords'), list) else str(item.get('keywords', ''))
+                entity = item.get('entity', item.get('title', '')) or ''
+                reference = item.get('reference', item.get('ref_no', '')) or ''
+                objet = (item.get('tender_object') or item.get('title') or '')[:200]  # Use tender_object, fallback to title
+                description = (item.get('description') or '')[:500]  # Limit context
+                keywords_val = item.get('keywords') or []
+                keywords = ', '.join(keywords_val) if isinstance(keywords_val, list) else str(keywords_val)
                 
                 # Get LLM classification
                 message = prompt.format(

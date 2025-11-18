@@ -102,7 +102,16 @@ def summarize_node(state) -> Dict:
         summaries = {}
         summarized_items = []
         
-        for item in state.unique_items:
+        # Handle case where unique_items may be None or empty
+        unique_items = getattr(state, 'unique_items', None) or []
+        if not unique_items:
+            logger.info("No unique items to summarize", run_id=state.run_id)
+            state.summaries = {}
+            state.unique_items = []
+            log_node_output("summarize", [], run_id=state.run_id)
+            return state
+        
+        for item in unique_items:
             # Generate LLM-based summary
             summary_fr = generate_summary_with_llm(item)
             

@@ -41,11 +41,19 @@ def extract_tenders_structured(
         llm_model = getattr(llm, 'model_name', getattr(llm, 'model', 'unknown'))
         llm_provider = settings.llm.provider
         
-        # Create structured LLM with Pydantic schema enforcement
-        # For Groq, use function_calling which is better supported
+        # For Groq, skip tool_calling and go straight to JSON fallback
+        # Groq wraps parameters in nested objects causing validation failures
+        if llm_provider.lower() == "groq":
+            logger.info(
+                "Using JSON fallback mode for Groq (tool_calling unreliable)",
+                llm_provider=llm_provider,
+                llm_model=llm_model
+            )
+            return _extract_tenders_json_fallback(context, source_name, llm, max_retries)
+        
+        # For other providers, try structured output
         try:
-            # Use method='function_calling' for Groq (json_mode requires explicit JSON in prompt)
-            # function_calling is more reliable with structured schemas
+            # Use method='function_calling' for other providers
             structured_llm = llm.with_structured_output(
                 TenderExtraction,
                 method="function_calling"
