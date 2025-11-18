@@ -1,8 +1,5 @@
 """APScheduler-based scheduling for TenderAI BF."""
 
-import time
-from datetime import datetime
-
 import pytz
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -88,11 +85,15 @@ def start_scheduler():
         max_instances=settings.scheduler.max_concurrent_runs
     )
     
+    # Get next run time from the job
+    job = scheduler.get_jobs()[0] if scheduler.get_jobs() else None
+    next_run_time = job.next_run_time if job else None
+    
     logger.info(
         "Scheduler configured",
         cron_schedule=settings.scheduler.cron_schedule,
         timezone=settings.scheduler.timezone,
-        next_run=scheduler.get_jobs()[0].next_run_time if scheduler.get_jobs() else None
+        next_run=next_run_time
     )
     
     # Optionally run on startup
