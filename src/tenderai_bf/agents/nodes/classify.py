@@ -1,7 +1,7 @@
 """Classify items for IT/Engineering relevance."""
 
 import time
-from typing import Dict, List
+from typing import Dict
 
 from ...config import settings
 from ...logging import get_logger, log_classification
@@ -68,16 +68,47 @@ def classify_with_keywords(state) -> Dict:
         )
         
         for item in state.items_parsed:
-            # Simple keyword-based classification
+            # Check if item already has relevance_score from extraction (LLM-scored items)
+            existing_score = item.get('relevance_score')
+            
+            if existing_score is not None and existing_score >= settings.processing.min_relevance_score:
+                # Item already scored by LLM extraction, preserve that score
+                relevant_items.append(item)
+                logger.debug(
+                    "Using existing LLM relevance score",
+                    item_id=item.get('id'),
+                    score=existing_score,
+                    run_id=state.run_id
+                )
+                continue
+            
+            # Perform keyword-based classification for items without scores
+            # Get all text fields for matching
             title_lower = item.get('title', '').lower()
             description_lower = item.get('description', '').lower()
+            tender_object_lower = item.get('tender_object', '').lower()
+            category_lower = item.get('category', '').lower()
+            
+            # Combine all text for search
+            all_text = f"{title_lower} {description_lower} {tender_object_lower} {category_lower}"
             
             # Calculate relevance score (0.0 to 1.0)
+            # Score based on: any keyword match = 1.0, no match = 0.0
+            # This is a simpler approach: if ANY keyword matches, it's relevant
             keyword_matches = sum(1 for keyword in it_keywords 
-                                if keyword.lower() in title_lower or keyword.lower() in description_lower)
+                                if keyword.lower() in all_text)
             
-            relevance_score = min(keyword_matches / len(it_keywords), 1.0) if it_keywords else 0.0
-            is_relevant = relevance_score >= settings.processing.min_relevance_score
+            # For keyword matching: if ANY keyword matches, consider it relevant
+            # Otherwise score is proportional to number of matches
+            if keyword_matches > 0:
+                relevance_score = min(1.0, 0.5 + (keyword_matches / len(it_keywords) * 0.5))
+            else:
+                relevance_score = 0.0
+            
+            # Use a lower threshold for keyword-based classification
+            # (LLM-scored items already passed through extraction with 0.7 threshold)
+            keyword_threshold = min(0.3, settings.processing.min_relevance_score)
+            is_relevant = relevance_score >= keyword_threshold
             
             # Update item with classification
             item['relevance_score'] = relevance_score
@@ -121,15 +152,13 @@ def classify_with_keywords(state) -> Dict:
 
 
 def classify_with_llm(state) -> Dict:
-    """Classify items using LLM-based analysis."""
+    """Classify items using LLM-based analysis with keyword fallback."""
     start_time = time.time()
     relevant_items = []
     
     try:
-        from langchain.prompts import PromptTemplate
-        
         # Get LLM instance
-        llm = get_llm_instance(temperature=0.1, max_tokens=50)
+        llm = get_llm_instance(temperature=0.1, max_tokens=200)
         if not llm:
             logger.error("LLM not available, falling back to keyword classification")
             return classify_with_keywords(state)
@@ -146,88 +175,147 @@ def classify_with_llm(state) -> Dict:
             run_id=state.run_id
         )
         
-        # Get classification prompts from configuration
-        classification_prompts = settings.prompts.get('classification', {})
-        system_prompt = classification_prompts.get('system', '')
-        user_template = classification_prompts.get('user_template', '')
+        # Get keywords for keyword-based fallback
+        it_keywords = []
+        if hasattr(settings, 'classification') and hasattr(settings.classification, 'relevant_keywords'):
+            relevant_keywords = settings.classification.relevant_keywords
+            for category, keywords in relevant_keywords.items():
+                it_keywords.extend(keywords)
         
-        # Fallback to hardcoded prompt if not configured
-        if not user_template:
-            user_template = """Analysez la pertinence de cet appel d'offres :
+        # Classification prompt
+        classification_prompt = """Analysez cet appel d'offres et répondez avec OUI ou NON :
 
 Entité : {entity}
 Référence : {reference}
+Objet : {objet}
 Description : {description}
 Mots-clés : {keywords}
 
-Est-ce pertinent pour les secteurs IT ou Ingénierie ?"""
-        
-        # Create classification prompt
-        prompt = PromptTemplate(
-            input_variables=["entity", "reference", "description", "keywords"],
-            template=f"{system_prompt}\n\n{user_template}" if system_prompt else user_template
-        )
+Question : Est-ce pertinent pour IT/Ingénierie/Télécommunications/Matériel informatique ?
+Répondez UNIQUEMENT par "OUI" ou "NON" suivi d'une brève explication."""
         
         # Classify each item
         for item in state.items_parsed:
+            llm_error = None
             try:
                 # Prepare item data
-                entity = item.get('entity', item.get('title', '')) or ''
-                reference = item.get('reference', item.get('ref_no', '')) or ''
-                objet = (item.get('tender_object') or item.get('title') or '')[:200]  # Use tender_object, fallback to title
-                description = (item.get('description') or '')[:500]  # Limit context
+                entity = item.get('entity', item.get('title', '')) or 'Inconnu'
+                reference = item.get('reference', item.get('ref_no', '')) or 'N/A'
+                objet = (item.get('tender_object') or item.get('title') or '')[:300]
+                description = (item.get('description') or '')[:800]
                 keywords_val = item.get('keywords') or []
                 keywords = ', '.join(keywords_val) if isinstance(keywords_val, list) else str(keywords_val)
                 
-                # Get LLM classification
-                message = prompt.format(
+                # Build the prompt message
+                message = classification_prompt.format(
                     entity=entity,
                     reference=reference,
                     objet=objet,
                     description=description,
                     keywords=keywords
                 )
-                response = llm.invoke(message)
-                response_text = response.content.strip()
                 
-                # Parse response
-                is_relevant = "OUI" in response_text.upper()
+                # Get LLM response
+                try:
+                    response = llm.invoke(message)
+                    response_text = response.content.strip().upper() if hasattr(response, 'content') else str(response).upper()
+                except Exception as e:
+                    llm_error = e
+                    logger.warning(f"LLM invocation failed for item {item.get('id')}, using keyword fallback: {e}")
+                    response_text = "FALLBACK"
                 
-                # Extract score if available
-                score = 0.0
-                if "SCORE:" in response_text:
-                    try:
-                        score_str = response_text.split("SCORE:")[1].strip().split()[0]
-                        score = float(score_str) / 100.0  # Convert to 0-1 range
-                    except (ValueError, IndexError):
-                        score = 0.8 if is_relevant else 0.2
+                # Parse response - check for OUI/NON indicators
+                is_relevant = "OUI" in response_text or "YES" in response_text
+                
+                # Use keyword-based scoring as confidence check
+                # Only use content fields (tender_object, description, keywords), not entity/reference
+                all_text = f"{objet} {description} {keywords}".lower()
+                keyword_matches = sum(1 for keyword in it_keywords if keyword.lower() in all_text)
+                
+                # Calculate relevance score
+                if "FALLBACK" in response_text or llm_error:
+                    # Use keyword-based score for fallback cases
+                    if keyword_matches > 0:
+                        relevance_score = min(1.0, 0.5 + (keyword_matches / max(len(it_keywords), 1) * 0.5))
+                    else:
+                        relevance_score = 0.0
+                    logger.debug(f"Using keyword fallback for item {item.get('id')}: score={relevance_score}")
                 else:
-                    score = 0.8 if is_relevant else 0.2
+                    # Use LLM response-based score
+                    if is_relevant:
+                        # Higher score if LLM says OUI, but still consider keyword matches
+                        if keyword_matches > 0:
+                            relevance_score = min(1.0, 0.8 + (keyword_matches / max(len(it_keywords), 1) * 0.2))
+                        else:
+                            relevance_score = 0.8
+                    else:
+                        # Lower score if LLM says NON, but accept if strong keyword match
+                        if keyword_matches >= 3:  # Strong keyword signal
+                            relevance_score = 0.7
+                        elif keyword_matches > 0:  # Weak keyword signal
+                            relevance_score = 0.4
+                        else:
+                            relevance_score = 0.1
                 
-                item['relevance_score'] = min(1.0, max(0.0, score))  # Clamp to 0-1
+                # Clamp score to 0-1 range
+                item['relevance_score'] = min(1.0, max(0.0, relevance_score))
+                item['classification_method'] = 'llm_with_keyword_fallback'
+                item['keyword_matches'] = keyword_matches
                 
                 logger.debug(
-                    "LLM classification",
+                    "LLM classification complete",
                     item_id=item.get('id'),
-                    relevant=is_relevant,
-                    score=item['relevance_score']
+                    llm_result=is_relevant,
+                    score=item['relevance_score'],
+                    keyword_matches=keyword_matches
                 )
                 
-                # Filter by threshold
-                if item['relevance_score'] >= settings.processing.min_relevance_score:
+                # Use adaptive threshold: lower for items with LLM agreement + keywords
+                # Higher threshold only if LLM says NON and no keyword matches
+                if is_relevant and keyword_matches > 0:
+                    threshold = 0.3  # Very permissive for LLM+keyword agreement
+                elif is_relevant:
+                    threshold = 0.5  # Moderate for LLM agreement alone
+                elif keyword_matches >= 2:
+                    threshold = 0.4  # Moderate for strong keywords alone
+                else:
+                    threshold = 0.7  # Strict for LLM NON + weak/no keywords
+                
+                # Include item if score meets threshold
+                if item['relevance_score'] >= threshold:
                     relevant_items.append(item)
+                    log_classification(
+                        item['id'],
+                        item['relevance_score'],
+                        True,
+                        keyword_matches=keyword_matches,
+                        method='llm'
+                    )
+                else:
+                    log_classification(
+                        item['id'],
+                        item['relevance_score'],
+                        False,
+                        keyword_matches=keyword_matches,
+                        method='llm'
+                    )
                     
             except Exception as e:
-                logger.error("Failed to classify item with LLM", error=str(e), item_id=item.get('id'))
-                # Fall back to keyword classification for this item
-                item['relevance_score'] = 0.6
-                relevant_items.append(item)
+                logger.error(f"Failed to classify item {item.get('id')} with LLM: {e}")
+                # Fallback: use keyword matching for this item
+                # Only use content fields, not entity/reference
+                all_text = f"{item.get('tender_object', '')} {item.get('description', '')}".lower()
+                keyword_matches = sum(1 for keyword in it_keywords if keyword.lower() in all_text)
+                if keyword_matches > 0:
+                    item['relevance_score'] = min(1.0, 0.5 + (keyword_matches / max(len(it_keywords), 1) * 0.5))
+                    item['classification_method'] = 'keyword_fallback_on_error'
+                    if item['relevance_score'] >= 0.3:
+                        relevant_items.append(item)
+                else:
+                    item['relevance_score'] = 0.0
         
-        # Set both for pipeline flow
+        # Set state
         state.relevant_items = relevant_items
-        state.unique_items = relevant_items
-        
-        # Update statistics
         state.update_stats(
             relevant_items=len(relevant_items),
             classify_time_seconds=time.time() - start_time

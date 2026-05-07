@@ -3,7 +3,6 @@
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, Response, status
-from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 from ...logging import get_logger
@@ -51,7 +50,7 @@ async def list_reports(db: DatabaseSession, limit: int = 50):
         reports.append(ReportResponse(
             run_id=str(run.id),
             report_url=run.report_url,
-            created_at=run.completed_at.isoformat() if run.completed_at else None,
+            created_at=run.finished_at.isoformat() if run.finished_at else None,
             file_size=None,  # TODO: Get from storage
             format="docx"
         ))
@@ -85,7 +84,7 @@ async def get_report_info(run_id: str, db: DatabaseSession):
     return ReportResponse(
         run_id=str(run.id),
         report_url=run.report_url,
-        created_at=run.completed_at.isoformat() if run.completed_at else None,
+        created_at=run.finished_at.isoformat() if run.finished_at else None,
         file_size=None,
         format="docx"
     )
@@ -100,8 +99,6 @@ async def download_report(run_id: str, db: DatabaseSession):
     
     from ...models import Run
     from ...storage import get_storage_client
-    import tempfile
-    import os
     
     # Get run
     run = db.query(Run).filter(Run.id == run_id).first()
@@ -133,21 +130,20 @@ async def download_report(run_id: str, db: DatabaseSession):
         if object_key.startswith(f"{bucket_name}/"):
             object_key = object_key[len(bucket_name) + 1:]
         
-        # Download to temporary file
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.docx') as tmp_file:
-            tmp_path = tmp_file.name
+        # Download from storage
+        report_data = storage_client.get_object(object_key)
         
-        storage_client.download_file(object_key, tmp_path)
+        if not report_data:
+            raise Exception(f"Failed to retrieve report from storage: {object_key}")
         
         # Generate filename
         filename = f"tenderai_rapport_{run_id[:8]}.docx"
         
-        # Return file
-        return FileResponse(
-            path=tmp_path,
+        # Return as streaming response
+        return Response(
+            content=report_data,
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            filename=filename,
-            background=None  # Keep file until response is sent
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
     
     except Exception as e:
@@ -220,7 +216,9 @@ async def regenerate_report(run_id: str, db: DatabaseSession):
     Useful if report generation failed or needs to be updated.
     """
     
-    from ...models import Run
+    from ...models import Run, Notice
+    from ...storage import get_storage_client
+    from datetime import datetime
     
     # Get run
     run = db.query(Run).filter(Run.id == run_id).first()
@@ -238,38 +236,64 @@ async def regenerate_report(run_id: str, db: DatabaseSession):
         )
     
     try:
-        # Regenerate report
-        from ...report import generate_docx_report
-        from ...storage import get_storage_client
-        
         # Get notices for this run
-        from ...models import Notice
         notices = db.query(Notice).filter(Notice.run_id == run_id).all()
         
-        # Generate report
-        report_path = generate_docx_report(
-            notices=notices,
-            run_id=str(run.id),
-            stats=run.metadata.get("stats") if run.metadata else {}
-        )
+        # Get stats from counts_json
+        stats = run.counts_json if run.counts_json else {}
+        
+        # Generate report with correct data structure
+        from ...report import build_report
+        report_data = {
+            'run_id': str(run.id),
+            'generated_at': datetime.utcnow(),
+            'statistics': stats,
+            'notices': [
+                {
+                    'id': notice.id,
+                    'source_name': notice.source_name if hasattr(notice, 'source_name') else 'Unknown',
+                    'entity': notice.entity,
+                    'reference': notice.reference,
+                    'title': notice.title,
+                    'description': notice.description,
+                    'url': notice.url,
+                    'published_at': notice.published_at.isoformat() if notice.published_at else None,
+                    'relevance_score': getattr(notice, 'relevance_score', 0)
+                }
+                for notice in notices
+            ],
+            'sources': [],
+            'errors': []
+        }
+        
+        report_bytes = build_report(report_data)
+        
+        if not report_bytes:
+            raise Exception("Report generation failed - no bytes returned")
         
         # Upload to storage
         storage_client = get_storage_client()
-        object_key = f"reports/{run.id}/rapport.docx"
-        report_url = storage_client.upload_file(report_path, object_key)
+        report_url = storage_client.store_report(
+            report_data=report_bytes,
+            run_id=str(run.id),
+            timestamp=datetime.utcnow()
+        )
+        
+        if not report_url:
+            raise Exception("Failed to store report in MinIO")
         
         # Update run
         run.report_url = report_url
         db.commit()
         
         logger.info(
-            "Report regenerated",
+            "Report regenerated successfully",
             run_id=run_id,
             report_url=report_url
         )
         
         return {
-            "status": "success",
+            "status": "regenerated",
             "run_id": run_id,
             "report_url": report_url,
             "message": "Report regenerated successfully"

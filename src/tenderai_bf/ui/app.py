@@ -1,8 +1,6 @@
 """Gradio admin UI for TenderAI BF."""
 
 import os
-import threading
-import time
 from datetime import datetime
 from typing import List, Tuple, Optional
 
@@ -34,7 +32,7 @@ class TenderAIUI:
     def _auto_login(self):
         """Automatically login to API on startup."""
         try:
-            url = f"{self.api_url}/api/v1/admin/login"
+            url = f"{self.api_url}/api/v1/admin/login/simple"
             data = {
                 "username": os.getenv("TENDERAI_ADMIN_USERNAME", "admin"),
                 "password": os.getenv("TENDERAI_ADMIN_PASSWORD", "admin123")
@@ -43,8 +41,8 @@ class TenderAIUI:
             with httpx.Client(timeout=10.0) as client:
                 response = client.post(
                     url,
-                    data=data,
-                    headers={"Content-Type": "application/x-www-form-urlencoded"}
+                    json=data,
+                    headers={"Content-Type": "application/json"}
                 )
                 
                 if response.status_code == 200:
@@ -162,7 +160,6 @@ class TenderAIUI:
                     
                     with gr.Row():
                         refresh_sources_btn = gr.Button("🔄 Refresh Sources")
-                        test_sources_btn = gr.Button("🧪 Test Sources")
                 
                 # Reports tab
                 with gr.TabItem("📄 Reports"):
@@ -195,12 +192,12 @@ class TenderAIUI:
                         
                         with gr.Column():
                             gr.Markdown("**Schedule Settings**")
-                            cron_schedule = gr.Textbox(
+                            gr.Textbox(
                                 label="Cron Schedule",
                                 value=settings.scheduler.cron_schedule,
-                                interactive=True
+                                interactive=False,
+                                info="Current schedule from environment"
                             )
-                            save_settings_btn = gr.Button("💾 Save Settings")
                 
                 # Logs tab
                 with gr.TabItem("📝 Logs"):
@@ -240,10 +237,26 @@ class TenderAIUI:
                 outputs=[logs_output]
             )
             
+            download_report_btn.click(
+                self._download_report,
+                inputs=[report_runs_dropdown],
+                outputs=[report_preview]
+            )
+            
+            rebuild_report_btn.click(
+                self._rebuild_last_report,
+                outputs=[run_output, recent_runs_df, last_run_info]
+            )
+            
             # Load initial data
             app.load(
                 self._get_system_status,
                 outputs=[system_status, last_run_info]
+            )
+            
+            app.load(
+                self._populate_reports_dropdown,
+                outputs=[report_runs_dropdown]
             )
             
             app.load(
@@ -287,10 +300,10 @@ class TenderAIUI:
             """
             
             # Get last run info from API
-            stats = self._api_request("GET", "/api/v1/runs/stats")
+            result = self._api_request("GET", "/api/v1/runs", params={"page": 1, "page_size": 1})
             
-            if stats and not "error" in stats and stats.get("last_run"):
-                last_run = stats["last_run"]
+            if result and "error" not in result and result.get("runs") and len(result["runs"]) > 0:
+                last_run = result["runs"][0]
                 status_icon = "✅" if last_run['status'] == 'completed' else "❌" if last_run['status'] == 'failed' else "🔄"
                 last_run_html = f"""
                 <div class="status-card">
@@ -446,6 +459,103 @@ class TenderAIUI:
         
         except Exception as e:
             return f"Error reading logs: {e}"
+    
+    def _populate_reports_dropdown(self) -> gr.Dropdown:
+        """Populate reports dropdown with available runs."""
+        try:
+            result = self._api_request("GET", "/api/v1/runs", params={"page": 1, "page_size": 50})
+            
+            if "error" in result:
+                return gr.Dropdown(choices=[], value=None)
+            
+            runs = result.get("runs", [])
+            choices = [f"{run['run_id'][:8]} - {run.get('started_at', 'N/A')[:16]}" 
+                      for run in runs if run.get('status') == 'completed']
+            
+            return gr.Dropdown(choices=choices, value=choices[0] if choices else None, interactive=True)
+        
+        except Exception as e:
+            logger.error("Failed to populate reports dropdown", error=str(e))
+            return gr.Dropdown(choices=[], value=None)
+    
+    def _download_report(self, run_id_display: str) -> str:
+        """Download and preview report for selected run."""
+        try:
+            if not run_id_display:
+                return "<div style='color: red;'>❌ Please select a run</div>"
+            
+            # Extract run_id from display format
+            run_id = run_id_display.split(" - ")[0]
+            
+            result = self._api_request("GET", f"/api/v1/reports/{run_id}")
+            
+            if "error" in result:
+                return f"<div style='color: red;'>❌ Error: {result['error']}</div>"
+            
+            run_data = result.get("report", {})
+            
+            # Generate HTML preview of report
+            html_preview = f"""
+            <div style='padding: 1rem; background-color: #f5f5f5; border-radius: 8px;'>
+                <h3>Report: {run_id}</h3>
+                <hr>
+                <p><strong>Status:</strong> {run_data.get('format', 'N/A')}</p>
+                <p><strong>Created:</strong> {run_data.get('created_at', 'N/A')}</p>
+                
+                <h4>Report</h4>
+                <ul>
+                    <li>Format: {run_data.get('format', 'docx')}</li>
+                    <li>File Size: {run_data.get('file_size', 'Unknown')} bytes</li>
+                </ul>
+                
+                <p><a href='{self.api_url}/api/v1/reports/{run_id}/download' target='_blank' 
+                      style='padding: 0.5rem 1rem; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 4px;'>
+                      📥 Download Full Report (DOCX)
+                      </a></p>
+            </div>
+            """
+            
+            return html_preview
+        
+        except Exception as e:
+            logger.error("Failed to download report", error=str(e))
+            return f"<div style='color: red;'>❌ Error: {e}</div>"
+    
+    def _rebuild_last_report(self) -> Tuple[str, List, str]:
+        """Rebuild report for the last completed run."""
+        try:
+            # Get last run
+            result = self._api_request("GET", "/api/v1/runs", params={"page": 1, "page_size": 1})
+            
+            if not result or "error" in result or not result.get("runs") or len(result["runs"]) == 0:
+                output_html = "<div style='color: red;'>❌ Error: No completed runs found</div>"
+                return output_html, [], ""
+            
+            run_id = result["runs"][0]["run_id"]
+            
+            # Trigger rebuild via regenerate endpoint
+            regen_result = self._api_request("POST", f"/api/v1/reports/{run_id}/regenerate")
+            
+            if "error" in regen_result:
+                output_html = f"<div style='color: red;'>❌ Error: {regen_result['error']}</div>"
+                return output_html, [], ""
+            
+            output_html = """
+            <div style='color: green;'>
+                <h3>✅ Report Rebuild Triggered</h3>
+                <p>The last report is being regenerated.</p>
+            </div>
+            """
+            
+            # Refresh data
+            recent_runs = self._get_recent_runs()
+            _, last_run_info = self._get_system_status()
+            
+            return output_html, recent_runs, last_run_info
+        
+        except Exception as e:
+            logger.error("Failed to rebuild last report", error=str(e))
+            return f"<div style='color: red;'>❌ Error: {e}</div>", [], ""
     
     def launch(self, **kwargs):
         """Launch the Gradio interface."""
