@@ -41,26 +41,33 @@ def run_once(triggered_by: str, user: Optional[str]):
             triggered_by_user=user
         )
         
-        # Report results
-        if result.error_occurred:
-            click.echo(f"❌ Pipeline failed with {len(result.errors)} error(s)")
-            for error in result.errors:
+        # Report results (pipeline.run() always returns a dict)
+        error_occurred = result.get('error_occurred', False) if isinstance(result, dict) else result.error_occurred
+        errors = result.get('errors', []) if isinstance(result, dict) else result.errors
+        stats = result.get('stats') or {}
+        if not isinstance(stats, dict):
+            stats = stats.dict()
+        report_url = result.get('report_url') if isinstance(result, dict) else result.report_url
+        email_status = result.get('email_status') or {}
+
+        if error_occurred:
+            click.echo(f"❌ Pipeline failed with {len(errors)} error(s)")
+            for error in errors:
                 click.echo(f"   • [{error['step']}] {error['error']}")
             sys.exit(1)
         else:
-            stats = result.stats
             click.echo("✅ Pipeline completed successfully!")
-            click.echo(f"   • Sources checked: {stats.sources_checked}")
-            click.echo(f"   • Items found: {stats.items_parsed}")
-            click.echo(f"   • Relevant items: {stats.relevant_items}")
-            click.echo(f"   • Unique items: {stats.unique_items}")
-            click.echo(f"   • Execution time: {stats.total_time_seconds:.1f}s")
-            
-            if result.report_url:
-                click.echo(f"   • Report URL: {result.report_url}")
-            
-            if result.email_status.get('success'):
-                click.echo(f"   • Email sent to {result.email_status.get('recipients_count', 0)} recipient(s)")
+            click.echo(f"   • Sources checked: {stats.get('sources_checked', 0)}")
+            click.echo(f"   • Items found: {stats.get('items_parsed', 0)}")
+            click.echo(f"   • Relevant items: {stats.get('relevant_items', 0)}")
+            click.echo(f"   • Unique items: {stats.get('unique_items', 0)}")
+            click.echo(f"   • Execution time: {stats.get('total_time_seconds', 0):.1f}s")
+
+            if report_url:
+                click.echo(f"   • Report URL: {report_url}")
+
+            if email_status.get('success'):
+                click.echo(f"   • Email sent to {email_status.get('recipients_count', 0)} recipient(s)")
     
     except KeyboardInterrupt:
         click.echo("\n⚠️ Pipeline interrupted by user")
