@@ -108,20 +108,23 @@ async def trigger_run(
                 triggered_by=request.triggered_by,
                 triggered_by_user=triggered_by_user,
                 sources_override=sources_override,
-                send_email=request.send_email
+                send_email=request.send_email,
             )
-            
-            # result is a dict from LangGraph
-            result_run_id = result.get("run_id") if isinstance(result, dict) else result.run_id
-            error_occurred = result.get("error_occurred", False) if isinstance(result, dict) else result.error_occurred
-            stats = result.get("stats") if isinstance(result, dict) else result.stats
-            unique_items = stats.unique_items if stats and hasattr(stats, 'unique_items') else 0
-            
+
+            # result is now always a TenderAIState (see TenderAIGraph.run)
+            if result.error_occurred:
+                run_status = "failed"
+            elif result.warnings:
+                run_status = "completed_with_warnings"
+            else:
+                run_status = "completed"
+
             logger.info(
                 "Pipeline run completed",
-                run_id=result_run_id,
-                status="success" if not error_occurred else "failed",
-                items=unique_items
+                run_id=result.run_id,
+                status=run_status,
+                items=result.stats.unique_items,
+                warnings_count=len(result.warnings),
             )
             
         except Exception as e:

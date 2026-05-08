@@ -33,6 +33,14 @@ def scheduled_pipeline_run():
                 errors_count=len(result.errors),
                 run_id=result.run_id
             )
+        elif result.warnings:
+            logger.warning(
+                "Scheduled pipeline run completed with warnings",
+                run_id=result.run_id,
+                warnings_count=len(result.warnings),
+                relevant_items=result.stats.relevant_items,
+                duration_seconds=result.stats.total_time_seconds,
+            )
         else:
             logger.info(
                 "Scheduled pipeline run completed successfully",

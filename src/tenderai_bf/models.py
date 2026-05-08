@@ -53,7 +53,8 @@ class Run(Base):
     __tablename__ = "runs"
     
     id = Column(String(36), primary_key=True, index=True)  # UUID
-    status = Column(String(20), nullable=False, index=True)  # running, completed, failed
+    # Allowed values: running, completed, completed_with_warnings, failed
+    status = Column(String(40), nullable=False, index=True)
     
     # Timing
     started_at = Column(DateTime, nullable=False, default=func.now())

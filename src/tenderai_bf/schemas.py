@@ -50,7 +50,7 @@ class Source(SourceBase):
 
 class RunBase(BaseModel):
     """Base schema for Run."""
-    status: str = Field(..., pattern="^(running|completed|failed)$")
+    status: str = Field(..., pattern="^(running|completed|completed_with_warnings|failed)$")
     triggered_by: str = Field(default="scheduler", pattern="^(scheduler|manual|api)$")
     triggered_by_user: Optional[str] = None
 
@@ -62,7 +62,7 @@ class RunCreate(RunBase):
 
 class RunUpdate(BaseModel):
     """Schema for updating a Run."""
-    status: Optional[str] = Field(None, pattern="^(running|completed|failed)$")
+    status: Optional[str] = Field(None, pattern="^(running|completed|completed_with_warnings|failed)$")
     finished_at: Optional[datetime] = None
     counts_json: Optional[Dict[str, Any]] = None
     error_message: Optional[str] = None

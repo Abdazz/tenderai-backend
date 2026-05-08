@@ -9,6 +9,7 @@ import httpx
 
 from ...config import settings
 from ...logging import get_logger
+from ...utils.http_retry import fetch_with_retry
 from ...utils.node_logger import clear_node_output, log_node_output
 from .fetch_joffres import extract_joffres_detail
 
@@ -30,10 +31,14 @@ async def fetch_single_item(
             parser_type=parser_type,
             run_id=run_id
         )
-        
-        response = await client.get(url, timeout=30.0)
-        response.raise_for_status()
-        
+
+        response = await fetch_with_retry(
+            client,
+            url,
+            timeout=30.0,
+            label=f"item:{parser_type}",
+        )
+
         content = response.text
         content_type = response.headers.get('content-type', '').lower()
         
@@ -137,10 +142,14 @@ async def fetch_joffres_item_detail(
             slug=slug,
             run_id=run_id
         )
-        
-        response = await client.get(url, timeout=60.0)
-        response.raise_for_status()
-        
+
+        response = await fetch_with_retry(
+            client,
+            url,
+            timeout=60.0,
+            label=f"item:joffres:{slug}",
+        )
+
         html_content = response.text
         
         # Extract structured data from the HTML

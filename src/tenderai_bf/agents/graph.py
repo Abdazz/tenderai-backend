@@ -32,11 +32,11 @@ logger = get_logger(__name__)
 
 class TenderAIState(BaseModel):
     """Typed state for the TenderAI pipeline."""
-    
+
     # Run metadata
     run_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     started_at: datetime = Field(default_factory=datetime.utcnow)
-    
+
     # Pipeline data
     sources: List[Dict[str, Any]] = Field(default_factory=list)
     discovered_links: List[Union[str, Dict[str, Any]]] = Field(default_factory=list)  # Can be URL strings or quotidien dicts
@@ -45,24 +45,29 @@ class TenderAIState(BaseModel):
     relevant_items: List[Dict[str, Any]] = Field(default_factory=list)
     unique_items: List[Dict[str, Any]] = Field(default_factory=list)
     summaries: Dict[str, str] = Field(default_factory=dict)
-    
+
     # Outputs
     report_bytes: Optional[bytes] = None
     report_url: Optional[str] = None
     email_status: Dict[str, Any] = Field(default_factory=dict)
-    
+
     # Statistics and metrics
     stats: RunStatistics = Field(default_factory=RunStatistics)
     errors: List[Dict[str, Any]] = Field(default_factory=list)
-    
+    # Non-fatal warnings: pipeline continues but the run is flagged
+    # `completed_with_warnings` instead of `completed`. Use add_warning() to
+    # record things like SMTP transient failures where the report itself was
+    # successfully generated and stored.
+    warnings: List[Dict[str, Any]] = Field(default_factory=list)
+
     # Control flow
     should_continue: bool = True
     error_occurred: bool = False
     send_email: bool = True  # Whether to send email report at the end
-    
+
     class Config:
         arbitrary_types_allowed = True
-    
+
     def add_error(self, step: str, error: str, **kwargs) -> None:
         """Add an error to the state."""
         self.errors.append({
@@ -73,7 +78,22 @@ class TenderAIState(BaseModel):
         })
         self.error_occurred = True
         logger.error(f"Pipeline error in {step}", error=error, run_id=self.run_id, **kwargs)
-    
+
+    def add_warning(self, step: str, warning: str, **kwargs) -> None:
+        """Record a non-fatal warning without aborting the pipeline."""
+        self.warnings.append({
+            'step': step,
+            'warning': warning,
+            'timestamp': datetime.utcnow().isoformat(),
+            **kwargs
+        })
+        logger.warning(
+            f"Pipeline warning in {step}",
+            warning=warning,
+            run_id=self.run_id,
+            **kwargs,
+        )
+
     def update_stats(self, **kwargs) -> None:
         """Update run statistics."""
         for key, value in kwargs.items():
@@ -81,52 +101,64 @@ class TenderAIState(BaseModel):
                 setattr(self.stats, key, value)
 
 
+def _state_get(state: Any, key: str, default: Any = None) -> Any:
+    """Read a field from either a TenderAIState instance or a dict."""
+    if isinstance(state, dict):
+        return state.get(key, default)
+    return getattr(state, key, default)
+
+
+def _is_short_circuited(state: Any) -> bool:
+    """Return True if the pipeline should jump straight to error_handler."""
+    return bool(_state_get(state, "error_occurred", False)) or not bool(
+        _state_get(state, "should_continue", True)
+    )
+
+
+def _route_after_step(state: Any) -> str:
+    """Route to error_handler or to the next node based on state flags."""
+    return "error_handler" if _is_short_circuited(state) else "continue"
+
+
 def error_handler(state: TenderAIState) -> TenderAIState:
     """Handle pipeline errors and cleanup."""
-    
+
+    errors = _state_get(state, "errors", []) or []
+    run_id = _state_get(state, "run_id")
+    started_at = _state_get(state, "started_at") or datetime.utcnow()
+    stats = _state_get(state, "stats")
+
     logger.error(
         "Pipeline error handler triggered",
-        run_id=state.run_id,
-        errors_count=len(state.errors),
-        last_error=state.errors[-1] if state.errors else None
+        run_id=run_id,
+        errors_count=len(errors),
+        last_error=errors[-1] if errors else None,
     )
-    
+
     # Update run record in database
     try:
         with get_db_context() as session:
-            run = session.query(Run).filter(Run.id == state.run_id).first()
+            run = session.query(Run).filter(Run.id == run_id).first()
             if run:
                 run.status = "failed"
                 run.finished_at = datetime.utcnow()
-                run.error_message = state.errors[-1]['error'] if state.errors else "Unknown error"
-                run.counts_json = state.stats.dict()
+                run.error_message = errors[-1]['error'] if errors else "Unknown error"
+                if stats is not None:
+                    run.counts_json = stats if isinstance(stats, dict) else stats.dict()
                 session.commit()
     except Exception as e:
-        logger.error("Failed to update run record", error=str(e), run_id=state.run_id)
-    
+        logger.error("Failed to update run record", error=str(e), run_id=run_id)
+
     # Log final error
-    if state.errors:
+    if errors:
         log_run_error(
-            state.run_id,
-            Exception(state.errors[-1]['error']),
-            errors_count=len(state.errors),
-            duration=(datetime.utcnow() - state.started_at).total_seconds()
+            run_id,
+            Exception(errors[-1]['error']),
+            errors_count=len(errors),
+            duration=(datetime.utcnow() - started_at).total_seconds(),
         )
-    
+
     return state
-
-
-def router(state: TenderAIState) -> str:
-    """Route to next node or handle completion/errors."""
-    
-    if state.error_occurred:
-        return "error_handler"
-    
-    if not state.should_continue:
-        return END
-    
-    # Normal flow: pipeline completed successfully
-    return END
 
 
 class TenderAIGraph:
@@ -139,11 +171,17 @@ class TenderAIGraph:
         logger.info("TenderAI pipeline graph initialized")
     
     def _build_graph(self) -> StateGraph:
-        """Build the LangGraph state graph."""
-        
+        """Build the LangGraph state graph.
+
+        Every step that produces or consumes pipeline data routes through
+        ``_route_after_step``. As soon as a node sets ``error_occurred=True``
+        or ``should_continue=False`` the graph jumps straight to
+        ``error_handler``, so downstream nodes never run with broken state.
+        """
+
         # Create state graph
         workflow = StateGraph(TenderAIState)
-        
+
         # Add nodes
         workflow.add_node("load_sources", load_sources_node)
         workflow.add_node("fetch_listings", fetch_listings_node)
@@ -156,33 +194,41 @@ class TenderAIGraph:
         workflow.add_node("compose_report", compose_report_node)
         workflow.add_node("email_report", email_report_node)
         workflow.add_node("error_handler", error_handler)
-        
+
         # Set entry point
         workflow.set_entry_point("load_sources")
-        
-        # Add edges (sequential flow)
-        workflow.add_edge("load_sources", "fetch_listings")
-        workflow.add_edge("fetch_listings", "extract_item_links")
-        workflow.add_edge("extract_item_links", "fetch_items")
-        workflow.add_edge("fetch_items", "parse_extract")
-        workflow.add_edge("parse_extract", "classify")
-        workflow.add_edge("classify", "deduplicate")
-        workflow.add_edge("deduplicate", "summarize")
-        workflow.add_edge("summarize", "compose_report")
-        workflow.add_edge("compose_report", "email_report")
-        
-        # Add conditional edges for error handling
+
+        # Sequence of steps that must short-circuit on error.
+        sequential_edges = [
+            ("load_sources", "fetch_listings"),
+            ("fetch_listings", "extract_item_links"),
+            ("extract_item_links", "fetch_items"),
+            ("fetch_items", "parse_extract"),
+            ("parse_extract", "classify"),
+            ("classify", "deduplicate"),
+            ("deduplicate", "summarize"),
+            ("summarize", "compose_report"),
+            ("compose_report", "email_report"),
+        ]
+        for src, dst in sequential_edges:
+            workflow.add_conditional_edges(
+                src,
+                _route_after_step,
+                {"continue": dst, "error_handler": "error_handler"},
+            )
+
+        # email_report is the last data-producing node. By this point we want
+        # the run to terminate normally even if email delivery emitted a
+        # non-fatal warning (see email_report_node), so we only divert to the
+        # error_handler when an actual fatal error was recorded.
         workflow.add_conditional_edges(
             "email_report",
-            router,
-            {
-                "error_handler": "error_handler",
-                END: END
-            }
+            _route_after_step,
+            {"continue": END, "error_handler": "error_handler"},
         )
-        
+
         workflow.add_edge("error_handler", END)
-        
+
         return workflow
     
     def run(self, 
@@ -248,54 +294,65 @@ class TenderAIGraph:
         state.send_email = send_email
         
         try:
-            # Execute pipeline (pass state as dict for LangGraph)
+            # Execute pipeline. LangGraph returns a dict-like view of the
+            # final state; we rebuild a TenderAIState so downstream callers
+            # always work with typed objects rather than ad-hoc dicts.
             start_time = time.time()
-            final_state = self.app.invoke(state.dict())
+            raw_final = self.app.invoke(state)
             duration = time.time() - start_time
-            
-            # Update statistics (final_state is a dict, not an object)
-            if "stats" in final_state and final_state["stats"]:
-                # final_state["stats"] is a dict, not an object
-                if isinstance(final_state["stats"], dict):
-                    final_state["stats"]["total_time_seconds"] = duration
-                else:
-                    final_state["stats"].total_time_seconds = duration
-            
+
+            final_state = self._coerce_to_state(raw_final)
+            final_state.stats.total_time_seconds = duration
+
+            # Decide the run status:
+            #   - failed: a fatal error was recorded
+            #   - completed_with_warnings: non-fatal issues (e.g. SMTP failure
+            #     after the report was generated and uploaded)
+            #   - completed: clean run
+            if final_state.error_occurred:
+                run_status = "failed"
+            elif final_state.warnings:
+                run_status = "completed_with_warnings"
+            else:
+                run_status = "completed"
+
             # Update run record
-            with get_db_context() as session:
-                run = session.query(Run).filter(Run.id == run_id).first()
-                if run:
-                    run.status = "completed" if not final_state.get("error_occurred", False) else "failed"
-                    run.finished_at = datetime.utcnow()
-                    if "stats" in final_state and final_state["stats"]:
-                        # Convert stats to dict if it's an object
-                        if isinstance(final_state["stats"], dict):
-                            run.counts_json = final_state["stats"]
-                        else:
-                            run.counts_json = final_state["stats"].dict()
-                    run.report_url = final_state.get("report_url")
-                    if final_state.get("errors"):
-                        run.error_message = final_state["errors"][-1]['error']
-                    session.commit()
-            
+            try:
+                with get_db_context() as session:
+                    run = session.query(Run).filter(Run.id == run_id).first()
+                    if run:
+                        run.status = run_status
+                        run.finished_at = datetime.utcnow()
+                        run.counts_json = final_state.stats.dict()
+                        run.report_url = final_state.report_url
+                        if final_state.errors:
+                            run.error_message = final_state.errors[-1]['error']
+                        elif final_state.warnings:
+                            run.error_message = final_state.warnings[-1]['warning']
+                        session.commit()
+            except Exception as db_error:
+                logger.error(
+                    "Failed to update run record after pipeline completion",
+                    error=str(db_error),
+                    run_id=run_id,
+                )
+
             # Log completion
-            if not final_state.get("error_occurred", False):
-                if isinstance(final_state.get("stats"), dict):
-                    stats_dict = final_state["stats"]
-                else:
-                    stats_dict = final_state["stats"].dict() if "stats" in final_state and final_state["stats"] else {}
+            if not final_state.error_occurred:
                 log_run_complete(
                     run_id,
                     duration,
-                    stats_dict
+                    final_state.stats.dict(),
+                    status=run_status,
+                    warnings_count=len(final_state.warnings),
                 )
-            
+
             return final_state
-            
+
         except Exception as e:
             # Handle unexpected errors
             logger.error("Pipeline execution failed", error=str(e), run_id=run_id, exc_info=True)
-            
+
             # Update run record
             try:
                 with get_db_context() as session:
@@ -307,14 +364,32 @@ class TenderAIGraph:
                         session.commit()
             except Exception as db_error:
                 logger.error("Failed to update failed run record", error=str(db_error))
-            
+
             # Log error
             log_run_error(run_id, e)
-            
-            # Return state with error as dict
+
+            # Return state with error
             state.add_error("pipeline", str(e))
             state.error_occurred = True
-            return state.dict()
+            return state
+
+    @staticmethod
+    def _coerce_to_state(raw: Any) -> TenderAIState:
+        """Rebuild a TenderAIState from whatever LangGraph returned.
+
+        Older LangGraph versions return dicts, newer ones may return the
+        Pydantic instance itself. Centralising the conversion lets the rest
+        of the run() body access typed attributes unconditionally.
+        """
+        if isinstance(raw, TenderAIState):
+            return raw
+        if isinstance(raw, dict):
+            return TenderAIState(**raw)
+        if hasattr(raw, "dict"):
+            return TenderAIState(**raw.dict())
+        raise TypeError(
+            f"Unexpected pipeline return type: {type(raw).__name__}"
+        )
     
     def run_step(self, step_name: str, state: TenderAIState) -> TenderAIState:
         """Execute a single step of the pipeline for testing/debugging."""

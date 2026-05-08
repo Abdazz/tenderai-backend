@@ -4,10 +4,21 @@ import os
 import pytest
 from unittest.mock import MagicMock
 
-# Set test environment
-os.environ['TENDERAI_ENVIRONMENT'] = 'test'
-os.environ['TENDERAI_DATABASE_URL'] = 'sqlite:///test.db'
-os.environ['TENDERAI_DEBUG'] = 'true'
+# Set test environment. Importing tenderai_bf.config triggers strict security
+# validation (no admin/JWT fallbacks anywhere), so the test process needs to
+# supply non-trivial values up-front. These are only used in tests and never
+# reach a real environment.
+os.environ.setdefault('TENDERAI_ENVIRONMENT', 'test')
+os.environ.setdefault('TENDERAI_DATABASE_URL', 'sqlite:///test.db')
+os.environ.setdefault('TENDERAI_DEBUG', 'true')
+os.environ.setdefault(
+    'TENDERAI_JWT_SECRET',
+    'test-jwt-secret-not-used-for-real-auth-only-pytest-xxxxxxxx',
+)
+os.environ.setdefault(
+    'TENDERAI_ADMIN_PASSWORD',
+    'test-admin-password-not-real',
+)
 
 
 @pytest.fixture

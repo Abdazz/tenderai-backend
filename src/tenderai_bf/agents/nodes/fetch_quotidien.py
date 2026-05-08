@@ -9,6 +9,7 @@ from bs4 import BeautifulSoup
 
 from ...config import settings
 from ...logging import get_logger
+from ...utils.http_retry import fetch_with_retry
 
 logger = get_logger(__name__)
 
@@ -37,15 +38,17 @@ async def fetch_dgcmef_quotidien(source: Dict, run_id: str) -> Dict:
     try:
         # Fetch the listing page with SSL verification disabled for expired certificates
         async with httpx.AsyncClient(
-            timeout=60.0, 
+            timeout=60.0,
             follow_redirects=True,
-            verify=False  # Disable SSL verification for expired certificates
+            verify=False,  # Disable SSL verification for expired certificates
+            headers={'User-Agent': settings.fetch.user_agent},
         ) as client:
-            response = await client.get(
+            response = await fetch_with_retry(
+                client,
                 list_url,
-                headers={'User-Agent': settings.fetch.user_agent}
+                timeout=60.0,
+                label=f"quotidien-listing:{source_name}",
             )
-            response.raise_for_status()
         
         # Parse HTML
         soup = BeautifulSoup(response.text, 'html.parser')
@@ -156,15 +159,17 @@ async def download_quotidien_pdf(pdf_url: str, source_name: str, run_id: str) ->
     
     try:
         async with httpx.AsyncClient(
-            timeout=60.0, 
+            timeout=120.0,
             follow_redirects=True,
-            verify=False  # Disable SSL verification for expired certificates
+            verify=False,  # Disable SSL verification for expired certificates
+            headers={'User-Agent': settings.fetch.user_agent},
         ) as client:
-            response = await client.get(
+            response = await fetch_with_retry(
+                client,
                 pdf_url,
-                headers={'User-Agent': settings.fetch.user_agent}
+                timeout=120.0,
+                label=f"quotidien-pdf:{source_name}",
             )
-            response.raise_for_status()
         
         # Verify content type
         content_type = response.headers.get('content-type', '').lower()

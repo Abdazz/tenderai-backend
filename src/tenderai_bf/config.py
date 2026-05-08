@@ -140,10 +140,17 @@ class SecuritySettings(BaseSettings):
     """Security configuration."""
 
     secret_key: SecretStr = Field(default="")
-    admin_password: SecretStr = Field(default="")
+    admin_password: SecretStr = Field(
+        default="",
+        validation_alias="TENDERAI_ADMIN_PASSWORD",
+    )
+    admin_username: str = Field(
+        default="admin",
+        validation_alias="TENDERAI_ADMIN_USERNAME",
+    )
     session_timeout: int = Field(default=3600, description="Session timeout in seconds")
 
-    model_config = SettingsConfigDict(case_sensitive=False)
+    model_config = SettingsConfigDict(case_sensitive=False, populate_by_name=True)
 
 
 class MonitoringSettings(BaseSettings):
@@ -158,12 +165,13 @@ class MonitoringSettings(BaseSettings):
     # JWT Authentication
     jwt_secret_key: str = Field(
         default="",
-        description="Secret key for JWT token signing — must be set via JWT_SECRET_KEY env var"
+        validation_alias="TENDERAI_JWT_SECRET",
+        description="Secret key for JWT token signing — must be set via TENDERAI_JWT_SECRET env var"
     )
     jwt_algorithm: str = "HS256"
     jwt_access_token_expire_minutes: int = 1440  # 24 hours
-    
-    model_config = SettingsConfigDict(case_sensitive=False)
+
+    model_config = SettingsConfigDict(case_sensitive=False, populate_by_name=True)
 
 
 class ProcessingSettings(BaseSettings):
@@ -409,6 +417,10 @@ class Settings(BaseSettings):
                                 self.rag.chroma.vector_search_query = chroma_config["vector_search_query"]
                             if "llm_query_template" in chroma_config:
                                 self.rag.chroma.llm_query_template = chroma_config["llm_query_template"]
+                            if "persist_directory" in chroma_config and chroma_config["persist_directory"]:
+                                self.rag.chroma.persist_directory = chroma_config["persist_directory"]
+                            if "collection_prefix" in chroma_config:
+                                self.rag.chroma.collection_prefix = chroma_config["collection_prefix"]
                             
 
             except Exception as e:
@@ -416,23 +428,51 @@ class Settings(BaseSettings):
                 print(f"Warning: Could not load settings.yaml: {e}")
 
     def _validate_security(self) -> None:
-        """Warn or raise if security credentials are missing or still at defaults."""
+        """Refuse to boot if security credentials are missing or trivially weak.
+
+        No fallbacks are accepted in any environment: the JWT secret and admin
+        password must be set via TENDERAI_JWT_SECRET / TENDERAI_ADMIN_PASSWORD.
+        """
+        # Trivial/known-bad values that must never be accepted, even outside production.
+        TRIVIAL_PASSWORDS = {
+            "admin", "admin123", "password", "changeme", "test", "tenderai",
+            "12345", "123456", "qwerty",
+        }
+        TRIVIAL_JWT_SECRETS = {
+            "change-this-secret-key-in-production-use-openssl-rand-hex-32",
+            "secret", "changeme", "test",
+        }
+
         issues = []
 
         admin_pwd = self.security.admin_password.get_secret_value()
         if not admin_pwd:
-            issues.append("ADMIN_PASSWORD is not set — configure it via the ADMIN_PASSWORD env var")
+            issues.append(
+                "TENDERAI_ADMIN_PASSWORD is not set — configure it via the "
+                "TENDERAI_ADMIN_PASSWORD env var"
+            )
+        elif admin_pwd.lower() in TRIVIAL_PASSWORDS or len(admin_pwd) < 8:
+            issues.append(
+                "TENDERAI_ADMIN_PASSWORD is too weak — use at least 8 characters "
+                "and avoid common defaults"
+            )
 
         jwt_key = self.monitoring.jwt_secret_key
         if not jwt_key:
-            issues.append("JWT_SECRET_KEY is not set — configure it via the JWT_SECRET_KEY env var")
+            issues.append(
+                "TENDERAI_JWT_SECRET is not set — generate one with "
+                "`openssl rand -hex 32` and export it as TENDERAI_JWT_SECRET"
+            )
+        elif jwt_key in TRIVIAL_JWT_SECRETS or len(jwt_key) < 32:
+            issues.append(
+                "TENDERAI_JWT_SECRET is too weak — use at least 32 characters "
+                "(e.g. `openssl rand -hex 32`)"
+            )
 
         if issues:
-            if self.environment == "production":
-                raise ValueError("Security misconfiguration:\n" + "\n".join(f"  - {i}" for i in issues))
-            else:
-                for issue in issues:
-                    print(f"WARNING [security]: {issue}")
+            raise ValueError(
+                "Security misconfiguration:\n" + "\n".join(f"  - {i}" for i in issues)
+            )
 
     @field_validator("environment")
     @classmethod

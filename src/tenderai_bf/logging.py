@@ -167,15 +167,26 @@ def log_run_start(run_id: str, **kwargs) -> None:
     )
 
 
-def log_run_complete(run_id: str, duration: float, stats: Dict[str, Any]) -> None:
-    """Log the completion of a pipeline run."""
+def log_run_complete(
+    run_id: str,
+    duration: float,
+    stats: Dict[str, Any],
+    **extra: Any,
+) -> None:
+    """Log the completion of a pipeline run.
+
+    Extra keyword arguments are merged with the stats dict so callers can
+    attach run-level context (e.g. ``status``, ``warnings_count``) without
+    bloating ``RunStatistics``.
+    """
     logger = get_logger("pipeline")
     logger.info(
         "Pipeline run completed",
         run_id=run_id,
         duration_seconds=duration,
         event_type="run_complete",
-        **stats
+        **stats,
+        **extra,
     )
 
 

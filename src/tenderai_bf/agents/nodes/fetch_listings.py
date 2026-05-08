@@ -14,6 +14,7 @@ from ...db import get_db_context
 from ...logging import get_logger, log_source_fetch
 from ...models import Source
 from ...storage import get_storage_client
+from ...utils.http_retry import fetch_with_retry
 from ...utils.node_logger import clear_node_output, log_node_output
 from .fetch_quotidien import fetch_dgcmef_quotidien, download_quotidien_pdf
 from .fetch_joffres import extract_joffres_listings
@@ -183,10 +184,15 @@ async def fetch_single_listing(client: httpx.AsyncClient, source: Dict, run_id: 
         # Respect rate limits
         rate_limit = source.get('rate_limit', '10/m')
         # TODO: Implement proper rate limiting
-        
-        # Fetch the listing page
-        response = await client.get(list_url, timeout=60.0)  # Increased from 30s to 60s
-        response.raise_for_status()
+
+        # Fetch the listing page with exponential-backoff retries on
+        # transient errors (timeouts, connection resets, 5xx, 429).
+        response = await fetch_with_retry(
+            client,
+            list_url,
+            timeout=60.0,
+            label=f"listing:{source_name}",
+        )
         
         # Get content
         content = response.text

@@ -35,39 +35,44 @@ def run_once(triggered_by: str, user: Optional[str]):
         # Get pipeline
         pipeline = get_pipeline()
         
-        # Execute pipeline
+        # Execute pipeline (returns a TenderAIState)
         result = pipeline.run(
             triggered_by=triggered_by,
-            triggered_by_user=user
+            triggered_by_user=user,
         )
-        
-        # Report results (pipeline.run() always returns a dict)
-        error_occurred = result.get('error_occurred', False) if isinstance(result, dict) else result.error_occurred
-        errors = result.get('errors', []) if isinstance(result, dict) else result.errors
-        stats = result.get('stats') or {}
-        if not isinstance(stats, dict):
-            stats = stats.dict()
-        report_url = result.get('report_url') if isinstance(result, dict) else result.report_url
-        email_status = result.get('email_status') or {}
 
-        if error_occurred:
+        errors = result.errors
+        warnings = result.warnings
+        stats = result.stats.dict()
+        report_url = result.report_url
+        email_status = result.email_status or {}
+
+        if result.error_occurred:
             click.echo(f"❌ Pipeline failed with {len(errors)} error(s)")
             for error in errors:
                 click.echo(f"   • [{error['step']}] {error['error']}")
             sys.exit(1)
+
+        if warnings:
+            click.echo(f"⚠️  Pipeline completed with {len(warnings)} warning(s)")
+            for w in warnings:
+                click.echo(f"   • [{w['step']}] {w['warning']}")
         else:
             click.echo("✅ Pipeline completed successfully!")
-            click.echo(f"   • Sources checked: {stats.get('sources_checked', 0)}")
-            click.echo(f"   • Items found: {stats.get('items_parsed', 0)}")
-            click.echo(f"   • Relevant items: {stats.get('relevant_items', 0)}")
-            click.echo(f"   • Unique items: {stats.get('unique_items', 0)}")
-            click.echo(f"   • Execution time: {stats.get('total_time_seconds', 0):.1f}s")
 
-            if report_url:
-                click.echo(f"   • Report URL: {report_url}")
+        click.echo(f"   • Sources checked: {stats.get('sources_checked', 0)}")
+        click.echo(f"   • Items found: {stats.get('items_parsed', 0)}")
+        click.echo(f"   • Relevant items: {stats.get('relevant_items', 0)}")
+        click.echo(f"   • Unique items: {stats.get('unique_items', 0)}")
+        click.echo(f"   • Execution time: {stats.get('total_time_seconds', 0):.1f}s")
 
-            if email_status.get('success'):
-                click.echo(f"   • Email sent to {email_status.get('recipients_count', 0)} recipient(s)")
+        if report_url:
+            click.echo(f"   • Report URL: {report_url}")
+
+        if email_status.get('success'):
+            click.echo(f"   • Email sent to {email_status.get('recipients_count', 0)} recipient(s)")
+        elif email_status and not email_status.get('skipped'):
+            click.echo("   • Email delivery failed (report still available on MinIO)")
     
     except KeyboardInterrupt:
         click.echo("\n⚠️ Pipeline interrupted by user")
