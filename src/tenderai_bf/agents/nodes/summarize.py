@@ -94,7 +94,10 @@ def summarize_node(state) -> Dict:
     
     # Clear output file at start
     clear_node_output("summarize")
-    
+
+    if state.error_occurred:
+        return state
+
     logger.info("Starting summarize step", run_id=state.run_id)
     start_time = time.time()
     

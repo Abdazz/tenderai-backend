@@ -89,7 +89,11 @@ def email_report_node(state) -> Dict:
             emails_sent = len(recipients)
         else:
             emails_sent = 0
-            state.add_error("email_report", "Failed to send report email")
+            logger.warning(
+                "Email delivery failed — report is available on MinIO",
+                run_id=state.run_id,
+                report_url=state.report_url
+            )
         
         # Calculate total pipeline time (including all nodes)
         total_time_seconds = (datetime.utcnow() - state.started_at).total_seconds()

@@ -1,5 +1,6 @@
 """LangGraph pipeline orchestration for TenderAI BF."""
 
+import threading
 import time
 import uuid
 from datetime import datetime
@@ -391,13 +392,16 @@ def create_pipeline_graph() -> TenderAIGraph:
 
 # Global pipeline instance
 _pipeline: Optional[TenderAIGraph] = None
+_pipeline_lock = threading.Lock()
 
 
 def get_pipeline() -> TenderAIGraph:
-    """Get or create the global pipeline instance."""
+    """Get or create the global pipeline instance (thread-safe)."""
     global _pipeline
-    
+
     if _pipeline is None:
-        _pipeline = create_pipeline_graph()
-    
+        with _pipeline_lock:
+            if _pipeline is None:
+                _pipeline = create_pipeline_graph()
+
     return _pipeline

@@ -406,7 +406,10 @@ def fetch_listings_node(state) -> Dict:
     
     # Clear output file at start
     clear_node_output("fetch_listings")
-    
+
+    if state.error_occurred:
+        return state
+
     logger.info("Starting fetch_listings step", run_id=state.run_id)
     start_time = time.time()
     

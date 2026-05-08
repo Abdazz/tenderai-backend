@@ -16,7 +16,10 @@ def classify_node(state) -> Dict:
     
     # Clear output file at start
     clear_node_output("classify")
-    
+
+    if state.error_occurred:
+        return state
+
     logger.info("Starting classify step", run_id=state.run_id)
     start_time = time.time()
     
@@ -270,16 +273,13 @@ Répondez UNIQUEMENT par "OUI" ou "NON" suivi d'une brève explication."""
                     keyword_matches=keyword_matches
                 )
                 
-                # Use adaptive threshold: lower for items with LLM agreement + keywords
-                # Higher threshold only if LLM says NON and no keyword matches
+                # When LLM says OUI, be permissive. When LLM says NON, always be strict.
                 if is_relevant and keyword_matches > 0:
-                    threshold = 0.3  # Very permissive for LLM+keyword agreement
+                    threshold = 0.3  # LLM OUI + keywords
                 elif is_relevant:
-                    threshold = 0.5  # Moderate for LLM agreement alone
-                elif keyword_matches >= 2:
-                    threshold = 0.4  # Moderate for strong keywords alone
+                    threshold = 0.5  # LLM OUI alone
                 else:
-                    threshold = 0.7  # Strict for LLM NON + weak/no keywords
+                    threshold = 0.7  # LLM NON → strict regardless of keyword count
                 
                 # Include item if score meets threshold
                 if item['relevance_score'] >= threshold:

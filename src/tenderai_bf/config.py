@@ -138,9 +138,9 @@ class SchedulerSettings(BaseSettings):
 
 class SecuritySettings(BaseSettings):
     """Security configuration."""
-    
-    secret_key: SecretStr = Field(default="your-secret-key-here-change-in-production")
-    admin_password: SecretStr = Field(default="change-me-in-production")
+
+    secret_key: SecretStr = Field(default="")
+    admin_password: SecretStr = Field(default="")
     session_timeout: int = Field(default=3600, description="Session timeout in seconds")
 
     model_config = SettingsConfigDict(case_sensitive=False)
@@ -157,8 +157,8 @@ class MonitoringSettings(BaseSettings):
     
     # JWT Authentication
     jwt_secret_key: str = Field(
-        default="change-this-secret-key-in-production-use-openssl-rand-hex-32",
-        description="Secret key for JWT token signing"
+        default="",
+        description="Secret key for JWT token signing — must be set via JWT_SECRET_KEY env var"
     )
     jwt_algorithm: str = "HS256"
     jwt_access_token_expire_minutes: int = 1440  # 24 hours
@@ -238,7 +238,7 @@ class FetchSettings(BaseSettings):
 class RAGChromaSettings(BaseSettings):
     """Chroma vector database settings for RAG."""
     
-    persist_directory: str = Field(default="./data/chroma_db")
+    persist_directory: str = Field(default="/app/data/chroma_db")
     collection_prefix: str = Field(default="tenders")
     host: Optional[str] = Field(default=None)
     port: Optional[int] = Field(default=None)
@@ -310,6 +310,7 @@ class Settings(BaseSettings):
         """Initialize settings and load external configuration."""
         super().__init__(**kwargs)
         self._load_yaml_config()
+        self._validate_security()
     
     def _load_yaml_config(self) -> None:
         """Load configuration from settings.yaml if it exists."""
@@ -413,7 +414,26 @@ class Settings(BaseSettings):
             except Exception as e:
                 # Log warning but don't fail
                 print(f"Warning: Could not load settings.yaml: {e}")
-    
+
+    def _validate_security(self) -> None:
+        """Warn or raise if security credentials are missing or still at defaults."""
+        issues = []
+
+        admin_pwd = self.security.admin_password.get_secret_value()
+        if not admin_pwd:
+            issues.append("ADMIN_PASSWORD is not set — configure it via the ADMIN_PASSWORD env var")
+
+        jwt_key = self.monitoring.jwt_secret_key
+        if not jwt_key:
+            issues.append("JWT_SECRET_KEY is not set — configure it via the JWT_SECRET_KEY env var")
+
+        if issues:
+            if self.environment == "production":
+                raise ValueError("Security misconfiguration:\n" + "\n".join(f"  - {i}" for i in issues))
+            else:
+                for issue in issues:
+                    print(f"WARNING [security]: {issue}")
+
     @field_validator("environment")
     @classmethod
     def validate_environment(cls, v):

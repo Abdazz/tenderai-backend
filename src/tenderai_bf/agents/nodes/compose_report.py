@@ -17,7 +17,10 @@ def compose_report_node(state) -> Dict:
     
     # Clear output file at start
     clear_node_output("compose_report")
-    
+
+    if state.error_occurred:
+        return state
+
     logger.info("Starting compose_report step", run_id=state.run_id)
     start_time = time.time()
     
