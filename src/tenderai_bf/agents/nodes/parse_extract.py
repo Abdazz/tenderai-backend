@@ -516,6 +516,29 @@ def parse_extract_node(state) -> Dict:
                     # Continue with other items
                     continue
             
+            # Handle UNGM listings (all fields pre-extracted from search response)
+            elif parser_type == 'ungm':
+                import uuid
+                details = item.get('details', {})
+                parsed_items.append({
+                    'id': str(uuid.uuid4()),
+                    'url': item['url'],
+                    'content_hash': content_hash,
+                    'title': details.get('title', ''),
+                    'tender_object': details.get('tender_object') or details.get('title', ''),
+                    'reference': details.get('reference', ''),
+                    'ref_no': details.get('reference', ''),
+                    'entity': details.get('entity', 'UN Agency'),
+                    'category': details.get('category', 'Autre'),
+                    'description': details.get('description', ''),
+                    'deadline': details.get('deadline', ''),
+                    'published_at': details.get('published_at', ''),
+                    'location': details.get('location', ''),
+                    'type': details.get('type', 'appel_offres'),
+                    'source': 'ungm',
+                })
+                continue
+
             # Handle quotidien PDFs (legacy parser)
             elif parser_type == 'pdf_quotidien' or item.get('type') == 'quotidien_pdf':
                 quotidien_tenders = parse_quotidien_pdf(

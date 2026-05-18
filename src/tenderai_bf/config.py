@@ -260,6 +260,16 @@ class RAGChromaSettings(BaseSettings):
     model_config = SettingsConfigDict(case_sensitive=False)
 
 
+class GoogleSearchSettings(BaseSettings):
+    """Google Custom Search API configuration."""
+
+    api_key: SecretStr = Field(default="", validation_alias="GOOGLE_API_KEY")
+    engine_id: str = Field(default="", validation_alias="GOOGLE_SEARCH_ENGINE_ID")
+    max_results_per_query: int = Field(default=10)
+
+    model_config = SettingsConfigDict(case_sensitive=False)
+
+
 class RAGSettings(BaseSettings):
     """RAG (Retrieval-Augmented Generation) configuration."""
     
@@ -297,6 +307,7 @@ class Settings(BaseSettings):
     classification: ClassificationSettings = Field(default_factory=ClassificationSettings)
     fetch: FetchSettings = Field(default_factory=FetchSettings)
     rag: RAGSettings = Field(default_factory=RAGSettings)
+    google_search: GoogleSearchSettings = Field(default_factory=GoogleSearchSettings)
     
     # Sources configuration mode (added after nested settings)
     use_database_sources: bool = Field(

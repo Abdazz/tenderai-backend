@@ -82,6 +82,7 @@ def email_report_node(state) -> Dict:
             run_id=state.run_id,
             stats=state.stats.dict(),
             recipients=recipients,
+            notices=getattr(state, 'unique_items', None) or getattr(state, 'relevant_items', None) or [],
         )
         if not success:
             delivery_error = "send_report_email returned False (SMTP rejected delivery)"

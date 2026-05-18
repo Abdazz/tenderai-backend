@@ -1,6 +1,7 @@
 """Fetch listing pages from sources."""
 
 import asyncio
+import json
 import time
 from datetime import datetime
 from typing import Dict, List
@@ -18,6 +19,7 @@ from ...utils.http_retry import fetch_with_retry
 from ...utils.node_logger import clear_node_output, log_node_output
 from .fetch_quotidien import fetch_dgcmef_quotidien, download_quotidien_pdf
 from .fetch_joffres import extract_joffres_listings
+from .fetch_ungm import fetch_ungm_listings, COUNTRY_BURKINA_FASO
 
 logger = get_logger(__name__)
 
@@ -179,6 +181,44 @@ async def fetch_single_listing(client: httpx.AsyncClient, source: Dict, run_id: 
                 'url': list_url
             }
     
+    # Google Custom Search source
+    if parser_type == 'google_search':
+        return await fetch_google_search_listings(source, run_id)
+
+    # UNGM source — uses POST API filtered by country
+    if parser_type == 'ungm':
+        try:
+            country_ids = source.get('ungm_settings', {}).get('country_ids', [COUNTRY_BURKINA_FASO])
+            page_size = source.get('ungm_settings', {}).get('page_size', 50)
+            listings = await fetch_ungm_listings(country_ids, page_size=page_size)
+            logger.info(
+                "UNGM listings fetched",
+                source=source_name,
+                count=len(listings),
+                run_id=run_id,
+            )
+            log_source_fetch(source_name, list_url, "success", size=len(listings))
+            return {
+                'source': source,
+                'content': json.dumps(listings, ensure_ascii=False),
+                'listings': listings,
+                'url': list_url,
+                'status': 'success',
+                'parser_type': 'ungm',
+                'fetched_at': datetime.utcnow().isoformat(),
+            }
+        except Exception as e:
+            logger.error("UNGM fetch failed", source=source_name, error=str(e), run_id=run_id)
+            log_source_fetch(source_name, list_url, "failed", error=str(e))
+            return {
+                'source': source,
+                'content': None,
+                'url': list_url,
+                'status': 'failed',
+                'error': str(e),
+                'fetched_at': datetime.utcnow().isoformat(),
+            }
+
     # Standard HTML listing source (ARCOP and others)
     try:
         # Respect rate limits
@@ -219,7 +259,6 @@ async def fetch_single_listing(client: httpx.AsyncClient, source: Dict, run_id: 
             
             # For joffres.net, we'll return the listings to be fetched as detail pages
             # Store the listings data in content for extraction step to process
-            import json
             listings_json = json.dumps(listings)
             
             # Store the raw HTML too
@@ -351,6 +390,95 @@ async def fetch_single_listing(client: httpx.AsyncClient, source: Dict, run_id: 
     }
 
 
+async def fetch_google_search_listings(source: Dict, run_id: str) -> Dict:
+    """Call Google Custom Search API for each configured query and aggregate results."""
+    source_name = source['name']
+    api_key = settings.google_search.api_key.get_secret_value()
+    engine_id = settings.google_search.engine_id
+    max_results = settings.google_search.max_results_per_query
+
+    if not api_key or not engine_id:
+        logger.warning(
+            "Google Search API not configured — skipping",
+            source=source_name,
+            run_id=run_id,
+        )
+        return {
+            'source': source,
+            'content': None,
+            'url': source['list_url'],
+            'status': 'failed',
+            'error': 'GOOGLE_API_KEY or GOOGLE_SEARCH_ENGINE_ID not set',
+            'fetched_at': datetime.utcnow().isoformat(),
+        }
+
+    queries = source.get('google_search_settings', {}).get('queries', [
+        '"appel d\'offres" "Burkina Faso" informatique',
+    ])
+
+    all_results = []
+    seen_urls: set = set()
+
+    async with httpx.AsyncClient(timeout=httpx.Timeout(30.0), follow_redirects=True) as client:
+        for query in queries:
+            try:
+                resp = await client.get(
+                    'https://www.googleapis.com/customsearch/v1',
+                    params={
+                        'key': api_key,
+                        'cx': engine_id,
+                        'q': query,
+                        'num': min(max_results, 10),
+                        'lr': 'lang_fr',
+                    },
+                )
+                resp.raise_for_status()
+                data = resp.json()
+
+                for item in data.get('items', []):
+                    url = item.get('link', '')
+                    if url and url not in seen_urls:
+                        seen_urls.add(url)
+                        all_results.append({
+                            'url': url,
+                            'title': item.get('title', ''),
+                            'snippet': item.get('snippet', ''),
+                            'query': query,
+                        })
+
+                logger.info(
+                    "Google Search query completed",
+                    query=query,
+                    results=len(data.get('items', [])),
+                    run_id=run_id,
+                )
+
+            except Exception as e:
+                logger.warning(
+                    "Google Search query failed",
+                    query=query,
+                    error=str(e),
+                    run_id=run_id,
+                )
+
+    logger.info(
+        "Google Search listings fetched",
+        source=source_name,
+        total_urls=len(all_results),
+        run_id=run_id,
+    )
+    log_source_fetch(source_name, source['list_url'], "success", size=len(all_results))
+
+    return {
+        'source': source,
+        'content': json.dumps(all_results, ensure_ascii=False),
+        'url': source['list_url'],
+        'status': 'success',
+        'parser_type': 'google_search',
+        'fetched_at': datetime.utcnow().isoformat(),
+    }
+
+
 async def fetch_all_listings(sources: List[Dict], run_id: str) -> List[Dict]:
     """Fetch all listing pages concurrently."""
     
@@ -463,17 +591,25 @@ def fetch_listings_node(state) -> Dict:
             run_id=state.run_id
         )
         
-        # Log failed fetches as errors
-        for failed in failed_fetches:
-            state.add_error(
-                "fetch_listings",
-                f"Failed to fetch {failed['source']['name']}: {failed.get('error', 'Unknown error')}",
-                source_name=failed['source']['name'],
-                url=failed['url']
-            )
-        
-        # Continue if we have at least one successful fetch
-        if not successful_fetches:
+        # If at least one source succeeded, treat partial failures as non-fatal warnings
+        # so the pipeline keeps running with the data we did manage to fetch.
+        if successful_fetches:
+            for failed in failed_fetches:
+                state.add_warning(
+                    "fetch_listings",
+                    f"Failed to fetch {failed['source']['name']}: {failed.get('error', 'Unknown error')}",
+                    source_name=failed['source']['name'],
+                    url=failed['url'],
+                )
+        else:
+            # All sources failed → fatal
+            for failed in failed_fetches:
+                state.add_error(
+                    "fetch_listings",
+                    f"Failed to fetch {failed['source']['name']}: {failed.get('error', 'Unknown error')}",
+                    source_name=failed['source']['name'],
+                    url=failed['url'],
+                )
             logger.error("All source fetches failed", run_id=state.run_id)
             state.add_error("fetch_listings", "All source fetches failed")
             state.should_continue = False

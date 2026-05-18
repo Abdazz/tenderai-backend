@@ -10,6 +10,25 @@ from ...utils.node_logger import clear_node_output, log_node_output
 
 logger = get_logger(__name__)
 
+_ATTRIBUTION_SIGNALS = [
+    "résultats provisoires", "résultats définitifs",
+    "résultat provisoire", "résultat définitif",
+    "avis d'attribution", "attribution du marché",
+    "recours préalable", "adjudicataire", "attributaire",
+    "marché attribué", "contrat attribué",
+    "rectificatif des résultats",
+]
+
+
+def _is_attribution_notice(item: dict) -> bool:
+    """Return True if this item concerns attribution results, not an open procurement."""
+    text = " ".join([
+        item.get("title") or "",
+        item.get("tender_object") or "",
+        item.get("description") or "",
+    ]).lower()
+    return any(signal in text for signal in _ATTRIBUTION_SIGNALS)
+
 
 def classify_node(state) -> Dict:
     """Classify items for IT/Engineering relevance."""
@@ -71,6 +90,14 @@ def classify_with_keywords(state) -> Dict:
         )
         
         for item in state.items_parsed:
+            # Exclude attribution/results notices regardless of content
+            if _is_attribution_notice(item):
+                item['relevance_score'] = 0.0
+                item['is_relevant'] = False
+                item['classification_method'] = 'attribution_filter'
+                logger.debug("Excluded attribution notice", item_id=item.get('id'), run_id=state.run_id)
+                continue
+
             # Check if item already has relevance_score from extraction (LLM-scored items)
             existing_score = item.get('relevance_score')
             
@@ -195,10 +222,19 @@ Description : {description}
 Mots-clés : {keywords}
 
 Question : Est-ce pertinent pour IT/Ingénierie/Télécommunications/Matériel informatique ?
+
+Répondez NON si l'objet concerne principalement : travaux de construction, réhabilitation de bâtiments, agriculture, élevage, maraîchage, fournitures alimentaires, nettoyage, véhicules, adduction d'eau rurale, ou tout domaine sans lien direct avec l'informatique ou les technologies.
 Répondez UNIQUEMENT par "OUI" ou "NON" suivi d'une brève explication."""
         
         # Classify each item
         for item in state.items_parsed:
+            # Exclude attribution/results notices regardless of content
+            if _is_attribution_notice(item):
+                item['relevance_score'] = 0.0
+                item['classification_method'] = 'attribution_filter'
+                logger.debug("Excluded attribution notice", item_id=item.get('id'), run_id=state.run_id)
+                continue
+
             llm_error = None
             try:
                 # Prepare item data
@@ -252,13 +288,8 @@ Répondez UNIQUEMENT par "OUI" ou "NON" suivi d'une brève explication."""
                         else:
                             relevance_score = 0.8
                     else:
-                        # Lower score if LLM says NON, but accept if strong keyword match
-                        if keyword_matches >= 3:  # Strong keyword signal
-                            relevance_score = 0.7
-                        elif keyword_matches > 0:  # Weak keyword signal
-                            relevance_score = 0.4
-                        else:
-                            relevance_score = 0.1
+                        # LLM says NON → reject; keywords cannot override LLM judgment
+                        relevance_score = 0.1
                 
                 # Clamp score to 0-1 range
                 item['relevance_score'] = min(1.0, max(0.0, relevance_score))

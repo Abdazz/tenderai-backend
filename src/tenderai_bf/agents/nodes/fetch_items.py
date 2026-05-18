@@ -223,8 +223,9 @@ def fetch_items_node(state) -> Dict:
         quotidien_pdfs = []
         rag_pdfs = []
         joffres_items = []
+        ungm_items = []
         regular_urls = []
-        
+
         for link in state.discovered_links:
             if isinstance(link, dict) and link.get('type') == 'quotidien_pdf':
                 quotidien_pdfs.append(link)
@@ -232,6 +233,8 @@ def fetch_items_node(state) -> Dict:
                 rag_pdfs.append(link)
             elif isinstance(link, dict) and link.get('source') == 'joffres.net':
                 joffres_items.append(link)
+            elif isinstance(link, dict) and link.get('source') == 'ungm':
+                ungm_items.append(link)
             else:
                 # Regular URL
                 url = link if isinstance(link, str) else link.get('url')
@@ -258,6 +261,24 @@ def fetch_items_node(state) -> Dict:
                 run_id=state.run_id
             )
         
+        # Process UNGM listings (all fields already extracted from search response)
+        for link in ungm_items:
+            items.append({
+                'url': link['url'],
+                'content': link.get('description', ''),
+                'status': 'success',
+                'fetched_at': datetime.utcnow().isoformat(),
+                'parser_type': 'ungm',
+                'source': 'ungm',
+                'details': link,  # full pre-extracted dict
+            })
+        if ungm_items:
+            logger.info(
+                "UNGM items passed through (no detail fetch needed)",
+                count=len(ungm_items),
+                run_id=state.run_id,
+            )
+
         # Process RAG PDFs (already downloaded, no need to fetch)
         for link in rag_pdfs:
             items.append({

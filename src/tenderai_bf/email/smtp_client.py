@@ -282,12 +282,114 @@ class SMTPClient:
             return False
 
 
-def _generate_report_email_body(stats: Dict, report_url: str, run_id: str) -> tuple[str, str]:
+def _build_notices_table_html(notices: list) -> str:
+    """Build an HTML table summarising relevant notices."""
+    if not notices:
+        return "<p><em>Aucun avis pertinent trouvé pour cette période.</em></p>"
+
+    rows = ""
+    for i, notice in enumerate(notices, start=1):
+        title = notice.get("tender_object") or notice.get("title") or "—"
+        entity = notice.get("entity") or "—"
+
+        pub_raw = notice.get("published_at") or notice.get("publication_date")
+        if pub_raw:
+            try:
+                from datetime import datetime as _dt
+                if isinstance(pub_raw, str):
+                    pub_raw = _dt.fromisoformat(pub_raw.replace("Z", "+00:00"))
+                pub_date = pub_raw.strftime("%d/%m/%Y")
+            except Exception:
+                pub_date = str(pub_raw)[:10]
+        else:
+            pub_date = "N/A"
+
+        start_date = notice.get("submission_start") or notice.get("opening_date") or "N/A"
+
+        deadline = notice.get("deadline") or notice.get("deadline_at") or "N/A"
+        if deadline != "N/A":
+            try:
+                from datetime import datetime as _dt
+                if isinstance(deadline, str) and "T" in deadline:
+                    deadline = _dt.fromisoformat(deadline).strftime("%d/%m/%Y")
+            except Exception:
+                pass
+
+        row_bg = "#ffffff" if i % 2 == 1 else "#f8f9fa"
+        rows += f"""
+        <tr style="background:{row_bg};">
+            <td style="padding:8px 10px;text-align:center;border:1px solid #dee2e6;font-weight:600;">{i}</td>
+            <td style="padding:8px 10px;border:1px solid #dee2e6;">{title}</td>
+            <td style="padding:8px 10px;border:1px solid #dee2e6;">{entity}</td>
+            <td style="padding:8px 10px;text-align:center;border:1px solid #dee2e6;">{pub_date}</td>
+            <td style="padding:8px 10px;text-align:center;border:1px solid #dee2e6;">{start_date}</td>
+            <td style="padding:8px 10px;text-align:center;border:1px solid #dee2e6;font-weight:600;color:#dc3545;">{deadline}</td>
+        </tr>"""
+
+    return f"""
+    <table style="width:100%;border-collapse:collapse;font-size:0.85em;margin-top:10px;">
+        <thead>
+            <tr style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;">
+                <th style="padding:10px;border:1px solid #dee2e6;white-space:nowrap;width:40px;">N°</th>
+                <th style="padding:10px;border:1px solid #dee2e6;text-align:left;width:40%;">Titre</th>
+                <th style="padding:10px;border:1px solid #dee2e6;text-align:left;width:20%;">Organisme</th>
+                <th style="padding:10px;border:1px solid #dee2e6;white-space:nowrap;width:10%;">Date de publication</th>
+                <th style="padding:10px;border:1px solid #dee2e6;white-space:nowrap;width:10%;">Début soumissions</th>
+                <th style="padding:10px;border:1px solid #dee2e6;white-space:nowrap;width:10%;">Fin soumissions</th>
+            </tr>
+        </thead>
+        <tbody>{rows}
+        </tbody>
+    </table>"""
+
+
+def _build_notices_table_text(notices: list) -> str:
+    """Build a plain-text summary table for the notices."""
+    if not notices:
+        return "Aucun avis pertinent trouvé pour cette période.\n"
+
+    lines = [
+        f"{'N°':<4} {'Titre':<55} {'Organisme':<35} {'Publication':<14} {'Début':<14} {'Fin':<14}",
+        "-" * 140,
+    ]
+    for i, notice in enumerate(notices, start=1):
+        title = (notice.get("tender_object") or notice.get("title") or "—")[:54]
+        entity = (notice.get("entity") or "—")[:34]
+
+        pub_raw = notice.get("published_at") or notice.get("publication_date")
+        if pub_raw:
+            try:
+                from datetime import datetime as _dt
+                if isinstance(pub_raw, str):
+                    pub_raw = _dt.fromisoformat(pub_raw.replace("Z", "+00:00"))
+                pub_date = pub_raw.strftime("%d/%m/%Y")
+            except Exception:
+                pub_date = str(pub_raw)[:10]
+        else:
+            pub_date = "N/A"
+
+        start_date = notice.get("submission_start") or notice.get("opening_date") or "N/A"
+        deadline = notice.get("deadline") or notice.get("deadline_at") or "N/A"
+        if deadline != "N/A":
+            try:
+                from datetime import datetime as _dt
+                if isinstance(deadline, str) and "T" in deadline:
+                    deadline = _dt.fromisoformat(deadline).strftime("%d/%m/%Y")
+            except Exception:
+                pass
+
+        lines.append(f"{i:<4} {title:<55} {entity:<35} {pub_date:<14} {start_date:<14} {deadline:<14}")
+
+    return "\n".join(lines) + "\n"
+
+
+def _generate_report_email_body(stats: Dict, report_url: str, run_id: str,
+                                 notices: Optional[list] = None) -> tuple[str, str]:
     """Generate French email body for report distribution."""
     
     # Extract statistics
     sources_checked = stats.get('sources_checked', 0)
-    relevant_items = stats.get('relevant_items', 0)
+    relevant_items = stats.get('unique_items', stats.get('relevant_items', 0))
     total_items = stats.get('items_parsed', 0)
     
     # Generate timestamp
@@ -304,6 +406,11 @@ def _generate_report_email_body(stats: Dict, report_url: str, run_id: str) -> tu
             <p style="color: #856404; margin: 5px 0 0 0; font-size: 0.9em;">Cet email a été généré dans l'environnement de développement. Les données peuvent être de test ou incomplètes.</p>
         </div>"""
     
+    # Notices table (text + html)
+    notices_list = notices or []
+    notices_table_text = _build_notices_table_text(notices_list)
+    notices_table_html = _build_notices_table_html(notices_list)
+
     # Text version
     text_body = f"""{dev_warning}
 Bonjour,
@@ -317,6 +424,10 @@ RÉSUMÉ DE L'EXÉCUTION
 • Avis pertinents IT/Ingénierie : {relevant_items}
 • Généré le : {timestamp}
 • ID d'exécution : {run_id}
+
+AVIS PERTINENTS
+━━━━━━━━━━━━━━━
+{notices_table_text}
 
 Le rapport complet est disponible en pièce jointe au format Word (.docx).
 
@@ -346,7 +457,7 @@ Pour vous désabonner ou modifier vos préférences, contactez l'administrateur.
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             line-height: 1.6;
             color: #333;
-            max-width: 600px;
+            max-width: 960px;
             margin: 0 auto;
             padding: 20px;
         }}
@@ -454,9 +565,14 @@ Pour vous désabonner ou modifier vos préférences, contactez l'administrateur.
             </div>
         </div>
         
+        <div class="stats">
+            <h3>📋 Avis pertinents IT/Ingénierie</h3>
+            {notices_table_html}
+        </div>
+
         <p>Le rapport complet est disponible en <strong>pièce jointe</strong> au format Word (.docx).</p>
-        
-        
+
+
         <div class="footer">
             <p>Pour toute question ou support technique, n'hésitez pas à nous contacter.</p>
             <p><strong>Cordialement,</strong><br>
@@ -477,11 +593,12 @@ Pour vous désabonner ou modifier vos préférences, contactez l'administrateur.
     return text_body, html_body
 
 
-def send_report_email(report_data: bytes, 
+def send_report_email(report_data: bytes,
                       report_url: str,
                       run_id: str,
                       stats: Dict,
-                      recipients: Optional[List[str]] = None) -> bool:
+                      recipients: Optional[List[str]] = None,
+                      notices: Optional[list] = None) -> bool:
     """Send the daily report email with attachment."""
     
     try:
@@ -501,7 +618,7 @@ def send_report_email(report_data: bytes,
         subject = f"{subject_prefix} – {timestamp_str}"
         
         # Generate email body
-        text_body, html_body = _generate_report_email_body(stats, report_url, run_id)
+        text_body, html_body = _generate_report_email_body(stats, report_url, run_id, notices=notices)
         
         # Prepare attachment
         attachments = [{

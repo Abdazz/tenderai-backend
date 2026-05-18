@@ -365,7 +365,7 @@ class MinIOClient:
         
         # Generate filename
         filename = f"RFP_Watch_BF_{timestamp.strftime('%Y-%m-%d-%H-%M')}.docx"
-        key = f"reports/{run_id}/{filename}"
+        key = f"reports/{timestamp.strftime('%Y-%m-%d_%H-%M')}_{run_id}/{filename}"
         
         # Store report
         success = self.put_object(

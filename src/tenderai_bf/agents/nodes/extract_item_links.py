@@ -256,6 +256,34 @@ def extract_item_links_node(state) -> Dict:
                             source_name=source_name
                         )
                         links = []
+                elif parser_type == 'ungm':
+                    import json as _json
+                    try:
+                        listings = _json.loads(content) if isinstance(content, str) else item.get('listings', [])
+                        # Tag each listing with its source so fetch_items can route correctly
+                        for listing in listings:
+                            listing['source'] = 'ungm'
+                        links = listings
+                        logger.info(
+                            f"UNGM: {len(listings)} listings extracted",
+                            source_name=source_name,
+                            run_id=state.run_id,
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to parse UNGM listings: {e}")
+                        links = []
+                elif parser_type == 'google_search':
+                    import json as _json
+                    try:
+                        results = _json.loads(content) if isinstance(content, str) else []
+                        links = [r['url'] for r in results if r.get('url')]
+                        logger.info(
+                            f"Google Search: {len(links)} URLs extracted",
+                            source_name=source_name,
+                            run_id=state.run_id,
+                        )
+                    except Exception:
+                        links = []
                 elif parser_type == 'html':
                     links = extract_links_from_html(content, base_url, patterns)
                 elif parser_type == 'html-pdf-mixed':
@@ -290,6 +318,12 @@ def extract_item_links_node(state) -> Dict:
                         url = link.get('url')
                         if url and url not in seen_urls:
                             # Add the joffres listing dict as-is for fetch_items to process
+                            valid_links.append(link)
+                            seen_urls.add(url)
+                    # Handle UNGM listings (dict with source='ungm')
+                    elif isinstance(link, dict) and link.get('source') == 'ungm':
+                        url = link.get('url')
+                        if url and url not in seen_urls:
                             valid_links.append(link)
                             seen_urls.add(url)
                     # Handle RAG PDFs (dict format with type='pdf_rag')
