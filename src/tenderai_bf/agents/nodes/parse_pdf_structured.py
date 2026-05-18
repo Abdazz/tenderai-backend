@@ -1,8 +1,15 @@
 """Structured PDF parser for DGCMEF Quotidien des Marchés Publics.
 
-Replaces the RAG+chunking pipeline with a single LLM-as-Extractor pass per
-notice block. Extraction and domain classification happen in one LLM call,
-eliminating the separate classify step for quotidien PDF sources.
+Strategy: extract the full PDF text with pdfminer, locate the open-tender
+section (best-effort, multiple fallback markers), then send it in ONE LLM call.
+The LLM extracts all notices simultaneously with embedded domain classification.
+
+This eliminates regex-based block splitting entirely — the approach is robust
+to day-to-day formatting changes in the Quotidien publication.
+
+Fallback when AVIS section is not locatable: send the full document.
+The LLM uses is_results_notice=True to mark attribution results, which the
+pipeline filters out just like explicitly skipped content.
 """
 
 import hashlib
@@ -10,7 +17,7 @@ import json
 import re
 import uuid
 from datetime import datetime
-from typing import Dict, List, Literal, Optional, Tuple
+from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -21,37 +28,27 @@ from ...utils.pdf import extract_pdf_text_from_bytes
 
 logger = get_logger(__name__)
 
-# Markers for the open-tender section (AVIS), after which RESULTATS section ends
+# Ordered list of markers that signal the start of the open-tender section.
+# The first one found wins. If none match, the full document is used.
 _AVIS_SECTION_MARKERS = [
     "Fournitures et Services courants",
     "FOURNITURES ET SERVICES COURANTS",
     "Fournitures et services courants",
-    "fournitures et services courants",
+    # Fallback: first open notice header
+    "Avis de demande de prix",
+    "Avis d'Appel d'Offres",
+    "Avis à Manifestation d'Intérêt",
+    "AVIS DE DEMANDE DE PRIX",
+    "AVIS D'APPEL D'OFFRES",
 ]
 
-# Matches the header line of any notice type followed by N° — used to split into blocks.
-# Covers Avis de demande de prix, Avis d'Appel d'Offres, Avis à Manifestation d'Intérêt,
-# Avis d'attribution, prorogation, rectificatif, annulation.
-_AVIS_SPLIT_PATTERN = re.compile(
-    r"Avis\s+(?:"
-    r"de\s+demande\s+de\s+prix\s+N"
-    r"|d['’]appel\s+d['’]offres\s+N"
-    r"|[àa]\s+manifestation\s+d['’]int[ée]r[êe]t\s+N"
-    r"|de\s+manifestation\s+d['’]int[ée]r[êe]t\s+N"
-    r"|d['’]attribution\s+N"
-    r"|de\s+prorogation\s+N"
-    r"|de\s+rectificatif\s+N"
-    r"|d['’]annulation\s+N"
-    r")",
-    re.IGNORECASE,
-)
-
-# Fallback: match bare reference numbers when no Avis markers are found
-_REF_PATTERN = re.compile(r"N[°o]\s*\d{4}[-–]\d+", re.IGNORECASE)
+# Safety cap on characters sent to LLM (~70 K tokens at 5.5 ch/token).
+# Leaves ample room for prompt + structured output within a 128 K context window.
+_MAX_INPUT_CHARS = 385_000
 
 
 class TenderBlock(BaseModel):
-    """Extraction + classification result for a single quotidien notice block."""
+    """Extraction + classification result for a single quotidien notice."""
 
     entity: str = Field(default="Inconnu", description="Entité émettrice de l'avis")
     reference: str = Field(
@@ -97,150 +94,123 @@ class TenderBlock(BaseModel):
     )
 
 
-_BLOCK_PROMPT = """\
-Tu es un expert en marchés publics du Burkina Faso. Analyse ce bloc de texte extrait du \
-Quotidien des Marchés Publics (DGCMEF) et extrais les informations structurées.
+class TenderList(BaseModel):
+    """Wrapper for bulk LLM extraction — all notices in one call."""
 
-BLOC DE TEXTE :
-{block_text}
+    tenders: List[TenderBlock] = Field(
+        default_factory=list,
+        description="Liste complète de tous les avis extraits du document",
+    )
 
-DOMAINES IT de YULCOM Technologies (is_relevant = true uniquement pour ces domaines) :
+
+_EXTRACTION_PROMPT = """\
+Tu es un expert en marchés publics du Burkina Faso. Extrait TOUS les avis contenus \
+dans ce texte du Quotidien des Marchés Publics (DGCMEF). Ne manque aucun avis.
+
+TEXTE DU DOCUMENT :
+{document_text}
+
+Pour chaque avis trouvé, remplis les champs et détermine la pertinence pour YULCOM Technologies.
+
+DOMAINES IT de YULCOM (is_relevant = true uniquement pour ces domaines) :
 - it_services : développement logiciel, systèmes d'information, ERP, CRM, SIG, cybersécurité, \
 cloud, hébergement, infogérance, réseau, fibre optique, wifi, vidéoconférence, intelligence artificielle
 - it_hardware : ordinateurs, serveurs, imprimantes, scanners, photocopieurs, routeurs, switches, \
 modems, écrans, onduleurs, accessoires informatiques
 - it_consulting : études informatiques, audits de sécurité, assistance technique IT, \
-schémas directeurs, formation informatique, déploiement de systèmes
+schémas directeurs, formation informatique, déploiement/intégration de systèmes
 
 RÈGLES DE CLASSIFICATION :
-- is_results_notice = true si c'est un PV de dépouillement, résultat d'attribution, \
-annulation, prorogation ou rectificatif (pas un appel actif ouvert)
-- is_relevant = true UNIQUEMENT pour les 3 domaines IT de YULCOM ci-dessus
-- is_relevant = false pour : BTP, génie civil, travaux, agriculture, santé, mobilier de bureau, \
-véhicules, carburant, fournitures générales, inscription de fournisseurs/prestataires
+- is_results_notice = true pour : PV de dépouillement, résultats d'attribution, annulations, \
+prorogations, rectificatifs (tout ce qui n'est pas un appel actif ouvert)
+- is_relevant = false pour : BTP, génie civil, travaux, agriculture, santé, mobilier, \
+véhicules, carburant, fournitures générales, inscriptions de fournisseurs/prestataires
 - relevance_score 1-5 : 5=cœur de métier (ex: développement SIG), 4=très pertinent (ex: serveurs), \
-3=pertinent (ex: imprimantes), 2=tangentiel, 1=hors périmètre ou non pertinent
+3=pertinent (ex: imprimantes), 2=tangentiel, 1=hors périmètre
 - domain = "hors_perimetre" si is_relevant = false
 
 Retournez UNIQUEMENT du JSON valide (pas de markdown, pas d'explication) :
 {{
-  "entity": "Nom de l'organisation",
-  "reference": "N°2026-XXX/...",
-  "tender_object": "Objet de l'avis",
-  "deadline": null,
-  "description": "Description courte (200 mots max)",
-  "budget": null,
-  "location": null,
-  "is_results_notice": false,
-  "is_relevant": false,
-  "domain": "hors_perimetre",
-  "relevance_score": 1
+  "tenders": [
+    {{
+      "entity": "Nom de l'organisation",
+      "reference": "N°2026-XXX/...",
+      "tender_object": "Objet de l'avis",
+      "deadline": null,
+      "description": "Description courte (200 mots max)",
+      "budget": null,
+      "location": null,
+      "is_results_notice": false,
+      "is_relevant": false,
+      "domain": "hors_perimetre",
+      "relevance_score": 1
+    }}
+  ]
 }}\
 """
 
 
 def _find_avis_section_start(text: str) -> int:
-    """Return char position of the open-tender section, or 0 as fallback."""
+    """Return char position of the open-tender section start.
+
+    Returns 0 (full document) when no marker is found — the LLM will handle
+    attribution results via is_results_notice=True.
+    """
     for marker in _AVIS_SECTION_MARKERS:
         pos = text.find(marker)
         if pos != -1:
-            logger.debug(f"AVIS section marker '{marker}' found at char {pos}")
+            logger.info(f"AVIS section marker '{marker}' found at char {pos}")
             return pos
-    logger.warning("AVIS section markers not found — processing full document text")
+    logger.warning(
+        "No AVIS section markers found — sending full document to LLM. "
+        "Attribution results will be filtered via is_results_notice."
+    )
     return 0
 
 
-def _split_into_blocks(avis_text: str) -> List[Tuple[str, str]]:
-    """Split AVIS section text into individual notice blocks.
+def _extract_all_tenders_with_llm(document_text: str) -> List[TenderBlock]:
+    """Single LLM call to extract all tenders from the document text.
 
-    Each block extends 600 chars before the notice header to capture the entity name
-    that precedes each "Avis XXX N°..." marker. The block ends at the start of
-    the next notice marker.
-
-    Returns list of (ref_string, block_text) tuples.
-    Falls back to raw reference-number splitting if no Avis markers are found.
+    Returns a (possibly empty) list of TenderBlock objects.
     """
-    markers = list(_AVIS_SPLIT_PATTERN.finditer(avis_text))
-
-    if not markers:
-        logger.warning("No Avis notice markers found — falling back to reference number split")
-        markers = list(_REF_PATTERN.finditer(avis_text))
-
-    if not markers:
-        logger.error("No split markers found in AVIS section")
+    llm = get_llm_instance(temperature=0.0, max_tokens=8000)
+    if not llm:
+        logger.error("LLM not available for quotidien extraction")
         return []
 
-    blocks = []
-    for i, marker in enumerate(markers):
-        # Extract the reference number from the text immediately after the marker
-        context_end = min(len(avis_text), marker.end() + 120)
-        ref_context = avis_text[marker.start(): context_end]
-        ref_match = _REF_PATTERN.search(ref_context)
-        ref_str = ref_match.group(0).strip() if ref_match else f"REF-{i + 1}"
-
-        # Extend backward to capture entity name and avis type header
-        block_start = max(0, marker.start() - 600)
-
-        # End at the start of the next marker (gives complete current notice body)
-        if i + 1 < len(markers):
-            block_end = markers[i + 1].start()
-        else:
-            block_end = min(len(avis_text), marker.start() + 3000)
-
-        block_text = avis_text[block_start:block_end].strip()
-        if len(block_text) > 80:
-            blocks.append((ref_str, block_text))
-
-    return blocks
-
-
-def _extract_block_with_llm(block_text: str, ref_number: str) -> Optional[TenderBlock]:
-    """Call LLM to extract and classify a single notice block.
-
-    Returns a validated TenderBlock or None if extraction fails.
-    """
-    llm = get_llm_instance(temperature=0.0, max_tokens=600)
-    if not llm:
-        logger.error("LLM not available for structured block extraction")
-        return None
-
     provider = settings.llm.provider
-    prompt = _BLOCK_PROMPT.format(block_text=block_text[:3000])
+    prompt = _EXTRACTION_PROMPT.format(
+        document_text=document_text[:_MAX_INPUT_CHARS]
+    )
 
     if provider.lower() == "groq":
         try:
             response = llm.invoke(prompt)
-            text = response.content.strip()
+            raw = response.content.strip()
             try:
-                data = json.loads(text)
+                data = json.loads(raw)
             except json.JSONDecodeError:
-                match = re.search(r"\{.*\}", text, re.DOTALL)
+                match = re.search(r"\{.*\}", raw, re.DOTALL)
                 if match:
                     data = json.loads(match.group())
                 else:
-                    logger.warning(
-                        "No valid JSON in LLM response for block",
-                        ref=ref_number,
-                        response_preview=text[:200],
+                    logger.error(
+                        "No valid JSON in LLM response",
+                        response_preview=raw[:300],
                     )
-                    return None
-            return TenderBlock(**data)
+                    return []
+            return TenderList(**data).tenders
         except Exception as e:
-            logger.warning(
-                "Block extraction failed (Groq)", ref=ref_number, error=str(e)
-            )
-            return None
+            logger.error("LLM extraction failed (Groq)", error=str(e))
+            return []
     else:
         try:
-            structured_llm = llm.with_structured_output(TenderBlock)
-            return structured_llm.invoke(prompt)
+            structured_llm = llm.with_structured_output(TenderList)
+            result = structured_llm.invoke(prompt)
+            return result.tenders
         except Exception as e:
-            logger.warning(
-                "Structured block extraction failed",
-                ref=ref_number,
-                error=str(e),
-            )
-            return None
+            logger.error("Structured LLM extraction failed", error=str(e))
+            return []
 
 
 def parse_quotidien_structured(
@@ -249,50 +219,52 @@ def parse_quotidien_structured(
     quotidien_title: str,
     run_id: str,
 ) -> List[Dict]:
-    """Parse quotidien PDF with a single LLM extraction+classification pass per block.
+    """Parse quotidien PDF with a single LLM call that extracts all notices at once.
 
-    Replaces the RAG+chunking + separate classify pipeline for DGCMEF quotidien PDFs.
-    Each notice block is processed in one LLM call that simultaneously extracts
-    structured fields and assigns domain + relevance classification.
+    1. Extract full PDF text (pdfminer — fast, no OCR overhead for text PDFs)
+    2. Locate the open-tender section (multiple fallback markers; sends full doc if none match)
+    3. One LLM call → TenderList with all notices, each with embedded classification
+    4. Convert to pipeline dict format with classification_embedded=True
 
-    Items returned carry classification_embedded=True so classify_node skips them.
+    Items returned have classification_embedded=True so classify_node skips them.
     """
     logger.info(
-        "Parsing quotidien with structured LLM extractor",
+        "Parsing quotidien with single-call LLM extractor",
         title=quotidien_title,
         size_mb=round(len(pdf_content) / (1024 * 1024), 2),
         run_id=run_id,
     )
 
-    # Force pdfminer — Docling adds latency without benefit for plain text extraction
+    # pdfminer: fast, reliable for text-based PDFs, no ML overhead
     text = extract_pdf_text_from_bytes(pdf_content, method="pdfminer")
     logger.info("PDF text extracted", chars=len(text), run_id=run_id)
 
     avis_start = _find_avis_section_start(text)
-    avis_text = text[avis_start:]
-    logger.info(f"AVIS section starts at char {avis_start}", run_id=run_id)
+    document_text = text[avis_start:]
 
-    blocks = _split_into_blocks(avis_text)
-    logger.info(f"Split into {len(blocks)} notice blocks", run_id=run_id)
+    chars_sent = min(len(document_text), _MAX_INPUT_CHARS)
+    logger.info(
+        f"Sending {chars_sent:,} chars to LLM "
+        f"({'full doc' if avis_start == 0 else 'AVIS section only'})",
+        run_id=run_id,
+    )
+
+    tenders = _extract_all_tenders_with_llm(document_text)
+    logger.info(
+        f"LLM returned {len(tenders)} notices",
+        run_id=run_id,
+    )
 
     results = []
-    for i, (ref_str, block_text) in enumerate(blocks):
-        logger.debug(f"Processing block {i + 1}/{len(blocks)}", ref=ref_str)
-
-        tender = _extract_block_with_llm(block_text, ref_str)
-        if tender is None:
-            logger.warning(
-                f"Skipping block {i + 1} — LLM extraction failed", ref=ref_str
-            )
-            continue
-
-        # An item is actionable only if it's both relevant AND not a results notice
+    for i, tender in enumerate(tenders):
         is_actionable = tender.is_relevant and not tender.is_results_notice
 
         item = {
             "id": str(uuid.uuid4()),
             "url": source_url,
-            "content_hash": hashlib.sha256(block_text.encode()).hexdigest(),
+            "content_hash": hashlib.sha256(
+                f"{tender.reference}:{tender.tender_object}".encode()
+            ).hexdigest(),
             "source_type": "quotidien_pdf",
             "quotidien_title": quotidien_title,
             "published_at": datetime.utcnow().isoformat(),
@@ -308,32 +280,33 @@ def parse_quotidien_structured(
             "description": tender.description,
             "budget": tender.budget,
             "category": tender.domain,
-            # Embedded classification — classify_node will pass these through unchanged
+            # Embedded classification — classify_node passes these through unchanged
             "classification_embedded": True,
             "is_relevant": is_actionable,
             "is_results_notice": tender.is_results_notice,
             "domain": tender.domain,
             # Normalize 1-5 to 0.0-1.0 for downstream score compatibility
             "relevance_score": tender.relevance_score / 5.0,
-            "classification_method": "llm_structured_extraction",
+            "classification_method": "llm_single_pass_extraction",
         }
         results.append(item)
 
         logger.info(
-            f"Block {i + 1}/{len(blocks)} extracted",
+            f"Notice {i + 1}/{len(tenders)}",
             ref=tender.reference,
             entity=(tender.entity or "")[:50],
-            tender_object=(tender.tender_object or "")[:80],
             is_relevant=tender.is_relevant,
             is_results_notice=tender.is_results_notice,
             domain=tender.domain,
             score=tender.relevance_score,
         )
 
+    relevant_count = sum(1 for r in results if r["is_relevant"])
     logger.info(
-        "Quotidien structured parsing complete",
-        total_blocks=len(blocks),
-        extracted=len(results),
+        "Quotidien extraction complete",
+        total_notices=len(results),
+        relevant=relevant_count,
+        results_notices=len(results) - relevant_count,
         run_id=run_id,
     )
     return results
