@@ -539,14 +539,28 @@ def parse_extract_node(state) -> Dict:
                 })
                 continue
 
-            # Handle quotidien PDFs (legacy parser)
+            # Handle quotidien PDFs — structured LLM extractor (extraction + classification in one pass)
             elif parser_type == 'pdf_quotidien' or item.get('type') == 'quotidien_pdf':
-                quotidien_tenders = parse_quotidien_pdf(
-                    pdf_content=content,
-                    quotidien_url=item['url'],
-                    quotidien_title=item.get('title', 'Quotidien des Marchés Publics'),
-                    run_id=state.run_id
-                )
+                try:
+                    from .parse_pdf_structured import parse_quotidien_structured
+                    quotidien_tenders = parse_quotidien_structured(
+                        pdf_content=content,
+                        source_url=item['url'],
+                        quotidien_title=item.get('title', 'Quotidien des Marchés Publics'),
+                        run_id=state.run_id,
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "Structured parser failed, falling back to legacy Docling parser",
+                        error=str(e),
+                        run_id=state.run_id,
+                    )
+                    quotidien_tenders = parse_quotidien_pdf(
+                        pdf_content=content,
+                        quotidien_url=item['url'],
+                        quotidien_title=item.get('title', 'Quotidien des Marchés Publics'),
+                        run_id=state.run_id,
+                    )
                 parsed_items.extend(quotidien_tenders)
             
             # Handle regular PDF parsing

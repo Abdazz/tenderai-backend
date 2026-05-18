@@ -138,6 +138,19 @@ def classify_with_keywords(state) -> Dict:
         )
         
         for item in state.items_parsed:
+            # Items from structured PDF extraction carry embedded classification — pass through
+            if item.get('classification_embedded'):
+                if item.get('is_relevant') and not item.get('is_results_notice'):
+                    relevant_items.append(item)
+                    logger.debug(
+                        "Pass-through: structured extraction pre-classified item as relevant",
+                        item_id=item.get('id'),
+                        domain=item.get('domain'),
+                        score=item.get('relevance_score'),
+                        run_id=state.run_id,
+                    )
+                continue
+
             # Exclude attribution/results notices regardless of content
             if _is_attribution_notice(item):
                 item['relevance_score'] = 0.0
@@ -268,22 +281,45 @@ def classify_with_llm(state) -> Dict:
             for category, keywords in relevant_keywords.items():
                 it_keywords.extend(keywords)
         
-        # Classification prompt
-        classification_prompt = """Analysez cet appel d'offres et répondez avec OUI ou NON :
+        # Classification prompt — scoped to YULCOM's actual business domains
+        classification_prompt = """Vous êtes un expert en marchés publics IT au Burkina Faso. Analysez cet appel d'offres.
 
 Entité : {entity}
 Référence : {reference}
 Objet : {objet}
 Description : {description}
-Mots-clés : {keywords}
 
-Question : Est-ce pertinent pour IT/Ingénierie/Télécommunications/Matériel informatique ?
+DOMAINES CIBLÉS (répondez OUI uniquement si l'objet correspond à l'un de ces domaines) :
+1. Services IT : développement logiciel, systèmes d'information, ERP, CRM, SIG, cybersécurité, cloud, hébergement, infogérance, réseau informatique, fibre optique, wifi, vidéoconférence, intelligence artificielle
+2. Matériel informatique : ordinateurs, serveurs, imprimantes, scanners, photocopieurs, routeurs, switches, modems, écrans, onduleurs, accessoires informatiques
+3. Conseil/ingénierie IT : études informatiques, audits de sécurité, assistance technique IT, schémas directeurs informatiques, formation informatique, déploiement/intégration de systèmes
 
-Répondez NON si l'objet concerne principalement : travaux de construction, réhabilitation de bâtiments, agriculture, élevage, maraîchage, fournitures alimentaires, nettoyage, véhicules, adduction d'eau rurale, ou tout domaine sans lien direct avec l'informatique ou les technologies.
-Répondez UNIQUEMENT par "OUI" ou "NON" suivi d'une brève explication."""
+Répondez NON si l'objet concerne :
+- Travaux de génie civil, construction, BTP, routes, bâtiments, hydraulique, assainissement
+- Agriculture, élevage, alimentation, nettoyage, gardiennage
+- Véhicules, carburant, mobilier de bureau non informatique
+- Fournitures générales de bureau (papier, stylos, mobilier)
+- Matériel médical, pharmaceutique ou agricole
+- Constitution d'une base de données de fournisseurs/prestataires (inscription administrative)
+- Publication de résultats, attribution de marchés, PV de dépouillement
+
+Répondez UNIQUEMENT par "OUI" ou "NON" suivi d'une explication en une phrase."""
         
         # Classify each item
         for item in state.items_parsed:
+            # Items from structured PDF extraction carry embedded classification — pass through
+            if item.get('classification_embedded'):
+                if item.get('is_relevant') and not item.get('is_results_notice'):
+                    relevant_items.append(item)
+                    logger.debug(
+                        "Pass-through: structured extraction pre-classified item as relevant",
+                        item_id=item.get('id'),
+                        domain=item.get('domain'),
+                        score=item.get('relevance_score'),
+                        run_id=state.run_id,
+                    )
+                continue
+
             # Exclude attribution/results notices regardless of content
             if _is_attribution_notice(item):
                 item['relevance_score'] = 0.0
