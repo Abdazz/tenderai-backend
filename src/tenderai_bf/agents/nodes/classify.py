@@ -11,12 +11,46 @@ from ...utils.node_logger import clear_node_output, log_node_output
 logger = get_logger(__name__)
 
 _ATTRIBUTION_SIGNALS = [
+    # Attribution / marché attribué
     "résultats provisoires", "résultats définitifs",
     "résultat provisoire", "résultat définitif",
     "avis d'attribution", "attribution du marché",
     "recours préalable", "adjudicataire", "attributaire",
     "marché attribué", "contrat attribué",
     "rectificatif des résultats",
+    # PV de dépouillement / ouverture des plis — soumissions déjà reçues et comptées
+    "nombre de plis reçus",
+    "plis reçus",
+    "nombre d'offres reçues",
+    "offres reçues",
+    "candidats retenus",
+    "soumissionnaires retenus",
+    "nombre de candidats retenus",
+    "procès-verbal de dépouillement",
+    "pv de dépouillement",
+    "séance de dépouillement",
+    "avis d'appel à la concurrence annulé",
+    "infructueux",
+]
+
+# Signals that identify supplier/provider registration calls (not actionable IT tenders)
+_SUPPLIER_REGISTRATION_SIGNALS = [
+    "constitution d'une base de données de fournisseurs",
+    "constitution d'une base de données des fournisseurs",
+    "constitution d'une base de données de prestataires",
+    "constitution d'une base de données des prestataires",
+    "constitution d'une base de données complémentaire",
+    "constitution d'une base de donnees",
+    "base de données de fournisseurs",
+    "base de données des fournisseurs",
+    "base de données de prestataires",
+    "base de données des prestataires",
+    "liste de fournisseurs agréés",
+    "fichier de fournisseurs",
+    "répertoire de fournisseurs",
+    "répertoire de prestataires",
+    "préqualification de fournisseurs",
+    "préqualification de prestataires",
 ]
 
 
@@ -28,6 +62,20 @@ def _is_attribution_notice(item: dict) -> bool:
         item.get("description") or "",
     ]).lower()
     return any(signal in text for signal in _ATTRIBUTION_SIGNALS)
+
+
+def _is_supplier_registration(item: dict) -> bool:
+    """Return True if this item is a supplier/provider registration call, not an IT tender.
+
+    These are administrative calls for companies to register as approved vendors —
+    they are not procurement contracts YULCOM can bid on as an IT provider.
+    """
+    text = " ".join([
+        item.get("title") or "",
+        item.get("tender_object") or "",
+        item.get("description") or "",
+    ]).lower()
+    return any(signal in text for signal in _SUPPLIER_REGISTRATION_SIGNALS)
 
 
 def classify_node(state) -> Dict:
@@ -96,6 +144,14 @@ def classify_with_keywords(state) -> Dict:
                 item['is_relevant'] = False
                 item['classification_method'] = 'attribution_filter'
                 logger.debug("Excluded attribution notice", item_id=item.get('id'), run_id=state.run_id)
+                continue
+
+            # Exclude supplier/provider registration calls (not actionable IT tenders)
+            if _is_supplier_registration(item):
+                item['relevance_score'] = 0.0
+                item['is_relevant'] = False
+                item['classification_method'] = 'supplier_registration_filter'
+                logger.debug("Excluded supplier registration call", item_id=item.get('id'), run_id=state.run_id)
                 continue
 
             # Check if item already has relevance_score from extraction (LLM-scored items)
@@ -233,6 +289,13 @@ Répondez UNIQUEMENT par "OUI" ou "NON" suivi d'une brève explication."""
                 item['relevance_score'] = 0.0
                 item['classification_method'] = 'attribution_filter'
                 logger.debug("Excluded attribution notice", item_id=item.get('id'), run_id=state.run_id)
+                continue
+
+            # Exclude supplier/provider registration calls (not actionable IT tenders)
+            if _is_supplier_registration(item):
+                item['relevance_score'] = 0.0
+                item['classification_method'] = 'supplier_registration_filter'
+                logger.debug("Excluded supplier registration call", item_id=item.get('id'), run_id=state.run_id)
                 continue
 
             llm_error = None

@@ -5,6 +5,7 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Response, status
 from pydantic import BaseModel
 
+from ...config import settings
 from ...logging import get_logger
 from ..dependencies import DatabaseSession
 
@@ -136,8 +137,9 @@ async def download_report(run_id: str, db: DatabaseSession):
         if not report_data:
             raise Exception(f"Failed to retrieve report from storage: {object_key}")
         
-        # Generate filename
-        filename = f"tenderai_rapport_{run_id[:8]}.docx"
+        # Generate filename based on project name
+        project_slug = settings.app_name.replace(" ", "_")
+        filename = f"{project_slug}_{run_id[:8]}.docx"
         
         # Return as streaming response
         return Response(

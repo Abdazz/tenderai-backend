@@ -406,6 +406,10 @@ class Settings(BaseSettings):
                             self.processing.min_relevance_score = float(processing_config["min_relevance_score"])
                         if "use_llm_classification" in processing_config:
                             self.processing.use_llm_classification = processing_config["use_llm_classification"]
+                        if "deduplication_threshold" in processing_config:
+                            self.processing.deduplication_threshold = float(processing_config["deduplication_threshold"])
+                        if "deduplication_method" in processing_config:
+                            self.processing.deduplication_method = processing_config["deduplication_method"]
                     
                     # Update RAG settings if present
                     if "rag" in yaml_config:

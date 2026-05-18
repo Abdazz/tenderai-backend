@@ -159,8 +159,16 @@ def deduplicate_node(state) -> Dict:
                     is_duplicate = True
                     duplicate_reason = "exact_hash_match"
                 else:
-                    # Check similarity with existing items
+                    item_ref = (item.get('reference') or item.get('ref_no') or '').strip()
                     for unique_item in unique_items:
+                        # Reference number match is a strong duplicate signal
+                        unique_ref = (unique_item.get('reference') or unique_item.get('ref_no') or '').strip()
+                        if item_ref and unique_ref and item_ref == unique_ref:
+                            is_duplicate = True
+                            duplicate_reason = "same_reference_number"
+                            item['duplicate_of_id'] = unique_item.get('id', 'unknown')
+                            break
+                        # Fallback: text similarity
                         unique_text = unique_item.get('tender_object', unique_item.get('title', ''))
                         similarity = fuzz.ratio(item_text, unique_text)
                         if similarity >= threshold:

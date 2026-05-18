@@ -621,8 +621,9 @@ def send_report_email(report_data: bytes,
         text_body, html_body = _generate_report_email_body(stats, report_url, run_id, notices=notices)
         
         # Prepare attachment
+        project_slug = settings.app_name.replace(" ", "_")
         attachments = [{
-            'filename': f"RFP_Watch_BF_{timestamp_str}.docx",
+            'filename': f"{project_slug}_{timestamp_str}.docx",
             'content_type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
             'data': report_data
         }]

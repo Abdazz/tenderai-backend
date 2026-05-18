@@ -363,8 +363,9 @@ class MinIOClient:
         if timestamp is None:
             timestamp = datetime.utcnow()
         
-        # Generate filename
-        filename = f"RFP_Watch_BF_{timestamp.strftime('%Y-%m-%d-%H-%M')}.docx"
+        # Generate filename based on project name
+        project_slug = settings.app_name.replace(" ", "_")
+        filename = f"{project_slug}_{timestamp.strftime('%Y-%m-%d-%H-%M')}.docx"
         key = f"reports/{timestamp.strftime('%Y-%m-%d_%H-%M')}_{run_id}/{filename}"
         
         # Store report
