@@ -21,7 +21,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/admin/login", auto_error=
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # JWT settings
-SECRET_KEY = settings.jwt_secret_key if hasattr(settings, 'jwt_secret_key') else "your-secret-key-change-in-production"
+SECRET_KEY = settings.monitoring.jwt_secret_key
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
 
@@ -45,8 +45,13 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> Opt
         if username is None:
             return None
         
-        return {"username": username, "email": payload.get("email")}
-    
+        return {
+            "username": username,
+            "email": payload.get("email"),
+            "role": payload.get("role", "viewer"),
+            "password_reset_required": payload.get("password_reset_required", False),
+        }
+
     except JWTError as e:
         logger.error("Invalid JWT token", error=str(e))
         return None
@@ -62,6 +67,16 @@ async def require_auth(current_user: Annotated[dict, Depends(get_current_user)])
             headers={"WWW-Authenticate": "Bearer"},
         )
     
+    return current_user
+
+
+async def require_admin(current_user: Annotated[dict, Depends(require_auth)]) -> dict:
+    """Require admin role. Raises 403 if authenticated but not admin."""
+    if current_user.get("role") != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
     return current_user
 
 
@@ -97,3 +112,4 @@ def get_password_hash(password: str) -> str:
 DatabaseSession = Annotated[Session, Depends(get_db)]
 CurrentUser = Annotated[Optional[dict], Depends(get_current_user)]
 AuthenticatedUser = Annotated[dict, Depends(require_auth)]
+AdminUser = Annotated[dict, Depends(require_admin)]
