@@ -58,4 +58,26 @@ def send_email(to_address: str, subject: str, body: str, html_body: str = None) 
         return False
 
 
-__all__ = ["SMTPClient", "send_report_email", "test_email_configuration", "send_email"]
+def send_credentials_email(
+    to_address: str,
+    username: str,
+    password: str,
+    frontend_url: str,
+    is_reset: bool = False,
+) -> bool:
+    """Send auto-generated credentials to a new or password-reset user."""
+    action = "réinitialisé" if is_reset else "créé"
+    subject = f"Vos accès TenderAI BF — mot de passe {action}"
+    body = (
+        f"Bonjour {username},\n\n"
+        f"Un compte a été {action} pour vous sur TenderAI BF.\n\n"
+        f"Identifiant : {username}\n"
+        f"Mot de passe : {password}\n"
+        f"Accès        : {frontend_url}\n\n"
+        "Vous devrez changer ce mot de passe à votre prochaine connexion.\n\n"
+        "Cordialement,\nTenderAI BF"
+    )
+    return send_email(to_address=to_address, subject=subject, body=body)
+
+
+__all__ = ["SMTPClient", "send_report_email", "test_email_configuration", "send_email", "send_credentials_email"]
