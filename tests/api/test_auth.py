@@ -27,7 +27,6 @@ def test_user_model_creation(db_session):
     )
     db_session.add(user)
     db_session.commit()
-
     fetched = db_session.query(User).filter_by(username="testuser").first()
     assert fetched is not None
     assert fetched.role == "viewer"
@@ -45,6 +44,5 @@ def test_user_role_admin(db_session):
     )
     db_session.add(user)
     db_session.commit()
-
     fetched = db_session.query(User).filter_by(username="adminuser").first()
     assert fetched.role == "admin"
