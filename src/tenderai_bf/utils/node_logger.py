@@ -9,11 +9,16 @@ from ..logging import get_logger
 
 logger = get_logger(__name__)
 
-# Base directory for node output logs
-NODE_LOGS_DIR = Path("/app/logs/nodes")
+# Base directory for node output logs.
+# Use /app/logs/nodes in containerised deployments; fall back to a local path otherwise.
+_app_logs = Path("/app/logs/nodes")
+NODE_LOGS_DIR: Path = _app_logs if _app_logs.parents[1].exists() else Path("logs/nodes")
 
-# Ensure directory exists
-NODE_LOGS_DIR.mkdir(parents=True, exist_ok=True)
+# Ensure directory exists (best-effort; silently skip if not writable)
+try:
+    NODE_LOGS_DIR.mkdir(parents=True, exist_ok=True)
+except PermissionError:
+    pass
 
 
 def clear_node_output(node_name: str) -> None:

@@ -323,7 +323,7 @@ class Settings(BaseSettings):
     recipients: List[Dict[str, str]] = Field(default_factory=list)
     prompts: Dict[str, Any] = Field(default_factory=dict, description="LLM prompts templates from settings.yaml")
     
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", case_sensitive=False)
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore")
     
     def __init__(self, **kwargs):
         """Initialize settings and load external configuration."""

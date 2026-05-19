@@ -2,6 +2,7 @@
 
 import logging
 import logging.config
+import os
 import sys
 from pathlib import Path
 from typing import Any, Dict
@@ -15,17 +16,59 @@ from .config import settings
 def configure_logging() -> FilteringBoundLogger:
     """Configure structured logging for the application."""
     
-    # Create logs directory if it doesn't exist
-    logs_dir = Path("/app/logs")
-    logs_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Ensure log files exist with proper permissions
-    for log_file in ["tenderai.log", "error.log"]:
-        log_path = logs_dir / log_file
-        if not log_path.exists():
-            log_path.touch()
-            log_path.chmod(0o666)
-    
+    # Determine logs directory.
+    # Use /app/logs in containerised deployments; fall back to a local or temp path otherwise.
+    _app_logs = Path("/app/logs")
+    if _app_logs.parent.exists():
+        logs_dir = _app_logs
+    else:
+        logs_dir = Path("logs")
+
+    # In test environments, use a temp directory to avoid permission issues with
+    # log files that may be owned by a different user from a previous run.
+    _use_file_logging = settings.environment != "test"
+    if _use_file_logging:
+        try:
+            logs_dir.mkdir(parents=True, exist_ok=True)
+            # Probe write access
+            for log_file in ["tenderai.log", "error.log"]:
+                log_path = logs_dir / log_file
+                if not log_path.exists():
+                    log_path.touch()
+                    log_path.chmod(0o666)
+                elif not os.access(log_path, os.W_OK):
+                    _use_file_logging = False
+                    break
+        except PermissionError:
+            _use_file_logging = False
+
+    # Build handlers dict; always include console, optionally include file handlers.
+    _handlers: dict = {
+        "console": {
+            "class": "logging.StreamHandler",
+            "stream": sys.stdout,
+            "formatter": "colored" if sys.stdout.isatty() else "json",
+        },
+    }
+    _active_handlers = ["console"]
+    if _use_file_logging:
+        _handlers["file"] = {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": str(logs_dir / "tenderai.log"),
+            "maxBytes": 10 * 1024 * 1024,  # 10MB
+            "backupCount": 5,
+            "formatter": "json",
+        }
+        _handlers["error_file"] = {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": str(logs_dir / "error.log"),
+            "maxBytes": 10 * 1024 * 1024,  # 10MB
+            "backupCount": 5,
+            "formatter": "json",
+            "level": "ERROR",
+        }
+        _active_handlers = ["console", "file", "error_file"]
+
     # Configure standard logging
     logging_config = {
         "version": 1,
@@ -50,52 +93,31 @@ def configure_logging() -> FilteringBoundLogger:
                 ],
             },
         },
-        "handlers": {
-            "console": {
-                "class": "logging.StreamHandler",
-                "stream": sys.stdout,
-                "formatter": "colored" if sys.stdout.isatty() else "json",
-            },
-            "file": {
-                "class": "logging.handlers.RotatingFileHandler",
-                "filename": str(logs_dir / "tenderai.log"),
-                "maxBytes": 10 * 1024 * 1024,  # 10MB
-                "backupCount": 5,
-                "formatter": "json",
-            },
-            "error_file": {
-                "class": "logging.handlers.RotatingFileHandler",
-                "filename": str(logs_dir / "error.log"),
-                "maxBytes": 10 * 1024 * 1024,  # 10MB
-                "backupCount": 5,
-                "formatter": "json",
-                "level": "ERROR",
-            },
-        },
+        "handlers": _handlers,
         "loggers": {
             "": {
-                "handlers": ["console", "file", "error_file"],
+                "handlers": _active_handlers,
                 "level": settings.monitoring.log_level,
                 "propagate": False,
             },
             "tenderai_bf": {
-                "handlers": ["console", "file", "error_file"],
+                "handlers": _active_handlers,
                 "level": settings.monitoring.log_level,
                 "propagate": False,
             },
             # Third-party library log levels
             "httpx": {
-                "handlers": ["file"],
+                "handlers": ["file"] if _use_file_logging else ["console"],
                 "level": "WARNING",
                 "propagate": False,
             },
             "sqlalchemy.engine": {
-                "handlers": ["file"],
+                "handlers": ["file"] if _use_file_logging else ["console"],
                 "level": "WARNING" if not settings.database.echo else "INFO",
                 "propagate": False,
             },
             "alembic": {
-                "handlers": ["console", "file"],
+                "handlers": ["console"] + (["file"] if _use_file_logging else []),
                 "level": "INFO",
                 "propagate": False,
             },
