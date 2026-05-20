@@ -51,10 +51,12 @@ def email_report_node(state) -> Dict:
         return state
 
     # Resolve recipients (also fatal if empty: misconfiguration, not transient).
+    # In non-production environments only the EMAIL_TO address from .env is used,
+    # to avoid accidentally mailing real clients during local runs.
     recipients = []
     if settings.email.to_address:
         recipients.append(settings.email.to_address)
-    if settings.recipients:
+    if settings.is_production and settings.recipients:
         for recipient in settings.recipients:
             if 'email' in recipient and recipient['email'] not in recipients:
                 recipients.append(recipient['email'])
