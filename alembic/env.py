@@ -2,7 +2,14 @@
 
 import asyncio
 import os
+import types
 from logging.config import fileConfig
+
+# bcrypt 4.x removed __about__; passlib 1.7.4 requires it for version detection.
+import bcrypt as _bcrypt
+if not hasattr(_bcrypt, '__about__'):
+    _bcrypt.__about__ = types.SimpleNamespace(__version__=_bcrypt.__version__)
+del _bcrypt
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
@@ -106,24 +113,7 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
-    # Check if we're in an async context
-    try:
-        asyncio.get_running_loop()
-        # We're in an async context
-        asyncio.create_task(run_async_migrations())
-    except RuntimeError:
-        # We're in a sync context
-        configuration = config.get_section(config.config_ini_section)
-        configuration["sqlalchemy.url"] = get_database_url()
-        
-        connectable = engine_from_config(
-            configuration,
-            prefix="sqlalchemy.",
-            poolclass=pool.NullPool,
-        )
-
-        with connectable.connect() as connection:
-            do_run_migrations(connection)
+    asyncio.run(run_async_migrations())
 
 
 if context.is_offline_mode():
