@@ -1,6 +1,5 @@
 """Alembic environment configuration for TenderAI BF."""
 
-import asyncio
 import os
 import types
 from logging.config import fileConfig
@@ -13,7 +12,6 @@ del _bcrypt
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
-from sqlalchemy.ext.asyncio import AsyncEngine
 
 # Import your models here
 from tenderai_bf.models import Base
@@ -87,33 +85,25 @@ def do_run_migrations(connection):
         context.run_migrations()
 
 
-async def run_async_migrations():
-    """Run migrations in async mode."""
-    configuration = config.get_section(config.config_ini_section)
-    configuration["sqlalchemy.url"] = get_database_url()
-    
-    connectable = AsyncEngine(
-        engine_from_config(
-            configuration,
-            prefix="sqlalchemy.",
-            poolclass=pool.NullPool,
-        )
-    )
-
-    async with connectable.connect() as connection:
-        await connection.run_sync(do_run_migrations)
-
-    await connectable.dispose()
-
-
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode.
 
-    In this scenario we need to create an Engine
-    and associate a connection with the context.
-
+    The application uses synchronous SQLAlchemy (psycopg2), so migrations
+    run synchronously too — no asyncpg / AsyncEngine needed.
     """
-    asyncio.run(run_async_migrations())
+    configuration = config.get_section(config.config_ini_section)
+    configuration["sqlalchemy.url"] = get_database_url()
+
+    connectable = engine_from_config(
+        configuration,
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool,
+    )
+
+    with connectable.connect() as connection:
+        do_run_migrations(connection)
+
+    connectable.dispose()
 
 
 if context.is_offline_mode():
