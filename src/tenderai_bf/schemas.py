@@ -12,7 +12,7 @@ class SourceBase(BaseModel):
     name: str = Field(..., max_length=255)
     base_url: HttpUrl
     list_url: HttpUrl
-    parser_type: str = Field(default="html", pattern="^(html|pdf|html-pdf-mixed)$")
+    parser_type: str = Field(default="html", max_length=50)
     rate_limit: str = Field(default="10/m", pattern=r"^\d+/[smhd]$")
     enabled: bool = True
     patterns: Optional[Dict[str, Any]] = None
@@ -28,7 +28,7 @@ class SourceUpdate(BaseModel):
     name: Optional[str] = Field(None, max_length=255)
     base_url: Optional[HttpUrl] = None
     list_url: Optional[HttpUrl] = None
-    parser_type: Optional[str] = Field(None, pattern="^(html|pdf|html-pdf-mixed)$")
+    parser_type: Optional[str] = Field(None, max_length=50)
     rate_limit: Optional[str] = Field(None, pattern=r"^\d+/[smhd]$")
     enabled: Optional[bool] = None
     patterns: Optional[Dict[str, Any]] = None

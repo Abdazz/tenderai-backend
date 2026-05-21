@@ -336,5 +336,90 @@ def create_admin(username: Optional[str], email: Optional[str], password: Option
         sys.exit(1)
 
 
+@main.command("seed-sources")
+@click.option("--force", is_flag=True, default=False, help="Update sources that already exist in the DB")
+def seed_sources(force: bool):
+    """Seed sources from settings.yaml into the database. Safe to re-run: skips existing unless --force."""
+
+    from urllib.parse import urlparse
+    from sqlalchemy import text
+
+    sources = settings.sources
+    if not sources:
+        click.echo("No sources found in configuration (settings.sources is empty).")
+        return
+
+    try:
+        engine = get_engine()
+        with engine.connect() as conn:
+            created = updated = skipped = 0
+
+            for source in sources:
+                name = source.get("name", "").strip()
+                list_url = source.get("list_url", "").strip()
+                # settings.yaml uses 'parser', DB uses 'parser_type'
+                parser_type = source.get("parser", source.get("parser_type", "html"))
+                rate_limit = source.get("rate_limit", "10/m")
+                enabled = source.get("enabled", True)
+
+                if not name or not list_url:
+                    click.echo(f"  Skipping entry with missing name or list_url: {source}")
+                    continue
+
+                # Derive base_url from list_url origin
+                parsed = urlparse(list_url)
+                base_url = f"{parsed.scheme}://{parsed.netloc}"
+
+                row = conn.execute(
+                    text("SELECT id FROM sources WHERE name = :name"),
+                    {"name": name},
+                ).fetchone()
+
+                if row:
+                    if not force:
+                        click.echo(f"  Skipping (exists): {name}")
+                        skipped += 1
+                        continue
+                    conn.execute(
+                        text(
+                            "UPDATE sources SET base_url=:base_url, list_url=:list_url, "
+                            "parser_type=:parser_type, rate_limit=:rate_limit, enabled=:enabled, "
+                            "updated_at=NOW() WHERE name=:name"
+                        ),
+                        {
+                            "name": name, "base_url": base_url, "list_url": list_url,
+                            "parser_type": parser_type, "rate_limit": rate_limit,
+                            "enabled": enabled,
+                        },
+                    )
+                    conn.commit()
+                    click.echo(f"  Updated: {name}")
+                    updated += 1
+                else:
+                    conn.execute(
+                        text(
+                            "INSERT INTO sources (name, base_url, list_url, parser_type, "
+                            "rate_limit, enabled, created_at, updated_at) "
+                            "VALUES (:name, :base_url, :list_url, :parser_type, "
+                            ":rate_limit, :enabled, NOW(), NOW())"
+                        ),
+                        {
+                            "name": name, "base_url": base_url, "list_url": list_url,
+                            "parser_type": parser_type, "rate_limit": rate_limit,
+                            "enabled": enabled,
+                        },
+                    )
+                    conn.commit()
+                    click.echo(f"  Created: {name}")
+                    created += 1
+
+        click.echo(f"\nDone: {created} created, {updated} updated, {skipped} skipped.")
+
+    except Exception as e:
+        click.echo(f"❌ Failed to seed sources: {e}")
+        logger.error("seed-sources failed", error=str(e), exc_info=True)
+        sys.exit(1)
+
+
 if __name__ == '__main__':
     main()
