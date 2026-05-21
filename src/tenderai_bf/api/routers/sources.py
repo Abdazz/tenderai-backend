@@ -117,25 +117,10 @@ async def update_source(
             detail=f"Source {source_id} not found"
         )
     
-    # Map schema fields to model fields
-    update_data = request.model_dump(exclude_unset=True)
-    field_mapping = {
-        'base_url': 'base_url',
-        'list_url': 'list_url',
-        'parser_type': 'parser_type',
-        'patterns': 'patterns',
-        'rate_limit': 'rate_limit',
-        'enabled': 'enabled',
-        'name': 'name'
-    }
-    
-    for schema_field, model_field in field_mapping.items():
-        if schema_field in update_data:
-            value = update_data[schema_field]
-            # Convert HttpUrl to string if needed
-            if hasattr(value, '__str__'):
-                value = str(value)
-            setattr(source, model_field, value)
+    # model_dump(mode='json') converts HttpUrl → str, keeps bool/int as-is
+    update_data = request.model_dump(exclude_unset=True, mode="json")
+    for field, value in update_data.items():
+        setattr(source, field, value)
     
     db.commit()
     db.refresh(source)
