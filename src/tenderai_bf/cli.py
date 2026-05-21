@@ -1,14 +1,16 @@
 """Command-line interface for TenderAI BF."""
 
 import asyncio
+import os
 import sys
+import uuid
 from typing import Optional
 
 import click
 
 from .agents import get_pipeline
 from .config import settings
-from .db import init_database, check_database_health, get_database_info
+from .db import init_database, check_database_health, get_database_info, get_engine
 from .email import test_email_configuration
 from .logging import get_logger
 from .storage import get_storage_client
@@ -266,6 +268,71 @@ def build_report():
     except Exception as e:
         click.echo(f"❌ Report building failed: {e}")
         logger.error("Report building failed", error=str(e), exc_info=True)
+        sys.exit(1)
+
+
+@main.command("create-admin")
+@click.option("--username", default=None, help="Admin username (default: $TENDERAI_ADMIN_USERNAME or 'admin')")
+@click.option("--email", default=None, help="Admin email")
+@click.option("--password", default=None, help="Admin password (default: $TENDERAI_ADMIN_PASSWORD)")
+@click.option("--force", is_flag=True, default=False, help="Overwrite the password if the user already exists")
+def create_admin(username: Optional[str], email: Optional[str], password: Optional[str], force: bool):
+    """Create (or reset) the admin user. Safe to re-run: skips if user exists unless --force."""
+
+    from passlib.context import CryptContext
+    from sqlalchemy import text
+
+    username = username or os.environ.get("TENDERAI_ADMIN_USERNAME", "admin")
+    password = password or os.environ.get("TENDERAI_ADMIN_PASSWORD", "")
+    email = email or os.environ.get("TENDERAI_ADMIN_EMAIL", f"{username}@tenderai.bf")
+
+    if not password:
+        click.echo("❌ No password provided. Use --password or set TENDERAI_ADMIN_PASSWORD.")
+        sys.exit(1)
+
+    if len(password) < 8:
+        click.echo("❌ Password must be at least 8 characters.")
+        sys.exit(1)
+
+    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+    hashed = pwd_context.hash(password)
+
+    try:
+        engine = get_engine()
+        with engine.connect() as conn:
+            row = conn.execute(
+                text("SELECT id FROM users WHERE username = :username"),
+                {"username": username},
+            ).fetchone()
+
+            if row:
+                if not force:
+                    click.echo(f"ℹ️  User '{username}' already exists. Use --force to overwrite the password.")
+                    return
+                conn.execute(
+                    text(
+                        "UPDATE users SET hashed_password = :pwd, is_active = true, "
+                        "password_reset_required = false WHERE username = :username"
+                    ),
+                    {"pwd": hashed, "username": username},
+                )
+                conn.commit()
+                click.echo(f"✅ Password updated for existing admin user '{username}'.")
+            else:
+                conn.execute(
+                    text(
+                        "INSERT INTO users (id, username, email, hashed_password, role, "
+                        "is_active, password_reset_required) "
+                        "VALUES (:id, :username, :email, :pwd, 'admin', true, false)"
+                    ),
+                    {"id": str(uuid.uuid4()), "username": username, "email": email, "pwd": hashed},
+                )
+                conn.commit()
+                click.echo(f"✅ Admin user '{username}' created successfully.")
+
+    except Exception as e:
+        click.echo(f"❌ Failed to create admin user: {e}")
+        logger.error("create-admin failed", error=str(e), exc_info=True)
         sys.exit(1)
 
 
