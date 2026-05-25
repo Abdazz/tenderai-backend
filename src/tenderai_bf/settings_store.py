@@ -3,6 +3,7 @@
 
 from typing import Optional
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from .models import AppSettings
 
@@ -22,12 +23,8 @@ class SettingsStore:
     def put_section(
         db: Session, section: str, data: dict, updated_by: str = "system"
     ) -> None:
-        row = db.query(AppSettings).filter(AppSettings.section == section).first()
-        if row:
-            row.data = data
-            row.updated_by = updated_by
-        else:
-            db.add(AppSettings(section=section, data=data, updated_by=updated_by))
+        row = AppSettings(section=section, data=data, updated_by=updated_by)
+        db.merge(row)
         db.commit()
 
     @staticmethod
@@ -90,7 +87,7 @@ class SettingsStore:
             "classification": {
                 "relevant_keywords": s.classification.relevant_keywords,
             },
-            "prompts": s.prompts,
+            "prompts": s.prompts.model_dump(mode="json") if hasattr(s.prompts, "model_dump") else dict(s.prompts),
         }
 
         seeded: list[str] = []
@@ -104,5 +101,11 @@ class SettingsStore:
                 continue
             db.add(AppSettings(section=section, data=data, updated_by="seed"))
             seeded.append(section)
-        db.commit()
+
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            # Another worker seeded first — that's fine
+            return []
         return seeded
