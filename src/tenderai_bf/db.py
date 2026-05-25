@@ -182,3 +182,7 @@ def get_database_info() -> dict:
 
 # Import time for query timing
 import time
+
+# Register all ORM models with Base.metadata so that create_all() works
+# correctly even when individual model modules haven't been imported yet.
+from . import models as _models  # noqa: F401, E402
