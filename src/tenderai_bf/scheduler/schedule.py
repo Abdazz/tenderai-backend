@@ -10,6 +10,8 @@ from ..logging import get_logger
 
 logger = get_logger(__name__)
 
+_scheduler_instance = None
+
 
 def scheduled_pipeline_run():
     """Execute the pipeline as a scheduled job."""
@@ -65,6 +67,8 @@ def start_scheduler():
     # Create scheduler
     timezone = pytz.timezone(settings.scheduler.timezone)
     scheduler = BlockingScheduler(timezone=timezone)
+    global _scheduler_instance
+    _scheduler_instance = scheduler
     
     # Parse cron schedule
     cron_parts = settings.scheduler.cron_schedule.split()
