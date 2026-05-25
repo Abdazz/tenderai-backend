@@ -526,6 +526,44 @@ class Settings(BaseSettings):
         """Get only enabled sources."""
         return [source for source in self.sources if source.get("enabled", True)]
 
+    def apply_db_override(self, section: str, data: dict) -> None:
+        """Update in-memory settings for a section from a DB data dict."""
+        if section == "pipeline":
+            for key, value in data.items():
+                if hasattr(self.processing, key):
+                    setattr(self.processing, key, value)
+        elif section == "scheduler":
+            for key, value in data.items():
+                if hasattr(self.scheduler, key):
+                    setattr(self.scheduler, key, value)
+        elif section == "llm":
+            for key, value in data.items():
+                if hasattr(self.llm, key):
+                    setattr(self.llm, key, value)
+        elif section == "email":
+            for key, value in data.items():
+                if hasattr(self.email, key):
+                    setattr(self.email, key, value)
+        elif section == "rag":
+            for key, value in data.items():
+                if key == "vector_search_query":
+                    self.rag.chroma.vector_search_query = value
+                elif hasattr(self.rag, key):
+                    setattr(self.rag, key, value)
+        elif section == "classification":
+            if "relevant_keywords" in data:
+                self.classification.relevant_keywords = data["relevant_keywords"]
+        elif section == "prompts":
+            self.prompts = data
+
+
+def reload_settings_from_db(db) -> None:
+    """Refresh the global settings singleton from DB. Call after startup seeding."""
+    from .settings_store import SettingsStore
+    all_sections = SettingsStore.get_all(db)
+    for section, data in all_sections.items():
+        settings.apply_db_override(section, data)
+
 
 # Global settings instance
 settings = Settings()

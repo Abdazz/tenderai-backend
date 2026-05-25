@@ -84,3 +84,27 @@ def test_seed_from_settings_is_idempotent(db):
     seeded_second = SettingsStore.seed_from_settings(db)
     assert len(seeded_first) == 7
     assert len(seeded_second) == 0  # nothing inserted on second call
+
+
+def test_reload_settings_from_db_applies_overrides(db):
+    from tenderai_bf.settings_store import SettingsStore
+    from tenderai_bf.config import settings, reload_settings_from_db
+
+    original = settings.processing.min_relevance_score
+    new_score = round(original + 0.1, 2) if original < 0.9 else 0.5
+
+    SettingsStore.put_section(
+        db, "pipeline",
+        {
+            "max_items_per_run": 100,
+            "min_relevance_score": new_score,
+            "deduplication_threshold": 0.75,
+            "deduplication_method": "hash_similarity",
+            "use_llm_classification": True,
+            "pdf_timeout": 120,
+            "max_file_size_mb": 50,
+        },
+        updated_by="test",
+    )
+    reload_settings_from_db(db)
+    assert settings.processing.min_relevance_score == new_score
