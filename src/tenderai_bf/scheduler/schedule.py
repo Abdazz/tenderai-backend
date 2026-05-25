@@ -15,7 +15,20 @@ _scheduler_instance = None
 
 def scheduled_pipeline_run():
     """Execute the pipeline as a scheduled job."""
-    
+
+    # Reload settings from DB so pipeline uses latest config
+    try:
+        from ..db import get_session_factory
+        from ..config import reload_settings_from_db
+        SessionLocal = get_session_factory()
+        db_session = SessionLocal()
+        try:
+            reload_settings_from_db(db_session)
+        finally:
+            db_session.close()
+    except Exception as e:
+        logger.warning("Could not reload settings from DB before run", error=str(e))
+
     logger.info("Starting scheduled pipeline run")
     
     try:
