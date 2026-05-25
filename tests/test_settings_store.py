@@ -33,3 +33,54 @@ def test_app_settings_can_insert_and_retrieve(db):
     found = db.query(AppSettings).filter_by(section="pipeline").first()
     assert found is not None
     assert found.data["min_relevance_score"] == 0.7
+
+
+def test_get_section_returns_none_when_absent(db):
+    from tenderai_bf.settings_store import SettingsStore
+    assert SettingsStore.get_section(db, "pipeline") is None
+
+
+def test_put_section_inserts_new_row(db):
+    from tenderai_bf.settings_store import SettingsStore
+    SettingsStore.put_section(db, "pipeline", {"min_relevance_score": 0.8}, updated_by="admin")
+    result = SettingsStore.get_section(db, "pipeline")
+    assert result == {"min_relevance_score": 0.8}
+
+
+def test_put_section_updates_existing_row(db):
+    from tenderai_bf.settings_store import SettingsStore
+    SettingsStore.put_section(db, "pipeline", {"min_relevance_score": 0.7}, updated_by="admin")
+    SettingsStore.put_section(db, "pipeline", {"min_relevance_score": 0.9}, updated_by="admin")
+    result = SettingsStore.get_section(db, "pipeline")
+    assert result["min_relevance_score"] == 0.9
+
+
+def test_get_all_returns_all_sections(db):
+    from tenderai_bf.settings_store import SettingsStore
+    SettingsStore.put_section(db, "pipeline", {"x": 1}, updated_by="admin")
+    SettingsStore.put_section(db, "llm", {"provider": "groq"}, updated_by="admin")
+    result = SettingsStore.get_all(db)
+    assert "pipeline" in result
+    assert "llm" in result
+    assert result["pipeline"]["x"] == 1
+
+
+def test_seed_from_settings_inserts_all_sections(db):
+    from tenderai_bf.settings_store import SettingsStore
+    seeded = SettingsStore.seed_from_settings(db)
+    assert len(seeded) == 7
+    assert "pipeline" in seeded
+    assert "scheduler" in seeded
+    assert "llm" in seeded
+    assert "email" in seeded
+    assert "rag" in seeded
+    assert "classification" in seeded
+    assert "prompts" in seeded
+
+
+def test_seed_from_settings_is_idempotent(db):
+    from tenderai_bf.settings_store import SettingsStore
+    seeded_first = SettingsStore.seed_from_settings(db)
+    seeded_second = SettingsStore.seed_from_settings(db)
+    assert len(seeded_first) == 7
+    assert len(seeded_second) == 0  # nothing inserted on second call
