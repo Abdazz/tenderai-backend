@@ -26,7 +26,8 @@ class Source(Base):
     # Rate limiting and behavior
     rate_limit = Column(String(20), nullable=False, default="10/m")  # requests per minute
     enabled = Column(Boolean, nullable=False, default=True, index=True)
-    
+    country_id = Column(Integer, ForeignKey("countries.id"), nullable=True, index=True)
+
     # Parsing configuration (stored as JSON)
     patterns = Column(JSON, nullable=True)  # CSS selectors, XPath, regex patterns
     
@@ -42,6 +43,7 @@ class Source(Base):
     
     # Relationships
     notices = relationship("Notice", back_populates="source", cascade="all, delete-orphan")
+    country = relationship("Country", back_populates="sources")
     
     def __repr__(self) -> str:
         return f"<Source(id={self.id}, name='{self.name}', enabled={self.enabled})>"
@@ -74,9 +76,11 @@ class Run(Base):
     # Trigger information
     triggered_by = Column(String(50), nullable=False, default="scheduler")  # scheduler, manual, api
     triggered_by_user = Column(String(100), nullable=True)
-    
+    country_id = Column(Integer, ForeignKey("countries.id"), nullable=True, index=True)
+
     # Relationships
     notices = relationship("Notice", back_populates="run")
+    country = relationship("Country", back_populates="runs")
     
     def __repr__(self) -> str:
         return f"<Run(id='{self.id}', status='{self.status}', started_at={self.started_at})>"
@@ -231,7 +235,8 @@ class Recipient(Base):
     # Grouping and preferences
     group = Column(String(50), nullable=False, default="default", index=True)  # to, cc, bcc
     enabled = Column(Boolean, nullable=False, default=True, index=True)
-    
+    country_id = Column(Integer, ForeignKey("countries.id"), nullable=True, index=True)
+
     # Preferences (stored as JSON)
     preferences = Column(JSON, nullable=True)  # frequency, format, etc.
     
@@ -278,3 +283,41 @@ class AppSettings(Base):
 
     def __repr__(self) -> str:
         return f"<AppSettings(section='{self.section}')>"
+
+
+class Country(Base):
+    """Countries with independent pipeline configurations."""
+
+    __tablename__ = "countries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    code = Column(String(10), nullable=False, unique=True, index=True)
+    locale = Column(String(10), nullable=False, default="fr")
+    active = Column(Boolean, nullable=False, default=True, index=True)
+    created_at = Column(DateTime, nullable=False, default=func.now())
+    updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
+
+    settings = relationship("CountrySettings", back_populates="country", cascade="all, delete-orphan")
+    sources = relationship("Source", back_populates="country")
+    runs = relationship("Run", back_populates="country")
+
+    def __repr__(self) -> str:
+        return f"<Country(code='{self.code}', name='{self.name}', active={self.active})>"
+
+
+class CountrySettings(Base):
+    """Per-country operational settings, one row per section."""
+
+    __tablename__ = "country_settings"
+
+    country_id = Column(Integer, ForeignKey("countries.id"), primary_key=True)
+    section = Column(String(64), primary_key=True)
+    data = Column(JSON, nullable=False)
+    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+    updated_by = Column(Text, nullable=True)
+
+    country = relationship("Country", back_populates="settings")
+
+    def __repr__(self) -> str:
+        return f"<CountrySettings(country_id={self.country_id}, section='{self.section}')>"
