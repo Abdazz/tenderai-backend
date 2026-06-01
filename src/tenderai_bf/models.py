@@ -225,17 +225,20 @@ class File(Base):
 
 class Recipient(Base):
     """Email recipients for report distribution."""
-    
+
     __tablename__ = "recipients"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String(255), nullable=False, unique=True, index=True)
     name = Column(String(200), nullable=True)
-    
+
     # Grouping and preferences
     group = Column(String(50), nullable=False, default="default", index=True)  # to, cc, bcc
     enabled = Column(Boolean, nullable=False, default=True, index=True)
     country_id = Column(Integer, ForeignKey("countries.id"), nullable=True, index=True)
+
+    # Relationships
+    country = relationship("Country", back_populates="recipients")
 
     # Preferences (stored as JSON)
     preferences = Column(JSON, nullable=True)  # frequency, format, etc.
@@ -301,6 +304,7 @@ class Country(Base):
     settings = relationship("CountrySettings", back_populates="country", cascade="all, delete-orphan")
     sources = relationship("Source", back_populates="country")
     runs = relationship("Run", back_populates="country")
+    recipients = relationship("Recipient", back_populates="country")
 
     def __repr__(self) -> str:
         return f"<Country(code='{self.code}', name='{self.name}', active={self.active})>"
