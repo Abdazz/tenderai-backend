@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 
 from ..config import settings
 from ..logging import get_logger
-from .routers import health, runs, sources, reports, admin, users
+from .routers import health, runs, sources, reports, admin, users, countries
 
 logger = get_logger(__name__)
 
@@ -66,6 +66,24 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
             db_session.close()
     except Exception as e:
         logger.warning("Could not seed/reload settings from DB", error=str(e))
+
+    # Seed BF country if no countries exist yet
+    try:
+        from ..models import Country as CountryModel
+        from ..country_store import CountryStore as CS
+        db_session2 = SessionLocal()
+        try:
+            if not db_session2.query(CountryModel).first():
+                bf = CountryModel(name="Burkina Faso", code="BF", locale="fr", active=True)
+                db_session2.add(bf)
+                db_session2.commit()
+                db_session2.refresh(bf)
+                CS.seed_from_global(db_session2, bf.id)
+                logger.info("Seeded Burkina Faso as default country")
+        finally:
+            db_session2.close()
+    except Exception as e:
+        logger.warning("Could not seed BF country", error=str(e))
 
     yield
     
@@ -125,6 +143,7 @@ app.include_router(sources.router, prefix="/api/v1/sources", tags=["Sources"])
 app.include_router(reports.router, prefix="/api/v1/reports", tags=["Reports"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["Users"])
+app.include_router(countries.router, prefix="/api/v1/admin/countries", tags=["Countries"])
 
 
 @app.get("/")
