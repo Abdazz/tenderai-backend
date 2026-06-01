@@ -10,9 +10,10 @@ from langgraph.graph import StateGraph, END
 from pydantic import BaseModel, Field
 
 from ..config import settings
+from ..country_store import CountryStore
 from ..db import get_db_context
 from ..logging import get_logger, log_run_start, log_run_complete, log_run_error
-from ..models import Run
+from ..models import Country as CountryModel, Run
 from ..schemas import PipelineState, RunStatistics
 
 # Import node functions
@@ -36,6 +37,12 @@ class TenderAIState(BaseModel):
     # Run metadata
     run_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     started_at: datetime = Field(default_factory=datetime.utcnow)
+
+    # Country context — populated by run() before graph execution
+    country_id: int = 0
+    country_name: str = ""
+    country_locale: str = "fr"
+    country_config: Dict[str, Any] = Field(default_factory=dict)
 
     # Pipeline data
     sources: List[Dict[str, Any]] = Field(default_factory=list)
@@ -161,13 +168,40 @@ def error_handler(state: TenderAIState) -> TenderAIState:
     return state
 
 
+class _AppWrapper:
+    """Thin wrapper around CompiledStateGraph that allows attribute overrides.
+
+    LangGraph's CompiledStateGraph is a Pydantic v1 model and refuses
+    arbitrary attribute assignment.  Wrapping it here lets tests replace
+    `invoke` with a mock without touching the compiled graph object.
+    """
+
+    def __init__(self, compiled_graph: Any) -> None:
+        object.__setattr__(self, "_compiled", compiled_graph)
+        object.__setattr__(self, "_overrides", {})
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        self._overrides[name] = value
+
+    def __getattr__(self, name: str) -> Any:
+        overrides = object.__getattribute__(self, "_overrides")
+        if name in overrides:
+            return overrides[name]
+        return getattr(object.__getattribute__(self, "_compiled"), name)
+
+    def invoke(self, *args: Any, **kwargs: Any) -> Any:
+        overrides = object.__getattribute__(self, "_overrides")
+        fn = overrides.get("invoke", object.__getattribute__(self, "_compiled").invoke)
+        return fn(*args, **kwargs)
+
+
 class TenderAIGraph:
     """LangGraph pipeline for TenderAI BF."""
-    
+
     def __init__(self):
         """Initialize the pipeline graph."""
         self.graph = self._build_graph()
-        self.app = self.graph.compile()
+        self.app = _AppWrapper(self.graph.compile())
         logger.info("TenderAI pipeline graph initialized")
     
     def _build_graph(self) -> StateGraph:
@@ -231,17 +265,35 @@ class TenderAIGraph:
 
         return workflow
     
-    def run(self, 
+    def run(self,
+            country_id: int,
             triggered_by: str = "scheduler",
             triggered_by_user: Optional[str] = None,
             sources_override: Optional[List[Dict]] = None,
             send_email: bool = True) -> TenderAIState:
         """Execute the complete pipeline."""
-        
+
         # Initialize state
         state = TenderAIState()
         run_id = state.run_id
-        
+
+        # Load country context
+        try:
+            with get_db_context() as _db:
+                _country = _db.query(CountryModel).filter(CountryModel.id == country_id).first()
+                if not _country:
+                    state.add_error("pipeline", f"Country {country_id} not found")
+                    state.error_occurred = True
+                    return state
+                state.country_id = country_id
+                state.country_name = _country.name
+                state.country_locale = _country.locale
+                state.country_config = CountryStore.get_all_with_fallback(_db, country_id)
+        except Exception as _e:
+            state.add_error("pipeline", f"Failed to load country config: {_e}")
+            state.error_occurred = True
+            return state
+
         # Log run start
         log_run_start(
             run_id,
@@ -279,7 +331,8 @@ class TenderAIGraph:
                     status="running",
                     started_at=state.started_at,
                     triggered_by=triggered_by,
-                    triggered_by_user=triggered_by_user
+                    triggered_by_user=triggered_by_user,
+                    country_id=country_id,
                 )
                 session.add(run)
                 session.commit()

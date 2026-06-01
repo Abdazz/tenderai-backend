@@ -28,17 +28,19 @@ def main():
 @main.command()
 @click.option('--triggered-by', default='manual', help='Who triggered this run')
 @click.option('--user', default=None, help='User who triggered this run')
-def run_once(triggered_by: str, user: Optional[str]):
+@click.option('--country-id', default=1, type=int, help='Country ID to run pipeline for')
+def run_once(triggered_by: str, user: Optional[str], country_id: int):
     """Execute the pipeline once and generate a report."""
-    
+
     click.echo("🚀 Starting TenderAI BF pipeline...")
-    
+
     try:
         # Get pipeline
         pipeline = get_pipeline()
-        
+
         # Execute pipeline (returns a TenderAIState)
         result = pipeline.run(
+            country_id=country_id,
             triggered_by=triggered_by,
             triggered_by_user=user,
         )

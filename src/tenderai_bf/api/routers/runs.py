@@ -17,12 +17,13 @@ router = APIRouter()
 
 class RunTriggerRequest(BaseModel):
     """Request model for triggering a pipeline run."""
-    
+
     triggered_by: str = Field(default="api", description="Who/what triggered the run")
     triggered_by_user: Optional[str] = Field(default=None, description="Username if triggered by user")
     sources: Optional[List[str]] = Field(default=None, description="Specific sources to run (None = all)")
     send_email: bool = Field(default=True, description="Send email report after completion")
     dry_run: bool = Field(default=False, description="Dry run mode (no database writes)")
+    country_id: int = Field(default=1, description="Country ID to run pipeline for")
 
 
 class RunStatusResponse(BaseModel):
@@ -105,6 +106,7 @@ async def trigger_run(
                 sources_override = request.sources
             
             result = pipeline.run(
+                country_id=request.country_id,
                 triggered_by=request.triggered_by,
                 triggered_by_user=triggered_by_user,
                 sources_override=sources_override,

@@ -37,8 +37,9 @@ def scheduled_pipeline_run():
         
         # Execute pipeline
         result = pipeline.run(
+            country_id=1,
             triggered_by="scheduler",
-            triggered_by_user=None
+            triggered_by_user=None,
         )
         
         # Log results
