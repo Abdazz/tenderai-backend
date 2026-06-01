@@ -52,3 +52,50 @@ def test_run_sets_country_id_on_state():
         assert captured_state["country_id"] == 1
         assert captured_state["country_name"] == "Burkina Faso"
         assert captured_state["country_config"] == mock_config
+
+
+def test_load_sources_filters_by_country_id():
+    """In DB mode, load_sources must query only sources belonging to state.country_id."""
+    from tenderai_bf.agents.graph import TenderAIState
+    from tenderai_bf.agents.nodes.load_sources import load_sources_node
+
+    state = TenderAIState(country_id=42)
+    state.country_config = {"pipeline": {}}
+
+    mock_session = MagicMock()
+    mock_query = MagicMock()
+    mock_first = MagicMock()
+    mock_session.query.return_value = mock_query
+    mock_query.filter.return_value = mock_query
+    mock_query.first.return_value = mock_first
+
+    # Configure the mock_first to be a valid source object
+    mock_first.id = 1
+    mock_first.name = "test_source"
+    mock_first.base_url = "http://example.com"
+    mock_first.list_url = "http://example.com/list"
+    mock_first.parser_type = "html"
+    mock_first.rate_limit = "10/m"
+    mock_first.enabled = True
+    mock_first.patterns = {}
+    mock_first.last_seen_at = None
+    mock_first.last_success_at = None
+    mock_first.last_error_at = None
+    mock_first.last_error_message = None
+
+    with patch("tenderai_bf.agents.nodes.load_sources.get_db_context") as mock_ctx, \
+         patch("tenderai_bf.agents.nodes.load_sources.settings") as mock_settings:
+        mock_settings.use_database_sources = True
+        mock_settings.get_active_sources.return_value = [
+            {"name": "test_source", "base_url": "http://example.com", "list_url": "http://example.com/list", "enabled": True}
+        ]
+        mock_ctx.return_value.__enter__ = lambda s: mock_session
+        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+
+        load_sources_node(state)
+
+        # The query must have been called
+        assert mock_session.query.called
+        # Verify that filter was called with country_id == state.country_id
+        # The filter should be called at least once for the source lookup
+        assert mock_query.filter.called

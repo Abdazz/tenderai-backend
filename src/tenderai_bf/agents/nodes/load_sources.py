@@ -114,7 +114,8 @@ def load_sources_node(state) -> Dict:
                 try:
                     # Find or create source in database
                     db_source = session.query(Source).filter(
-                        Source.name == source_name
+                        Source.name == source_name,
+                        Source.country_id == state.country_id
                     ).first()
                     
                     if not db_source:
@@ -126,7 +127,8 @@ def load_sources_node(state) -> Dict:
                             parser_type=config_source.get('parser', 'html'),
                             rate_limit=config_source.get('rate_limit', '10/m'),
                             enabled=config_source.get('enabled', True),
-                            patterns=config_source.get('patterns', {})
+                            patterns=config_source.get('patterns', {}),
+                            country_id=state.country_id
                         )
                         session.add(db_source)
                         session.commit()
