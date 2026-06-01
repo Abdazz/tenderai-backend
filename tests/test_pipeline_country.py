@@ -99,3 +99,40 @@ def test_load_sources_filters_by_country_id():
         # Verify that filter was called with country_id == state.country_id
         # The filter should be called at least once for the source lookup
         assert mock_query.filter.called
+
+
+def test_classify_uses_country_keywords():
+    """classify_with_keywords must use state.country_config['classification']['relevant_keywords']."""
+    from tenderai_bf.agents.graph import TenderAIState
+    from tenderai_bf.agents.nodes.classify import classify_with_keywords
+
+    state = TenderAIState(country_id=1)
+    state.country_config = {
+        "classification": {"relevant_keywords": {"it": ["informatique", "logiciel"]}},
+        "pipeline": {"min_relevance_score": 0.5, "use_llm_classification": False},
+    }
+    state.items_parsed = [
+        {"title": "Fourniture de logiciel", "description": "Achat logiciel", "url": "http://x.com"}
+    ]
+
+    result = classify_with_keywords(state)
+    relevant = [i for i in result.items_parsed if i.get("is_relevant")]
+    assert len(relevant) == 1
+
+
+def test_classify_uses_country_min_relevance_score():
+    """Classify must use state.country_config['pipeline']['min_relevance_score']."""
+    from tenderai_bf.agents.graph import TenderAIState
+    from tenderai_bf.agents.nodes.classify import classify_with_keywords
+
+    state = TenderAIState(country_id=1)
+    state.country_config = {
+        "classification": {"relevant_keywords": {"all": ["xyz_never_matches"]}},
+        "pipeline": {"min_relevance_score": 0.99, "use_llm_classification": False},
+    }
+    state.items_parsed = [
+        {"title": "Travaux routiers", "description": "Construction route", "url": "http://x.com"}
+    ]
+
+    result = classify_with_keywords(state)
+    assert all(not i.get("is_relevant") for i in result.items_parsed)

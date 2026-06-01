@@ -92,7 +92,9 @@ def classify_node(state) -> Dict:
     
     try:
         # Choose classification method based on configuration
-        if settings.processing.use_llm_classification:
+        _pipeline_cfg = getattr(state, 'country_config', {}).get("pipeline", {})
+        _use_llm = _pipeline_cfg.get("use_llm_classification", settings.processing.use_llm_classification)
+        if _use_llm:
             # Use LLM-based classification (requires LLM setup)
             logger.info("Using LLM-based classification", run_id=state.run_id)
             return classify_with_llm(state)
@@ -117,9 +119,11 @@ def classify_with_keywords(state) -> Dict:
         # Combine all keywords from different categories
         it_keywords = []
         
-        if hasattr(settings, 'classification') and hasattr(settings.classification, 'relevant_keywords'):
-            # Load from settings
+        _cls_cfg = getattr(state, 'country_config', {}).get("classification", {})
+        relevant_keywords = _cls_cfg.get("relevant_keywords", None)
+        if relevant_keywords is None and hasattr(settings, 'classification') and hasattr(settings.classification, 'relevant_keywords'):
             relevant_keywords = settings.classification.relevant_keywords
+        if relevant_keywords:
             for category, keywords in relevant_keywords.items():
                 it_keywords.extend(keywords)
         else:
@@ -170,7 +174,7 @@ def classify_with_keywords(state) -> Dict:
             # Check if item already has relevance_score from extraction (LLM-scored items)
             existing_score = item.get('relevance_score')
             
-            if existing_score is not None and existing_score >= settings.processing.min_relevance_score:
+            if existing_score is not None and existing_score >= getattr(state, 'country_config', {}).get("pipeline", {}).get("min_relevance_score", settings.processing.min_relevance_score):
                 # Item already scored by LLM extraction, preserve that score
                 relevant_items.append(item)
                 logger.debug(
@@ -206,7 +210,7 @@ def classify_with_keywords(state) -> Dict:
             
             # Use a lower threshold for keyword-based classification
             # (LLM-scored items already passed through extraction with 0.7 threshold)
-            keyword_threshold = min(0.3, settings.processing.min_relevance_score)
+            keyword_threshold = min(0.3, getattr(state, 'country_config', {}).get("pipeline", {}).get("min_relevance_score", settings.processing.min_relevance_score))
             is_relevant = relevance_score >= keyword_threshold
             
             # Update item with classification
@@ -238,12 +242,12 @@ def classify_with_keywords(state) -> Dict:
             "Keyword-based classification completed",
             total_items=len(state.items_parsed),
             relevant_items=len(relevant_items),
-            threshold=settings.processing.min_relevance_score,
+            threshold=getattr(state, 'country_config', {}).get("pipeline", {}).get("min_relevance_score", settings.processing.min_relevance_score),
             run_id=state.run_id
         )
-        
+
         return state
-        
+
     except Exception as e:
         logger.error("Keyword classification failed", error=str(e), run_id=state.run_id, exc_info=True)
         state.add_error("classify", str(e))
