@@ -3,7 +3,6 @@
 import os
 import secrets
 import uuid
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, EmailStr
@@ -26,8 +25,8 @@ class UserCreateRequest(BaseModel):
 
 
 class UserUpdateRequest(BaseModel):
-    role: Optional[str] = None
-    is_active: Optional[bool] = None
+    role: str | None = None
+    is_active: bool | None = None
 
 
 class UserOut(BaseModel):
@@ -49,7 +48,9 @@ async def list_users(current_user: AdminUser, db: DatabaseSession):
 
 
 @router.post("", response_model=UserOut, status_code=201)
-async def create_user(request: UserCreateRequest, current_user: AdminUser, db: DatabaseSession):
+async def create_user(
+    request: UserCreateRequest, current_user: AdminUser, db: DatabaseSession
+):
     if request.role not in ("admin", "viewer"):
         raise HTTPException(status_code=400, detail="role must be 'admin' or 'viewer'")
 
@@ -80,7 +81,9 @@ async def create_user(request: UserCreateRequest, current_user: AdminUser, db: D
         frontend_url=FRONTEND_URL,
         is_reset=False,
     )
-    logger.info("User created", username=user.username, created_by=current_user["username"])
+    logger.info(
+        "User created", username=user.username, created_by=current_user["username"]
+    )
     return UserOut.model_validate(user)
 
 
@@ -96,11 +99,15 @@ async def update_user(
         raise HTTPException(status_code=404, detail="User not found")
 
     if user.username == current_user["username"] and request.is_active is False:
-        raise HTTPException(status_code=400, detail="You cannot deactivate your own account")
+        raise HTTPException(
+            status_code=400, detail="You cannot deactivate your own account"
+        )
 
     if request.role is not None:
         if request.role not in ("admin", "viewer"):
-            raise HTTPException(status_code=400, detail="role must be 'admin' or 'viewer'")
+            raise HTTPException(
+                status_code=400, detail="role must be 'admin' or 'viewer'"
+            )
         user.role = request.role
 
     if request.is_active is not None:
@@ -118,7 +125,9 @@ async def delete_user(user_id: str, current_user: AdminUser, db: DatabaseSession
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     if user.username == current_user["username"]:
-        raise HTTPException(status_code=400, detail="You cannot delete your own account")
+        raise HTTPException(
+            status_code=400, detail="You cannot delete your own account"
+        )
     db.delete(user)
     db.commit()
     logger.info("User deleted", user_id=user_id, deleted_by=current_user["username"])

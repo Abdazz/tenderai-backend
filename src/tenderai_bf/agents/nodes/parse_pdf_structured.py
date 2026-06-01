@@ -17,7 +17,7 @@ import json
 import re
 import uuid
 from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -55,17 +55,19 @@ class TenderBlock(BaseModel):
         default="Inconnu",
         description="Numéro de référence (ex: N°2026-001/MINEFID/SG/DPCL)",
     )
-    tender_object: str = Field(default="Inconnu", description="Objet de l'appel d'offres")
-    deadline: Optional[str] = Field(
+    tender_object: str = Field(
+        default="Inconnu", description="Objet de l'appel d'offres"
+    )
+    deadline: str | None = Field(
         default=None, description="Date limite au format DD-MM-YYYY"
     )
     description: str = Field(
         default="", description="Description du marché (300 mots maximum)"
     )
-    budget: Optional[str] = Field(
+    budget: str | None = Field(
         default=None, description="Montant estimé si mentionné (ex: 50 000 000 FCFA)"
     )
-    location: Optional[str] = Field(
+    location: str | None = Field(
         default=None, description="Localisation géographique si mentionnée"
     )
     is_results_notice: bool = Field(
@@ -82,7 +84,9 @@ class TenderBlock(BaseModel):
             "False pour tout le reste."
         ),
     )
-    domain: Literal["it_services", "it_hardware", "it_consulting", "hors_perimetre"] = Field(
+    domain: Literal[
+        "it_services", "it_hardware", "it_consulting", "hors_perimetre"
+    ] = Field(
         default="hors_perimetre",
         description="Domaine : it_services, it_hardware, it_consulting, ou hors_perimetre",
     )
@@ -97,7 +101,7 @@ class TenderBlock(BaseModel):
 class TenderList(BaseModel):
     """Wrapper for bulk LLM extraction — all notices in one call."""
 
-    tenders: List[TenderBlock] = Field(
+    tenders: list[TenderBlock] = Field(
         default_factory=list,
         description="Liste complète de tous les avis extraits du document",
     )
@@ -168,7 +172,7 @@ def _find_avis_section_start(text: str) -> int:
     return 0
 
 
-def _extract_all_tenders_with_llm(document_text: str) -> List[TenderBlock]:
+def _extract_all_tenders_with_llm(document_text: str) -> list[TenderBlock]:
     """Single LLM call to extract all tenders from the document text.
 
     Returns a (possibly empty) list of TenderBlock objects.
@@ -179,9 +183,7 @@ def _extract_all_tenders_with_llm(document_text: str) -> List[TenderBlock]:
         return []
 
     provider = settings.llm.provider
-    prompt = _EXTRACTION_PROMPT.format(
-        document_text=document_text[:_MAX_INPUT_CHARS]
-    )
+    prompt = _EXTRACTION_PROMPT.format(document_text=document_text[:_MAX_INPUT_CHARS])
 
     if provider.lower() == "groq":
         try:
@@ -218,7 +220,7 @@ def parse_quotidien_structured(
     source_url: str,
     quotidien_title: str,
     run_id: str,
-) -> List[Dict]:
+) -> list[dict]:
     """Parse quotidien PDF with a single LLM call that extracts all notices at once.
 
     1. Extract full PDF text (pdfminer — fast, no OCR overhead for text PDFs)

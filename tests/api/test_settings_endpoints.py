@@ -1,15 +1,18 @@
 import os
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-os.environ.setdefault("TENDERAI_JWT_SECRET", "test-jwt-secret-not-used-for-real-auth-only-pytest-xxxxxxxx")
+os.environ.setdefault(
+    "TENDERAI_JWT_SECRET", "test-jwt-secret-not-used-for-real-auth-only-pytest-xxxxxxxx"
+)
 os.environ.setdefault("TENDERAI_ADMIN_PASSWORD", "test-admin-password-not-real")
 
-from tenderai_bf.db import Base, get_db
 from tenderai_bf.api.main import app
+from tenderai_bf.db import Base, get_db
 
 
 @pytest.fixture
@@ -42,6 +45,7 @@ def client(test_db):
 def _auth_headers(client: TestClient) -> dict:
     """Create a test admin JWT directly."""
     from tenderai_bf.api.dependencies import create_access_token
+
     token = create_access_token({"sub": "testadmin", "role": "admin"})
     return {"Authorization": f"Bearer {token}"}
 
@@ -77,6 +81,7 @@ def test_put_section_validates_and_saves(client, test_db):
     assert res.status_code == 200
 
     from tenderai_bf.settings_store import SettingsStore
+
     saved = SettingsStore.get_section(session, "pipeline")
     assert saved["min_relevance_score"] == 0.6
     assert saved["max_items_per_run"] == 200

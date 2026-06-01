@@ -3,7 +3,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from tenderai_bf.models import User, Base
+from tenderai_bf.models import Base, User
 
 
 @pytest.fixture(scope="function")

@@ -1,7 +1,7 @@
 """FastAPI application for TenderAI BF."""
 
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 
 from ..config import settings
 from ..logging import get_logger
-from .routers import health, runs, sources, reports, admin, users, countries
+from .routers import admin, countries, health, reports, runs, sources, users
 
 logger = get_logger(__name__)
 
@@ -18,17 +18,18 @@ logger = get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator:
     """FastAPI lifespan events."""
-    
+
     # Startup
     logger.info(
         "Starting FastAPI application",
         app_name=settings.app_name,
         version=settings.app_version,
-        environment=settings.environment
+        environment=settings.environment,
     )
-    
+
     # Initialize database
-    from ..db import init_database, check_database_health
+    from ..db import check_database_health, init_database
+
     try:
         init_database()
         if check_database_health():
@@ -37,9 +38,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
             logger.error("Database health check failed")
     except Exception as e:
         logger.error("Failed to initialize database", error=str(e))
-    
+
     # Initialize storage
     from ..storage import get_storage_client
+
     try:
         storage_client = get_storage_client()
         if storage_client.health_check():
@@ -51,9 +53,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
 
     # Seed settings from current config if DB is empty
     try:
+        from ..config import reload_settings_from_db
         from ..db import get_session_factory
         from ..settings_store import SettingsStore
-        from ..config import reload_settings_from_db
+
         SessionLocal = get_session_factory()
         db_session = SessionLocal()
         try:
@@ -69,12 +72,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
 
     # Seed BF country if no countries exist yet
     try:
-        from ..models import Country as CountryModel
         from ..country_store import CountryStore as CS
+        from ..models import Country as CountryModel
+
         db_session2 = SessionLocal()
         try:
             if not db_session2.query(CountryModel).first():
-                bf = CountryModel(name="Burkina Faso", code="BF", locale="fr", active=True)
+                bf = CountryModel(
+                    name="Burkina Faso", code="BF", locale="fr", active=True
+                )
                 db_session2.add(bf)
                 db_session2.commit()
                 db_session2.refresh(bf)
@@ -86,7 +92,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
         logger.warning("Could not seed BF country", error=str(e))
 
     yield
-    
+
     # Shutdown
     logger.info("Shutting down FastAPI application")
 
@@ -99,7 +105,7 @@ app = FastAPI(
     lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc",
-    openapi_url="/openapi.json"
+    openapi_url="/openapi.json",
 )
 
 # Add middlewares
@@ -118,21 +124,21 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
     """Handle uncaught exceptions."""
-    
+
     logger.error(
         "Unhandled exception",
         path=request.url.path,
         method=request.method,
         error=str(exc),
-        exc_info=exc
+        exc_info=exc,
     )
-    
+
     return JSONResponse(
         status_code=500,
         content={
             "detail": "Internal server error",
-            "error": str(exc) if settings.debug else "An error occurred"
-        }
+            "error": str(exc) if settings.debug else "An error occurred",
+        },
     )
 
 
@@ -143,7 +149,9 @@ app.include_router(sources.router, prefix="/api/v1/sources", tags=["Sources"])
 app.include_router(reports.router, prefix="/api/v1/reports", tags=["Reports"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["Users"])
-app.include_router(countries.router, prefix="/api/v1/admin/countries", tags=["Countries"])
+app.include_router(
+    countries.router, prefix="/api/v1/admin/countries", tags=["Countries"]
+)
 
 
 @app.get("/")
@@ -154,17 +162,17 @@ async def root():
         "version": settings.app_version,
         "environment": settings.environment,
         "docs": "/docs",
-        "health": "/health"
+        "health": "/health",
     }
 
 
 if __name__ == "__main__":
     import uvicorn
-    
+
     uvicorn.run(
         "tenderai_bf.api.main:app",
         host="0.0.0.0",
         port=8000,
         reload=settings.debug,
-        log_level="info"
+        log_level="info",
     )

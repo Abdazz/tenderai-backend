@@ -3,8 +3,8 @@
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 
+from ...country_store import MUTABLE_SECTIONS, CountryStore
 from ...models import Country
-from ...country_store import CountryStore, MUTABLE_SECTIONS
 from ..dependencies import AuthenticatedUser, DatabaseSession
 from ..schemas.countries import CountryCreate, CountryRead, CountryUpdate
 from ..schemas.settings import SECTION_SCHEMAS
@@ -25,7 +25,9 @@ async def list_countries(db: DatabaseSession, user: AuthenticatedUser):
 
 
 @router.post("", response_model=CountryRead, status_code=status.HTTP_201_CREATED)
-async def create_country(body: CountryCreate, db: DatabaseSession, user: AuthenticatedUser):
+async def create_country(
+    body: CountryCreate, db: DatabaseSession, user: AuthenticatedUser
+):
     country = Country(name=body.name, code=body.code.upper(), locale=body.locale)
     db.add(country)
     try:
@@ -71,7 +73,9 @@ async def delete_country(country_id: int, db: DatabaseSession, user: Authenticat
 
 
 @router.get("/{country_id}/settings")
-async def get_all_settings(country_id: int, db: DatabaseSession, user: AuthenticatedUser):
+async def get_all_settings(
+    country_id: int, db: DatabaseSession, user: AuthenticatedUser
+):
     _get_country_or_404(country_id, db)
     return CountryStore.get_all_with_fallback(db, country_id)
 
@@ -81,11 +85,14 @@ async def get_section(
     country_id: int, section: str, db: DatabaseSession, user: AuthenticatedUser
 ):
     if section not in MUTABLE_SECTIONS:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=f"Unknown section: {section}")
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, detail=f"Unknown section: {section}"
+        )
     _get_country_or_404(country_id, db)
     data = CountryStore.get_section(db, country_id, section)
     if data is None:
         from ...models import AppSettings
+
         row = db.query(AppSettings).filter(AppSettings.section == section).first()
         data = row.data if row else {}
     return data
@@ -100,7 +107,9 @@ async def update_section(
     user: AuthenticatedUser,
 ):
     if section not in MUTABLE_SECTIONS:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=f"Unknown section: {section}")
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, detail=f"Unknown section: {section}"
+        )
     country = _get_country_or_404(country_id, db)
     schema_cls = SECTION_SCHEMAS.get(section)
     if schema_cls:
@@ -111,6 +120,7 @@ async def update_section(
     CountryStore.put_section(db, country_id, section, body, updated_by=user["username"])
     if section == "scheduler":
         from ...scheduler.schedule import reschedule_country_job
+
         try:
             reschedule_country_job(country_id, country.code, body)
         except Exception:

@@ -26,7 +26,9 @@ def _make_trigger(cron_schedule: str, timezone_str: str) -> CronTrigger:
     )
 
 
-def reschedule_country_job(country_id: int, country_code: str, scheduler_cfg: dict) -> None:
+def reschedule_country_job(
+    country_id: int, country_code: str, scheduler_cfg: dict
+) -> None:
     """Remove and optionally re-add the APScheduler job for a country.
 
     Called by the settings API when a country's scheduler section is updated.
@@ -58,15 +60,20 @@ def reschedule_country_job(country_id: int, country_code: str, scheduler_cfg: di
         coalesce=True,
         max_instances=scheduler_cfg.get("max_concurrent_runs", 1),
     )
-    logger.info("Country job rescheduled", country_code=country_code, cron=scheduler_cfg["cron_schedule"])
+    logger.info(
+        "Country job rescheduled",
+        country_code=country_code,
+        cron=scheduler_cfg["cron_schedule"],
+    )
 
 
 def scheduled_pipeline_run(country_id: int) -> None:
     """Execute the pipeline for one country as a scheduled job."""
 
     try:
-        from ..db import get_session_factory
         from ..config import reload_settings_from_db
+        from ..db import get_session_factory
+
         SessionLocal = get_session_factory()
         db_session = SessionLocal()
         try:
@@ -120,9 +127,9 @@ def start_scheduler() -> None:
     logger.info("Starting TenderAI BF scheduler")
 
     # Load active countries
+    from ..country_store import CountryStore
     from ..db import get_session_factory
     from ..models import Country
-    from ..country_store import CountryStore
 
     SessionLocal = get_session_factory()
     db_session = SessionLocal()
@@ -147,11 +154,15 @@ def start_scheduler() -> None:
         cron = sched_cfg.get("cron_schedule", _default_cron)
         tz_str = sched_cfg.get("timezone", _default_tz)
         enabled = sched_cfg.get("enabled", True)
-        max_inst = sched_cfg.get("max_concurrent_runs", settings.scheduler.max_concurrent_runs)
+        max_inst = sched_cfg.get(
+            "max_concurrent_runs", settings.scheduler.max_concurrent_runs
+        )
         run_on_startup = sched_cfg.get("run_on_startup", False)
 
         if not enabled:
-            logger.info("Country scheduler disabled, skipping", country_code=country.code)
+            logger.info(
+                "Country scheduler disabled, skipping", country_code=country.code
+            )
             continue
 
         trigger = _make_trigger(cron, tz_str)

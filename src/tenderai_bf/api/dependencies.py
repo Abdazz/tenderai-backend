@@ -29,22 +29,24 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
 # get_db is already imported from ..db above
 
 
-async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> Optional[dict]:
+async def get_current_user(
+    token: Annotated[str, Depends(oauth2_scheme)],
+) -> dict | None:
     """Get current authenticated user from JWT token.
-    
+
     Returns None if no token or invalid token (for optional auth).
     """
-    
+
     if not token:
         return None
-    
+
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
-        
+
         if username is None:
             return None
-        
+
         return {
             "username": username,
             "email": payload.get("email"),
@@ -57,16 +59,18 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> Opt
         return None
 
 
-async def require_auth(current_user: Annotated[dict, Depends(get_current_user)]) -> dict:
+async def require_auth(
+    current_user: Annotated[dict, Depends(get_current_user)],
+) -> dict:
     """Require authentication (raises 401 if not authenticated)."""
-    
+
     if current_user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     return current_user
 
 
@@ -80,21 +84,21 @@ async def require_admin(current_user: Annotated[dict, Depends(require_auth)]) ->
     return current_user
 
 
-def create_access_token(data: dict, expires_delta: Optional[int] = None) -> str:
+def create_access_token(data: dict, expires_delta: int | None = None) -> str:
     """Create JWT access token."""
-    
+
     from datetime import datetime, timedelta
-    
+
     to_encode = data.copy()
-    
+
     if expires_delta:
         expire = datetime.utcnow() + timedelta(minutes=expires_delta)
     else:
         expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    
+
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    
+
     return encoded_jwt
 
 

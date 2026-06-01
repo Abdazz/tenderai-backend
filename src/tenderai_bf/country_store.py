@@ -1,6 +1,6 @@
 """Per-country DB-backed settings store. One row per (country_id, section) in country_settings."""
 
-from typing import Optional
+
 from sqlalchemy.orm import Session
 
 from .models import AppSettings, CountrySettings
@@ -11,9 +11,8 @@ MUTABLE_SECTIONS = frozenset(
 
 
 class CountryStore:
-
     @staticmethod
-    def get_section(db: Session, country_id: int, section: str) -> Optional[dict]:
+    def get_section(db: Session, country_id: int, section: str) -> dict | None:
         row = (
             db.query(CountrySettings)
             .filter(
@@ -26,7 +25,11 @@ class CountryStore:
 
     @staticmethod
     def put_section(
-        db: Session, country_id: int, section: str, data: dict, updated_by: str = "system"
+        db: Session,
+        country_id: int,
+        section: str,
+        data: dict,
+        updated_by: str = "system",
     ) -> None:
         row = CountrySettings(
             country_id=country_id, section=section, data=data, updated_by=updated_by
@@ -48,9 +51,11 @@ class CountryStore:
         """Return per-country settings, falling back to global AppSettings for missing sections."""
         global_rows = db.query(AppSettings).all()
         merged = {row.section: row.data for row in global_rows}
-        country_rows = db.query(CountrySettings).filter(
-            CountrySettings.country_id == country_id
-        ).all()
+        country_rows = (
+            db.query(CountrySettings)
+            .filter(CountrySettings.country_id == country_id)
+            .all()
+        )
         for row in country_rows:
             merged[row.section] = row.data
         return merged

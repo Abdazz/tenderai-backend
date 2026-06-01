@@ -6,8 +6,10 @@ RFP/tender opportunities in IT/Engineering domains across Burkina Faso.
 
 # bcrypt 4.x removed __about__; passlib 1.7.4 requires it for version detection.
 import types as _types
+
 import bcrypt as _bcrypt
-if not hasattr(_bcrypt, '__about__'):
+
+if not hasattr(_bcrypt, "__about__"):
     _bcrypt.__about__ = _types.SimpleNamespace(__version__=_bcrypt.__version__)
 del _bcrypt, _types
 
@@ -18,6 +20,6 @@ __license__ = "Proprietary"
 
 # Re-export commonly used components
 from .config import settings
-from .db import get_db, get_db_context, get_engine
+from .db import get_db, get_engine
 
 __all__ = ["settings", "get_db", "get_engine"]

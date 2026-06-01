@@ -61,13 +61,18 @@ def admin_token(client, db_session):
     db_session.add(admin)
     db_session.commit()
 
-    resp = client.post("/api/v1/admin/login/simple", json={"username": "admin", "password": "adminpass123"})
+    resp = client.post(
+        "/api/v1/admin/login/simple",
+        json={"username": "admin", "password": "adminpass123"},
+    )
     assert resp.status_code == 200
     return resp.json()["access_token"]
 
 
 def test_list_users_requires_admin(client, admin_token):
-    resp = client.get("/api/v1/users", headers={"Authorization": f"Bearer {admin_token}"})
+    resp = client.get(
+        "/api/v1/users", headers={"Authorization": f"Bearer {admin_token}"}
+    )
     assert resp.status_code == 200
     assert isinstance(resp.json()["users"], list)
 
@@ -85,7 +90,10 @@ def test_list_users_forbidden_for_viewer(client, db_session):
     db_session.add(viewer)
     db_session.commit()
 
-    resp = client.post("/api/v1/admin/login/simple", json={"username": "viewer1", "password": "viewerpass123"})
+    resp = client.post(
+        "/api/v1/admin/login/simple",
+        json={"username": "viewer1", "password": "viewerpass123"},
+    )
     token = resp.json()["access_token"]
 
     resp = client.get("/api/v1/users", headers={"Authorization": f"Bearer {token}"})

@@ -9,7 +9,7 @@ synchronise retries across our concurrent fetches.
 
 from __future__ import annotations
 
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 import httpx
 from tenacity import (
@@ -31,7 +31,15 @@ _RETRYABLE_STATUS = {429, 500, 502, 503, 504}
 
 
 def _is_retryable(exc: BaseException) -> bool:
-    if isinstance(exc, (httpx.TimeoutException, httpx.ConnectError, httpx.ReadError, httpx.RemoteProtocolError)):
+    if isinstance(
+        exc,
+        (
+            httpx.TimeoutException,
+            httpx.ConnectError,
+            httpx.ReadError,
+            httpx.RemoteProtocolError,
+        ),
+    ):
         return True
     if isinstance(exc, httpx.HTTPStatusError):
         return exc.response.status_code in _RETRYABLE_STATUS
@@ -69,7 +77,9 @@ async def fetch_with_retry(
     Raises:
         The last exception encountered if all attempts fail.
     """
-    attempts = max_attempts if max_attempts is not None else max(1, settings.fetch.max_retries)
+    attempts = (
+        max_attempts if max_attempts is not None else max(1, settings.fetch.max_retries)
+    )
 
     async for attempt in AsyncRetrying(
         retry=retry_if_exception(_is_retryable),
@@ -94,7 +104,9 @@ async def fetch_with_retry(
 
     # AsyncRetrying with reraise=True will have already raised if all
     # attempts failed; this line is unreachable but keeps mypy happy.
-    raise RetryError(f"All {attempts} attempts to fetch {url} failed")  # pragma: no cover
+    raise RetryError(
+        f"All {attempts} attempts to fetch {url} failed"
+    )  # pragma: no cover
 
 
 __all__ = ["fetch_with_retry"]

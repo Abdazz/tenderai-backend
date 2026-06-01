@@ -1,7 +1,7 @@
 """Pydantic schemas for Country and CountrySettings API."""
 
 from datetime import datetime
-from typing import Optional
+
 from pydantic import BaseModel, Field
 
 
@@ -12,9 +12,9 @@ class CountryCreate(BaseModel):
 
 
 class CountryUpdate(BaseModel):
-    name: Optional[str] = Field(None, min_length=1, max_length=255)
-    locale: Optional[str] = Field(None, min_length=2, max_length=10)
-    active: Optional[bool] = None
+    name: str | None = Field(None, min_length=1, max_length=255)
+    locale: str | None = Field(None, min_length=2, max_length=10)
+    active: bool | None = None
 
 
 class CountryRead(BaseModel):

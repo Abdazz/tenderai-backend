@@ -1,7 +1,6 @@
 """Admin and authentication endpoints."""
 
 from datetime import datetime
-from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
@@ -40,7 +39,7 @@ class LoginResponse(BaseModel):
 
 class UserResponse(BaseModel):
     username: str
-    email: Optional[str] = None
+    email: str | None = None
     role: str
     is_active: bool
     password_reset_required: bool
@@ -52,14 +51,16 @@ class ChangePasswordRequest(BaseModel):
 
 
 class EmailTestRequest(BaseModel):
-    to_address: Optional[EmailStr] = None
-    subject: Optional[str] = None
-    body: Optional[str] = None
+    to_address: EmailStr | None = None
+    subject: str | None = None
+    body: str | None = None
 
 
-def _authenticate_user(db: Session, username: str, password: str) -> Optional[User]:
+def _authenticate_user(db: Session, username: str, password: str) -> User | None:
     """Look up active user in DB and verify password. Returns User or None."""
-    user = db.query(User).filter(User.username == username, User.is_active == True).first()
+    user = (
+        db.query(User).filter(User.username == username, User.is_active == True).first()
+    )
     if not user:
         return None
     if not verify_password(password, user.hashed_password):
@@ -146,7 +147,9 @@ async def change_password(
     if not verify_password(request.current_password, user.hashed_password):
         raise HTTPException(status_code=400, detail="Current password is incorrect")
     if len(request.new_password) < 8:
-        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+        raise HTTPException(
+            status_code=400, detail="Password must be at least 8 characters"
+        )
     user.hashed_password = get_password_hash(request.new_password)
     user.password_reset_required = False
     db.commit()
@@ -171,10 +174,16 @@ async def test_email(request: EmailTestRequest, user: AuthenticatedUser):
         if not success:
             raise Exception("Email sending failed")
         logger.info("Test email sent", to_address=to_address, sent_by=user["username"])
-        return {"status": "success", "message": f"Test email sent to {to_address}", "to_address": to_address}
+        return {
+            "status": "success",
+            "message": f"Test email sent to {to_address}",
+            "to_address": to_address,
+        }
     except Exception as e:
         logger.error("Failed to send test email", error=str(e))
-        raise HTTPException(status_code=500, detail=f"Failed to send test email: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to send test email: {e!s}"
+        )
 
 
 @router.post("/clear-cache")
@@ -182,18 +191,24 @@ async def clear_cache(user: AuthenticatedUser):
     """Clear application caches. Requires authentication."""
     try:
         from ...utils.robots import _robots_checker
+
         _robots_checker.clear_cache()
         logger.info("Caches cleared", cleared_by=user["username"])
-        return {"status": "success", "message": "Caches cleared successfully", "caches_cleared": ["robots_txt"]}
+        return {
+            "status": "success",
+            "message": "Caches cleared successfully",
+            "caches_cleared": ["robots_txt"],
+        }
     except Exception as e:
         logger.error("Failed to clear caches", error=str(e))
-        raise HTTPException(status_code=500, detail=f"Failed to clear caches: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to clear caches: {e!s}")
 
 
 @router.get("/settings")
 async def get_all_settings(user: AuthenticatedUser, db: DatabaseSession):
     """Get all mutable settings sections from DB + read-only env-var sections."""
     from ...settings_store import SettingsStore
+
     mutable = SettingsStore.get_all(db)
     readonly = {
         "database": {"url": "***"},
@@ -217,14 +232,20 @@ async def get_all_settings(user: AuthenticatedUser, db: DatabaseSession):
 
 
 @router.get("/settings/{section}")
-async def get_section_settings(section: str, user: AuthenticatedUser, db: DatabaseSession):
+async def get_section_settings(
+    section: str, user: AuthenticatedUser, db: DatabaseSession
+):
     """Get a single mutable settings section from DB."""
-    from ...settings_store import SettingsStore, MUTABLE_SECTIONS
+    from ...settings_store import MUTABLE_SECTIONS, SettingsStore
+
     if section not in MUTABLE_SECTIONS:
         raise HTTPException(status_code=400, detail=f"Unknown section '{section}'")
     data = SettingsStore.get_section(db, section)
     if data is None:
-        raise HTTPException(status_code=404, detail=f"Section '{section}' not found in DB — run /seed first")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Section '{section}' not found in DB — run /seed first",
+        )
     return data
 
 
@@ -236,9 +257,9 @@ async def update_section_settings(
     payload: dict = Body(...),
 ):
     """Validate and persist a settings section, then reload in-memory config."""
-    from ...settings_store import SettingsStore, MUTABLE_SECTIONS
     from ...api.schemas.settings import SECTION_SCHEMAS
     from ...config import reload_settings_from_db
+    from ...settings_store import MUTABLE_SECTIONS, SettingsStore
 
     if section not in MUTABLE_SECTIONS:
         raise HTTPException(status_code=400, detail=f"Unknown section '{section}'")
@@ -249,11 +270,15 @@ async def update_section_settings(
     except Exception as e:
         raise HTTPException(status_code=422, detail=str(e))
 
-    SettingsStore.put_section(db, section, validated.model_dump(), updated_by=user["username"])
+    SettingsStore.put_section(
+        db, section, validated.model_dump(), updated_by=user["username"]
+    )
     reload_settings_from_db(db)
 
     if section == "scheduler":
-        _reschedule_if_running(settings.scheduler.cron_schedule, settings.scheduler.timezone)
+        _reschedule_if_running(
+            settings.scheduler.cron_schedule, settings.scheduler.timezone
+        )
 
     logger.info("Settings updated", section=section, updated_by=user["username"])
     return {"status": "ok", "section": section}
@@ -262,8 +287,9 @@ async def update_section_settings(
 @router.post("/settings/seed")
 async def seed_settings(user: AuthenticatedUser, db: DatabaseSession):
     """Seed DB with current in-memory settings (idempotent)."""
-    from ...settings_store import SettingsStore
     from ...config import reload_settings_from_db
+    from ...settings_store import SettingsStore
+
     seeded = SettingsStore.seed_from_settings(db)
     reload_settings_from_db(db)
     logger.info("Settings seeded", sections=seeded, requested_by=user["username"])
@@ -274,13 +300,18 @@ def _reschedule_if_running(cron_schedule: str, timezone: str) -> None:
     """Signal the in-process APScheduler to use the new cron, if it's running."""
     try:
         from ...scheduler.schedule import _scheduler_instance
+
         if _scheduler_instance and _scheduler_instance.running:
-            from apscheduler.triggers.cron import CronTrigger
             import pytz
+            from apscheduler.triggers.cron import CronTrigger
+
             parts = cron_schedule.split()
             trigger = CronTrigger(
-                minute=parts[0], hour=parts[1], day=parts[2],
-                month=parts[3], day_of_week=parts[4],
+                minute=parts[0],
+                hour=parts[1],
+                day=parts[2],
+                month=parts[3],
+                day_of_week=parts[4],
                 timezone=pytz.timezone(timezone),
             )
             _scheduler_instance.reschedule_job("daily_pipeline", trigger=trigger)

@@ -1,10 +1,17 @@
 # src/tenderai_bf/api/schemas/settings.py
 """Pydantic validation schemas for settings sections."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from pydantic import BaseModel, Field
 
-DEDUP_METHODS = {"hash_only", "similarity_only", "hash_similarity", "llm_only", "hybrid"}
+DEDUP_METHODS = {
+    "hash_only",
+    "similarity_only",
+    "hash_similarity",
+    "llm_only",
+    "hybrid",
+}
 LLM_PROVIDERS = {"groq", "openai", "ollama"}
 
 
@@ -19,9 +26,7 @@ class PipelineSettingsSchema(BaseModel):
 
     def model_post_init(self, __context: Any) -> None:
         if self.deduplication_method not in DEDUP_METHODS:
-            raise ValueError(
-                f"deduplication_method must be one of {DEDUP_METHODS}"
-            )
+            raise ValueError(f"deduplication_method must be one of {DEDUP_METHODS}")
 
 
 class SchedulerSettingsSchema(BaseModel):
@@ -34,7 +39,9 @@ class SchedulerSettingsSchema(BaseModel):
     def model_post_init(self, __context: Any) -> None:
         parts = self.cron_schedule.strip().split()
         if len(parts) != 5:
-            raise ValueError("cron_schedule must have exactly 5 fields (min hr dom mon dow)")
+            raise ValueError(
+                "cron_schedule must have exactly 5 fields (min hr dom mon dow)"
+            )
 
 
 class LLMSettingsSchema(BaseModel):
@@ -56,7 +63,7 @@ class EmailSettingsSchema(BaseModel):
     from_address: str
     from_name: str
     to_address: str
-    reply_to: Optional[str] = None
+    reply_to: str | None = None
     subject_prefix: str
     signature: str
 
@@ -83,10 +90,10 @@ class PromptsSettingsSchema(BaseModel):
 
 
 class ClassificationSettingsSchema(BaseModel):
-    relevant_keywords: Dict[str, List[str]]
+    relevant_keywords: dict[str, list[str]]
 
 
-SECTION_SCHEMAS: Dict[str, type] = {
+SECTION_SCHEMAS: dict[str, type] = {
     "pipeline": PipelineSettingsSchema,
     "scheduler": SchedulerSettingsSchema,
     "llm": LLMSettingsSchema,

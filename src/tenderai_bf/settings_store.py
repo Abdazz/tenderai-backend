@@ -1,9 +1,9 @@
 # src/tenderai_bf/settings_store.py
 """DB-backed settings store. One row per section in app_settings."""
 
-from typing import Optional
-from sqlalchemy.orm import Session
+
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from .models import AppSettings
 
@@ -13,9 +13,8 @@ MUTABLE_SECTIONS = frozenset(
 
 
 class SettingsStore:
-
     @staticmethod
-    def get_section(db: Session, section: str) -> Optional[dict]:
+    def get_section(db: Session, section: str) -> dict | None:
         row = db.query(AppSettings).filter(AppSettings.section == section).first()
         return row.data if row else None
 
@@ -87,15 +86,15 @@ class SettingsStore:
             "classification": {
                 "relevant_keywords": s.classification.relevant_keywords,
             },
-            "prompts": s.prompts.model_dump(mode="json") if hasattr(s.prompts, "model_dump") else dict(s.prompts),
+            "prompts": s.prompts.model_dump(mode="json")
+            if hasattr(s.prompts, "model_dump")
+            else dict(s.prompts),
         }
 
         seeded: list[str] = []
         for section, data in sections_data.items():
             exists = (
-                db.query(AppSettings)
-                .filter(AppSettings.section == section)
-                .first()
+                db.query(AppSettings).filter(AppSettings.section == section).first()
             )
             if exists:
                 continue

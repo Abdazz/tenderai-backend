@@ -1,5 +1,5 @@
 """API routers package."""
 
-from . import health, runs, sources, reports, admin, countries
+from . import admin, countries, health, reports, runs, sources
 
-__all__ = ['health', 'runs', 'sources', 'reports', 'admin', 'countries']
+__all__ = ["health", "runs", "sources", "reports", "admin", "countries"]

@@ -1,16 +1,14 @@
 """Command-line interface for TenderAI BF."""
 
-import asyncio
 import os
 import sys
 import uuid
-from typing import Optional
 
 import click
 
 from .agents import get_pipeline
 from .config import settings
-from .db import init_database, check_database_health, get_database_info, get_engine
+from .db import check_database_health, get_database_info, get_engine, init_database
 from .email import test_email_configuration
 from .logging import get_logger
 from .storage import get_storage_client
@@ -26,10 +24,12 @@ def main():
 
 
 @main.command()
-@click.option('--triggered-by', default='manual', help='Who triggered this run')
-@click.option('--user', default=None, help='User who triggered this run')
-@click.option('--country-id', default=1, type=int, help='Country ID to run pipeline for')
-def run_once(triggered_by: str, user: Optional[str], country_id: int):
+@click.option("--triggered-by", default="manual", help="Who triggered this run")
+@click.option("--user", default=None, help="User who triggered this run")
+@click.option(
+    "--country-id", default=1, type=int, help="Country ID to run pipeline for"
+)
+def run_once(triggered_by: str, user: str | None, country_id: int):
     """Execute the pipeline once and generate a report."""
 
     click.echo("🚀 Starting TenderAI BF pipeline...")
@@ -73,11 +73,13 @@ def run_once(triggered_by: str, user: Optional[str], country_id: int):
         if report_url:
             click.echo(f"   • Report URL: {report_url}")
 
-        if email_status.get('success'):
-            click.echo(f"   • Email sent to {email_status.get('recipients_count', 0)} recipient(s)")
-        elif email_status and not email_status.get('skipped'):
+        if email_status.get("success"):
+            click.echo(
+                f"   • Email sent to {email_status.get('recipients_count', 0)} recipient(s)"
+            )
+        elif email_status and not email_status.get("skipped"):
             click.echo("   • Email delivery failed (report still available on MinIO)")
-    
+
     except KeyboardInterrupt:
         click.echo("\n⚠️ Pipeline interrupted by user")
         sys.exit(1)
@@ -90,11 +92,12 @@ def run_once(triggered_by: str, user: Optional[str], country_id: int):
 @main.command()
 def run_scheduler():
     """Start the scheduler daemon."""
-    
+
     click.echo("⏰ Starting TenderAI BF scheduler...")
-    
+
     try:
         from .scheduler.schedule import start_scheduler
+
         start_scheduler()
     except KeyboardInterrupt:
         click.echo("\n⚠️ Scheduler stopped by user")
@@ -107,13 +110,14 @@ def run_scheduler():
 @main.command()
 def run_worker():
     """Start the worker daemon for heavy processing."""
-    
+
     click.echo("⚙️ Starting TenderAI BF worker...")
-    
+
     try:
         # TODO: Implement worker daemon for OCR/heavy processing
         click.echo("Worker daemon not yet implemented")
         import time
+
         while True:
             time.sleep(60)
     except KeyboardInterrupt:
@@ -127,9 +131,9 @@ def run_worker():
 @main.command()
 def init_db():
     """Initialize the database schema."""
-    
+
     click.echo("🗄️ Initializing database...")
-    
+
     try:
         init_database()
         click.echo("✅ Database initialized successfully")
@@ -142,19 +146,19 @@ def init_db():
 @main.command()
 def health_check():
     """Check system health and connectivity."""
-    
+
     click.echo("🏥 Checking system health...")
-    
+
     # Check database
     if check_database_health():
         click.echo("✅ Database: Connected")
         db_info = get_database_info()
-        if not db_info.get('error'):
+        if not db_info.get("error"):
             click.echo(f"   • Version: {db_info.get('version', 'Unknown')}")
             click.echo(f"   • Database: {db_info.get('database', 'Unknown')}")
     else:
         click.echo("❌ Database: Connection failed")
-    
+
     # Check storage
     try:
         storage_client = get_storage_client()
@@ -164,13 +168,13 @@ def health_check():
             click.echo("❌ Storage (MinIO): Health check failed")
     except Exception as e:
         click.echo(f"❌ Storage (MinIO): {e}")
-    
+
     # Check email
     if test_email_configuration():
         click.echo("✅ Email (SMTP): Configuration valid")
     else:
         click.echo("❌ Email (SMTP): Configuration failed")
-    
+
     click.echo("\n📊 Configuration:")
     click.echo(f"   • Environment: {settings.environment}")
     click.echo(f"   • Log level: {settings.monitoring.log_level}")
@@ -181,9 +185,9 @@ def health_check():
 @main.command()
 def test_email():
     """Test email configuration by sending a test message."""
-    
+
     click.echo("📧 Testing email configuration...")
-    
+
     try:
         if test_email_configuration():
             click.echo("✅ Test email sent successfully")
@@ -197,13 +201,13 @@ def test_email():
 
 
 @main.command()
-@click.option('--run-id', help='Specific run ID to check')
-def status(run_id: Optional[str]):
+@click.option("--run-id", help="Specific run ID to check")
+def status(run_id: str | None):
     """Check pipeline status and recent runs."""
-    
+
     try:
         pipeline = get_pipeline()
-        
+
         if run_id:
             # Check specific run
             run_status = pipeline.get_pipeline_status(run_id)
@@ -211,11 +215,11 @@ def status(run_id: Optional[str]):
                 click.echo(f"📊 Run {run_id}:")
                 click.echo(f"   • Status: {run_status['status']}")
                 click.echo(f"   • Started: {run_status['started_at']}")
-                if run_status['finished_at']:
+                if run_status["finished_at"]:
                     click.echo(f"   • Finished: {run_status['finished_at']}")
                     click.echo(f"   • Duration: {run_status['duration_seconds']:.1f}s")
                 click.echo(f"   • Triggered by: {run_status['triggered_by']}")
-                if run_status.get('error_message'):
+                if run_status.get("error_message"):
                     click.echo(f"   • Error: {run_status['error_message']}")
             else:
                 click.echo(f"❌ Run {run_id} not found")
@@ -226,16 +230,26 @@ def status(run_id: Optional[str]):
             if recent_runs:
                 click.echo("📊 Recent pipeline runs:")
                 for run in recent_runs:
-                    status_icon = "✅" if run['status'] == 'completed' else "❌" if run['status'] == 'failed' else "🔄"
-                    click.echo(f"   {status_icon} {run['id'][:8]}... ({run['status']}) - {run['started_at']}")
-                    if run.get('counts'):
-                        counts = run['counts']
-                        click.echo(f"      Sources: {counts.get('sources_checked', 0)}, "
-                                 f"Relevant: {counts.get('relevant_items', 0)}, "
-                                 f"Duration: {counts.get('total_time_seconds', 0):.1f}s")
+                    status_icon = (
+                        "✅"
+                        if run["status"] == "completed"
+                        else "❌"
+                        if run["status"] == "failed"
+                        else "🔄"
+                    )
+                    click.echo(
+                        f"   {status_icon} {run['id'][:8]}... ({run['status']}) - {run['started_at']}"
+                    )
+                    if run.get("counts"):
+                        counts = run["counts"]
+                        click.echo(
+                            f"      Sources: {counts.get('sources_checked', 0)}, "
+                            f"Relevant: {counts.get('relevant_items', 0)}, "
+                            f"Duration: {counts.get('total_time_seconds', 0):.1f}s"
+                        )
             else:
                 click.echo("No recent runs found")
-    
+
     except Exception as e:
         click.echo(f"❌ Status check failed: {e}")
         logger.error("Status check failed", error=str(e), exc_info=True)
@@ -245,28 +259,28 @@ def status(run_id: Optional[str]):
 @main.command()
 def build_report():
     """Generate a report from the last successful run."""
-    
+
     click.echo("📄 Building report from last run...")
-    
+
     try:
         pipeline = get_pipeline()
         recent_runs = pipeline.get_recent_runs(limit=1)
-        
+
         if not recent_runs:
             click.echo("❌ No recent runs found")
             sys.exit(1)
-        
+
         last_run = recent_runs[0]
-        if last_run['status'] != 'completed':
+        if last_run["status"] != "completed":
             click.echo(f"❌ Last run status: {last_run['status']}")
             sys.exit(1)
-        
-        if last_run.get('report_url'):
+
+        if last_run.get("report_url"):
             click.echo(f"✅ Report already exists: {last_run['report_url']}")
         else:
             click.echo("❌ No report URL found for last run")
             sys.exit(1)
-    
+
     except Exception as e:
         click.echo(f"❌ Report building failed: {e}")
         logger.error("Report building failed", error=str(e), exc_info=True)
@@ -274,11 +288,26 @@ def build_report():
 
 
 @main.command("create-admin")
-@click.option("--username", default=None, help="Admin username (default: $TENDERAI_ADMIN_USERNAME or 'admin')")
+@click.option(
+    "--username",
+    default=None,
+    help="Admin username (default: $TENDERAI_ADMIN_USERNAME or 'admin')",
+)
 @click.option("--email", default=None, help="Admin email")
-@click.option("--password", default=None, help="Admin password (default: $TENDERAI_ADMIN_PASSWORD)")
-@click.option("--force", is_flag=True, default=False, help="Overwrite the password if the user already exists")
-def create_admin(username: Optional[str], email: Optional[str], password: Optional[str], force: bool):
+@click.option(
+    "--password",
+    default=None,
+    help="Admin password (default: $TENDERAI_ADMIN_PASSWORD)",
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    default=False,
+    help="Overwrite the password if the user already exists",
+)
+def create_admin(
+    username: str | None, email: str | None, password: str | None, force: bool
+):
     """Create (or reset) the admin user. Safe to re-run: skips if user exists unless --force."""
 
     from passlib.context import CryptContext
@@ -289,7 +318,9 @@ def create_admin(username: Optional[str], email: Optional[str], password: Option
     email = email or os.environ.get("TENDERAI_ADMIN_EMAIL", f"{username}@tenderai.bf")
 
     if not password:
-        click.echo("❌ No password provided. Use --password or set TENDERAI_ADMIN_PASSWORD.")
+        click.echo(
+            "❌ No password provided. Use --password or set TENDERAI_ADMIN_PASSWORD."
+        )
         sys.exit(1)
 
     if len(password) < 8:
@@ -309,7 +340,9 @@ def create_admin(username: Optional[str], email: Optional[str], password: Option
 
             if row:
                 if not force:
-                    click.echo(f"ℹ️  User '{username}' already exists. Use --force to overwrite the password.")
+                    click.echo(
+                        f"ℹ️  User '{username}' already exists. Use --force to overwrite the password."
+                    )
                     return
                 conn.execute(
                     text(
@@ -327,7 +360,12 @@ def create_admin(username: Optional[str], email: Optional[str], password: Option
                         "is_active, password_reset_required) "
                         "VALUES (:id, :username, :email, :pwd, 'admin', true, false)"
                     ),
-                    {"id": str(uuid.uuid4()), "username": username, "email": email, "pwd": hashed},
+                    {
+                        "id": str(uuid.uuid4()),
+                        "username": username,
+                        "email": email,
+                        "pwd": hashed,
+                    },
                 )
                 conn.commit()
                 click.echo(f"✅ Admin user '{username}' created successfully.")
@@ -339,11 +377,17 @@ def create_admin(username: Optional[str], email: Optional[str], password: Option
 
 
 @main.command("seed-sources")
-@click.option("--force", is_flag=True, default=False, help="Update sources that already exist in the DB")
+@click.option(
+    "--force",
+    is_flag=True,
+    default=False,
+    help="Update sources that already exist in the DB",
+)
 def seed_sources(force: bool):
     """Seed sources from settings.yaml into the database. Safe to re-run: skips existing unless --force."""
 
     from urllib.parse import urlparse
+
     from sqlalchemy import text
 
     sources = settings.sources
@@ -365,7 +409,9 @@ def seed_sources(force: bool):
                 enabled = source.get("enabled", True)
 
                 if not name or not list_url:
-                    click.echo(f"  Skipping entry with missing name or list_url: {source}")
+                    click.echo(
+                        f"  Skipping entry with missing name or list_url: {source}"
+                    )
                     continue
 
                 # Derive base_url from list_url origin
@@ -389,8 +435,11 @@ def seed_sources(force: bool):
                             "updated_at=NOW() WHERE name=:name"
                         ),
                         {
-                            "name": name, "base_url": base_url, "list_url": list_url,
-                            "parser_type": parser_type, "rate_limit": rate_limit,
+                            "name": name,
+                            "base_url": base_url,
+                            "list_url": list_url,
+                            "parser_type": parser_type,
+                            "rate_limit": rate_limit,
                             "enabled": enabled,
                         },
                     )
@@ -406,8 +455,11 @@ def seed_sources(force: bool):
                             ":rate_limit, :enabled, NOW(), NOW())"
                         ),
                         {
-                            "name": name, "base_url": base_url, "list_url": list_url,
-                            "parser_type": parser_type, "rate_limit": rate_limit,
+                            "name": name,
+                            "base_url": base_url,
+                            "list_url": list_url,
+                            "parser_type": parser_type,
+                            "rate_limit": rate_limit,
                             "enabled": enabled,
                         },
                     )
@@ -423,5 +475,5 @@ def seed_sources(force: bool):
         sys.exit(1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

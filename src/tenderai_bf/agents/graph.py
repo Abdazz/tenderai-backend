@@ -4,29 +4,29 @@ import threading
 import time
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
-from langgraph.graph import StateGraph, END
+from langgraph.graph import END, StateGraph
 from pydantic import BaseModel, Field
 
 from ..config import settings
 from ..country_store import CountryStore
 from ..db import get_db_context
-from ..logging import get_logger, log_run_start, log_run_complete, log_run_error
+from ..logging import get_logger, log_run_complete, log_run_error, log_run_start
 from ..models import Country as CountryModel, Run
-from ..schemas import PipelineState, RunStatistics
+from ..schemas import RunStatistics
+from .nodes.classify import classify_node
+from .nodes.compose_report import compose_report_node
+from .nodes.deduplicate import deduplicate_node
+from .nodes.email_report import email_report_node
+from .nodes.extract_item_links import extract_item_links_node
+from .nodes.fetch_items import fetch_items_node
+from .nodes.fetch_listings import fetch_listings_node
 
 # Import node functions
 from .nodes.load_sources import load_sources_node
-from .nodes.fetch_listings import fetch_listings_node
-from .nodes.extract_item_links import extract_item_links_node
-from .nodes.fetch_items import fetch_items_node
 from .nodes.parse_extract import parse_extract_node
-from .nodes.classify import classify_node
-from .nodes.deduplicate import deduplicate_node
 from .nodes.summarize import summarize_node
-from .nodes.compose_report import compose_report_node
-from .nodes.email_report import email_report_node
 
 logger = get_logger(__name__)
 
@@ -42,30 +42,32 @@ class TenderAIState(BaseModel):
     country_id: int = 0
     country_name: str = ""
     country_locale: str = "fr"
-    country_config: Dict[str, Any] = Field(default_factory=dict)
+    country_config: dict[str, Any] = Field(default_factory=dict)
 
     # Pipeline data
-    sources: List[Dict[str, Any]] = Field(default_factory=list)
-    discovered_links: List[Union[str, Dict[str, Any]]] = Field(default_factory=list)  # Can be URL strings or quotidien dicts
-    items_raw: List[Dict[str, Any]] = Field(default_factory=list)
-    items_parsed: List[Dict[str, Any]] = Field(default_factory=list)
-    relevant_items: List[Dict[str, Any]] = Field(default_factory=list)
-    unique_items: List[Dict[str, Any]] = Field(default_factory=list)
-    summaries: Dict[str, str] = Field(default_factory=dict)
+    sources: list[dict[str, Any]] = Field(default_factory=list)
+    discovered_links: list[str | dict[str, Any]] = Field(
+        default_factory=list
+    )  # Can be URL strings or quotidien dicts
+    items_raw: list[dict[str, Any]] = Field(default_factory=list)
+    items_parsed: list[dict[str, Any]] = Field(default_factory=list)
+    relevant_items: list[dict[str, Any]] = Field(default_factory=list)
+    unique_items: list[dict[str, Any]] = Field(default_factory=list)
+    summaries: dict[str, str] = Field(default_factory=dict)
 
     # Outputs
-    report_bytes: Optional[bytes] = None
-    report_url: Optional[str] = None
-    email_status: Dict[str, Any] = Field(default_factory=dict)
+    report_bytes: bytes | None = None
+    report_url: str | None = None
+    email_status: dict[str, Any] = Field(default_factory=dict)
 
     # Statistics and metrics
     stats: RunStatistics = Field(default_factory=RunStatistics)
-    errors: List[Dict[str, Any]] = Field(default_factory=list)
+    errors: list[dict[str, Any]] = Field(default_factory=list)
     # Non-fatal warnings: pipeline continues but the run is flagged
     # `completed_with_warnings` instead of `completed`. Use add_warning() to
     # record things like SMTP transient failures where the report itself was
     # successfully generated and stored.
-    warnings: List[Dict[str, Any]] = Field(default_factory=list)
+    warnings: list[dict[str, Any]] = Field(default_factory=list)
 
     # Control flow
     should_continue: bool = True
@@ -77,23 +79,29 @@ class TenderAIState(BaseModel):
 
     def add_error(self, step: str, error: str, **kwargs) -> None:
         """Add an error to the state."""
-        self.errors.append({
-            'step': step,
-            'error': error,
-            'timestamp': datetime.utcnow().isoformat(),
-            **kwargs
-        })
+        self.errors.append(
+            {
+                "step": step,
+                "error": error,
+                "timestamp": datetime.utcnow().isoformat(),
+                **kwargs,
+            }
+        )
         self.error_occurred = True
-        logger.error(f"Pipeline error in {step}", error=error, run_id=self.run_id, **kwargs)
+        logger.error(
+            f"Pipeline error in {step}", error=error, run_id=self.run_id, **kwargs
+        )
 
     def add_warning(self, step: str, warning: str, **kwargs) -> None:
         """Record a non-fatal warning without aborting the pipeline."""
-        self.warnings.append({
-            'step': step,
-            'warning': warning,
-            'timestamp': datetime.utcnow().isoformat(),
-            **kwargs
-        })
+        self.warnings.append(
+            {
+                "step": step,
+                "warning": warning,
+                "timestamp": datetime.utcnow().isoformat(),
+                **kwargs,
+            }
+        )
         logger.warning(
             f"Pipeline warning in {step}",
             warning=warning,
@@ -149,7 +157,7 @@ def error_handler(state: TenderAIState) -> TenderAIState:
             if run:
                 run.status = "failed"
                 run.finished_at = datetime.utcnow()
-                run.error_message = errors[-1]['error'] if errors else "Unknown error"
+                run.error_message = errors[-1]["error"] if errors else "Unknown error"
                 if stats is not None:
                     run.counts_json = stats if isinstance(stats, dict) else stats.dict()
                 session.commit()
@@ -160,7 +168,7 @@ def error_handler(state: TenderAIState) -> TenderAIState:
     if errors:
         log_run_error(
             run_id,
-            Exception(errors[-1]['error']),
+            Exception(errors[-1]["error"]),
             errors_count=len(errors),
             duration=(datetime.utcnow() - started_at).total_seconds(),
         )
@@ -203,7 +211,7 @@ class TenderAIGraph:
         self.graph = self._build_graph()
         self.app = _AppWrapper(self.graph.compile())
         logger.info("TenderAI pipeline graph initialized")
-    
+
     def _build_graph(self) -> StateGraph:
         """Build the LangGraph state graph.
 
@@ -264,13 +272,15 @@ class TenderAIGraph:
         workflow.add_edge("error_handler", END)
 
         return workflow
-    
-    def run(self,
-            country_id: int,
-            triggered_by: str = "scheduler",
-            triggered_by_user: Optional[str] = None,
-            sources_override: Optional[List[Dict]] = None,
-            send_email: bool = True) -> TenderAIState:
+
+    def run(
+        self,
+        country_id: int,
+        triggered_by: str = "scheduler",
+        triggered_by_user: str | None = None,
+        sources_override: list[dict] | None = None,
+        send_email: bool = True,
+    ) -> TenderAIState:
         """Execute the complete pipeline."""
 
         # Initialize state
@@ -280,7 +290,11 @@ class TenderAIGraph:
         # Load country context
         try:
             with get_db_context() as _db:
-                _country = _db.query(CountryModel).filter(CountryModel.id == country_id).first()
+                _country = (
+                    _db.query(CountryModel)
+                    .filter(CountryModel.id == country_id)
+                    .first()
+                )
                 if not _country:
                     state.add_error("pipeline", f"Country {country_id} not found")
                     state.error_occurred = True
@@ -288,7 +302,9 @@ class TenderAIGraph:
                 state.country_id = country_id
                 state.country_name = _country.name
                 state.country_locale = _country.locale
-                state.country_config = CountryStore.get_all_with_fallback(_db, country_id)
+                state.country_config = CountryStore.get_all_with_fallback(
+                    _db, country_id
+                )
         except Exception as _e:
             state.add_error("pipeline", f"Failed to load country config: {_e}")
             state.error_occurred = True
@@ -299,9 +315,11 @@ class TenderAIGraph:
             run_id,
             triggered_by=triggered_by,
             triggered_by_user=triggered_by_user,
-            sources_count=len(sources_override) if sources_override else len(settings.get_active_sources())
+            sources_count=len(sources_override)
+            if sources_override
+            else len(settings.get_active_sources()),
         )
-        
+
         # Log LLM configuration at pipeline start
         llm_provider = settings.llm.provider
         llm_model = None
@@ -309,20 +327,22 @@ class TenderAIGraph:
             "run_id": run_id,
             "llm_provider": llm_provider,
             "temperature": settings.llm.temperature,
-            "max_tokens": settings.llm.max_tokens
+            "max_tokens": settings.llm.max_tokens,
         }
-        
+
         if llm_provider == "groq":
             llm_model = settings.llm.groq_model
         elif llm_provider == "openai":
             llm_model = settings.llm.openai_model
         elif llm_provider == "ollama":
             llm_model = settings.llm.ollama_model
-            log_params["ollama_base_url"] = getattr(settings.llm, 'ollama_base_url', 'http://localhost:11434')
-        
+            log_params["ollama_base_url"] = getattr(
+                settings.llm, "ollama_base_url", "http://localhost:11434"
+            )
+
         log_params["llm_model"] = llm_model
         logger.info("Pipeline starting with LLM configuration", **log_params)
-        
+
         # Create run record in database
         try:
             with get_db_context() as session:
@@ -338,14 +358,14 @@ class TenderAIGraph:
                 session.commit()
         except Exception as e:
             logger.error("Failed to create run record", error=str(e), run_id=run_id)
-        
+
         # Override sources if provided
         if sources_override:
             state.sources = sources_override
-        
+
         # Set send_email flag
         state.send_email = send_email
-        
+
         try:
             # Execute pipeline. LangGraph returns a dict-like view of the
             # final state; we rebuild a TenderAIState so downstream callers
@@ -379,9 +399,9 @@ class TenderAIGraph:
                         run.counts_json = final_state.stats.dict()
                         run.report_url = final_state.report_url
                         if final_state.errors:
-                            run.error_message = final_state.errors[-1]['error']
+                            run.error_message = final_state.errors[-1]["error"]
                         elif final_state.warnings:
-                            run.error_message = final_state.warnings[-1]['warning']
+                            run.error_message = final_state.warnings[-1]["warning"]
                         session.commit()
             except Exception as db_error:
                 logger.error(
@@ -404,7 +424,9 @@ class TenderAIGraph:
 
         except Exception as e:
             # Handle unexpected errors
-            logger.error("Pipeline execution failed", error=str(e), run_id=run_id, exc_info=True)
+            logger.error(
+                "Pipeline execution failed", error=str(e), run_id=run_id, exc_info=True
+            )
 
             # Update run record
             try:
@@ -440,71 +462,85 @@ class TenderAIGraph:
             return TenderAIState(**raw)
         if hasattr(raw, "dict"):
             return TenderAIState(**raw.dict())
-        raise TypeError(
-            f"Unexpected pipeline return type: {type(raw).__name__}"
-        )
-    
+        raise TypeError(f"Unexpected pipeline return type: {type(raw).__name__}")
+
     def run_step(self, step_name: str, state: TenderAIState) -> TenderAIState:
         """Execute a single step of the pipeline for testing/debugging."""
-        
+
         if step_name not in self.graph.nodes:
             raise ValueError(f"Unknown step: {step_name}")
-        
+
         # Get the node function
         node_func = self.graph.nodes[step_name]
-        
+
         try:
             # Execute the step
             result = node_func(state)
             logger.info(f"Step {step_name} completed successfully", run_id=state.run_id)
             return result
         except Exception as e:
-            logger.error(f"Step {step_name} failed", error=str(e), run_id=state.run_id, exc_info=True)
+            logger.error(
+                f"Step {step_name} failed",
+                error=str(e),
+                run_id=state.run_id,
+                exc_info=True,
+            )
             state.add_error(step_name, str(e))
             return state
-    
-    def get_pipeline_status(self, run_id: str) -> Optional[Dict[str, Any]]:
+
+    def get_pipeline_status(self, run_id: str) -> dict[str, Any] | None:
         """Get the status of a pipeline run."""
-        
+
         try:
             with get_db_context() as session:
                 run = session.query(Run).filter(Run.id == run_id).first()
                 if run:
                     return {
-                        'id': run.id,
-                        'status': run.status,
-                        'started_at': run.started_at.isoformat(),
-                        'finished_at': run.finished_at.isoformat() if run.finished_at else None,
-                        'duration_seconds': run.duration_seconds,
-                        'triggered_by': run.triggered_by,
-                        'triggered_by_user': run.triggered_by_user,
-                        'counts': run.counts_json or {},
-                        'error_message': run.error_message,
-                        'report_url': run.report_url
+                        "id": run.id,
+                        "status": run.status,
+                        "started_at": run.started_at.isoformat(),
+                        "finished_at": run.finished_at.isoformat()
+                        if run.finished_at
+                        else None,
+                        "duration_seconds": run.duration_seconds,
+                        "triggered_by": run.triggered_by,
+                        "triggered_by_user": run.triggered_by_user,
+                        "counts": run.counts_json or {},
+                        "error_message": run.error_message,
+                        "report_url": run.report_url,
                     }
                 return None
         except Exception as e:
             logger.error("Failed to get pipeline status", error=str(e), run_id=run_id)
             return None
-    
-    def get_recent_runs(self, limit: int = 10) -> List[Dict[str, Any]]:
+
+    def get_recent_runs(self, limit: int = 10) -> list[dict[str, Any]]:
         """Get recent pipeline runs."""
-        
+
         try:
             with get_db_context() as session:
-                runs = session.query(Run).order_by(Run.started_at.desc()).limit(limit).all()
+                runs = (
+                    session.query(Run)
+                    .order_by(Run.started_at.desc())
+                    .limit(limit)
+                    .all()
+                )
                 return [
                     {
-                        'id': run.id,
-                        'status': run.status,
-                        'started_at': run.started_at.isoformat(),
-                        'finished_at': run.finished_at.isoformat() if run.finished_at else None,
-                        'duration_seconds': run.duration_seconds,
-                        'triggered_by': run.triggered_by,
-                        'triggered_by_user': run.triggered_by_user,
-                        'counts': run.counts_json or {},
-                        'error_message': run.error_message[:100] + '...' if run.error_message and len(run.error_message) > 100 else run.error_message,
-                        'report_url': run.report_url
+                        "id": run.id,
+                        "status": run.status,
+                        "started_at": run.started_at.isoformat(),
+                        "finished_at": run.finished_at.isoformat()
+                        if run.finished_at
+                        else None,
+                        "duration_seconds": run.duration_seconds,
+                        "triggered_by": run.triggered_by,
+                        "triggered_by_user": run.triggered_by_user,
+                        "counts": run.counts_json or {},
+                        "error_message": run.error_message[:100] + "..."
+                        if run.error_message and len(run.error_message) > 100
+                        else run.error_message,
+                        "report_url": run.report_url,
                     }
                     for run in runs
                 ]
@@ -519,7 +555,7 @@ def create_pipeline_graph() -> TenderAIGraph:
 
 
 # Global pipeline instance
-_pipeline: Optional[TenderAIGraph] = None
+_pipeline: TenderAIGraph | None = None
 _pipeline_lock = threading.Lock()
 
 
