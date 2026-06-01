@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Body, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
@@ -191,46 +191,99 @@ async def clear_cache(user: AuthenticatedUser):
 
 
 @router.get("/settings")
-async def get_settings_info(user: AuthenticatedUser):
-    """Get current application settings (safe subset). Requires authentication."""
-    return {
-        "app_name": settings.app_name,
-        "app_version": settings.app_version,
-        "environment": settings.environment,
-        "debug": settings.debug,
-        "log_level": settings.log_level,
-        "database": {
-            "url_masked": "***" if settings.database_url else None,
+async def get_all_settings(user: AuthenticatedUser, db: DatabaseSession):
+    """Get all mutable settings sections from DB + read-only env-var sections."""
+    from ...settings_store import SettingsStore
+    mutable = SettingsStore.get_all(db)
+    readonly = {
+        "database": {"url": "***"},
+        "minio": {
+            "endpoint": settings.minio.endpoint,
+            "bucket_name": settings.minio.bucket_name,
+            "credentials": "***",
         },
-        "email": {
-            "smtp_server": settings.email.smtp_server,
-            "smtp_port": settings.email.smtp_port,
-            "from_address": settings.email.from_address,
-            "to_address": settings.email.to_address,
+        "smtp": {
+            "host": settings.smtp.host,
+            "port": settings.smtp.port,
+            "credentials": "***",
         },
-        "storage": {
-            "endpoint_url": settings.storage.endpoint_url,
-            "bucket_name": settings.storage.bucket_name,
-        },
-        "pipeline": {
-            "max_items_per_source": settings.pipeline.max_items_per_source,
-            "max_total_items": settings.pipeline.max_total_items,
-            "timeout_seconds": settings.pipeline.timeout_seconds,
-        },
-        "scheduler": {
-            "enabled": settings.scheduler.enabled,
-            "cron_schedule": settings.scheduler.cron_schedule,
-            "timezone": settings.scheduler.timezone,
+        "security": {
+            "admin_username": settings.security.admin_username,
+            "jwt_secret": "***",
+            "admin_password": "***",
         },
     }
+    return {"sections": mutable, "readonly": readonly}
 
 
-@router.post("/reload-config")
-async def reload_config(user: AuthenticatedUser):
-    """Reload configuration. Requires authentication."""
-    logger.info("Config reload requested", requested_by=user["username"])
-    return {
-        "status": "success",
-        "message": "Configuration reload requested (may require app restart for full effect)",
-        "note": "Some settings require application restart to take effect",
-    }
+@router.get("/settings/{section}")
+async def get_section_settings(section: str, user: AuthenticatedUser, db: DatabaseSession):
+    """Get a single mutable settings section from DB."""
+    from ...settings_store import SettingsStore, MUTABLE_SECTIONS
+    if section not in MUTABLE_SECTIONS:
+        raise HTTPException(status_code=400, detail=f"Unknown section '{section}'")
+    data = SettingsStore.get_section(db, section)
+    if data is None:
+        raise HTTPException(status_code=404, detail=f"Section '{section}' not found in DB — run /seed first")
+    return data
+
+
+@router.put("/settings/{section}")
+async def update_section_settings(
+    section: str,
+    user: AuthenticatedUser,
+    db: DatabaseSession,
+    payload: dict = Body(...),
+):
+    """Validate and persist a settings section, then reload in-memory config."""
+    from ...settings_store import SettingsStore, MUTABLE_SECTIONS
+    from ...api.schemas.settings import SECTION_SCHEMAS
+    from ...config import reload_settings_from_db
+
+    if section not in MUTABLE_SECTIONS:
+        raise HTTPException(status_code=400, detail=f"Unknown section '{section}'")
+
+    schema_cls = SECTION_SCHEMAS[section]
+    try:
+        validated = schema_cls(**payload)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    SettingsStore.put_section(db, section, validated.model_dump(), updated_by=user["username"])
+    reload_settings_from_db(db)
+
+    if section == "scheduler":
+        _reschedule_if_running(settings.scheduler.cron_schedule, settings.scheduler.timezone)
+
+    logger.info("Settings updated", section=section, updated_by=user["username"])
+    return {"status": "ok", "section": section}
+
+
+@router.post("/settings/seed")
+async def seed_settings(user: AuthenticatedUser, db: DatabaseSession):
+    """Seed DB with current in-memory settings (idempotent)."""
+    from ...settings_store import SettingsStore
+    from ...config import reload_settings_from_db
+    seeded = SettingsStore.seed_from_settings(db)
+    reload_settings_from_db(db)
+    logger.info("Settings seeded", sections=seeded, requested_by=user["username"])
+    return {"status": "ok", "seeded": seeded}
+
+
+def _reschedule_if_running(cron_schedule: str, timezone: str) -> None:
+    """Signal the in-process APScheduler to use the new cron, if it's running."""
+    try:
+        from ...scheduler.schedule import _scheduler_instance
+        if _scheduler_instance and _scheduler_instance.running:
+            from apscheduler.triggers.cron import CronTrigger
+            import pytz
+            parts = cron_schedule.split()
+            trigger = CronTrigger(
+                minute=parts[0], hour=parts[1], day=parts[2],
+                month=parts[3], day_of_week=parts[4],
+                timezone=pytz.timezone(timezone),
+            )
+            _scheduler_instance.reschedule_job("daily_pipeline", trigger=trigger)
+            logger.info("Scheduler rescheduled", cron=cron_schedule, tz=timezone)
+    except Exception as e:
+        logger.warning("Could not reschedule in-process scheduler", error=str(e))

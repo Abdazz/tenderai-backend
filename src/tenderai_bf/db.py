@@ -66,7 +66,7 @@ def get_engine():
 def get_session_factory():
     """Get or create the SQLAlchemy session factory."""
     global _SessionLocal
-    
+
     if _SessionLocal is None:
         engine = get_engine()
         _SessionLocal = sessionmaker(
@@ -75,8 +75,15 @@ def get_session_factory():
             bind=engine,
         )
         logger.info("Database session factory created")
-    
+
     return _SessionLocal
+
+
+# Lazy-loaded SessionLocal for direct usage
+def __getattr__(name):
+    if name == "SessionLocal":
+        return get_session_factory()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 @contextmanager
@@ -182,3 +189,7 @@ def get_database_info() -> dict:
 
 # Import time for query timing
 import time
+
+# Register all ORM models with Base.metadata so that create_all() works
+# correctly even when individual model modules haven't been imported yet.
+from . import models as _models  # noqa: F401, E402

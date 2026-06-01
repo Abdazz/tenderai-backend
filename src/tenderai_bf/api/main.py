@@ -48,7 +48,25 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
             logger.error("Storage health check failed")
     except Exception as e:
         logger.error("Failed to initialize storage", error=str(e))
-    
+
+    # Seed settings from current config if DB is empty
+    try:
+        from ..db import get_session_factory
+        from ..settings_store import SettingsStore
+        from ..config import reload_settings_from_db
+        SessionLocal = get_session_factory()
+        db_session = SessionLocal()
+        try:
+            seeded = SettingsStore.seed_from_settings(db_session)
+            if seeded:
+                logger.info("Settings seeded from config", sections=seeded)
+            reload_settings_from_db(db_session)
+            logger.info("Settings loaded from DB")
+        finally:
+            db_session.close()
+    except Exception as e:
+        logger.warning("Could not seed/reload settings from DB", error=str(e))
+
     yield
     
     # Shutdown

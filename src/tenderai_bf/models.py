@@ -264,3 +264,17 @@ class User(Base):
 
     def __repr__(self) -> str:
         return f"<User(username='{self.username}', role='{self.role}')>"
+
+
+class AppSettings(Base):
+    """Mutable operational settings persisted in DB."""
+
+    __tablename__ = "app_settings"
+
+    section = Column(String(64), primary_key=True)
+    data = Column(JSON, nullable=False)
+    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+    updated_by = Column(Text, nullable=True)
+
+    def __repr__(self) -> str:
+        return f"<AppSettings(section='{self.section}')>"
