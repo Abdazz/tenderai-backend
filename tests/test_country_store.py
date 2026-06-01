@@ -45,3 +45,10 @@ def test_run_has_country_id_column(db):
     inspector = inspect(engine)
     cols = {c["name"] for c in inspector.get_columns("runs")}
     assert "country_id" in cols
+
+
+def test_recipient_has_country_id_column(db):
+    engine = db.get_bind()
+    inspector = inspect(engine)
+    cols = {c["name"] for c in inspector.get_columns("recipients")}
+    assert "country_id" in cols
