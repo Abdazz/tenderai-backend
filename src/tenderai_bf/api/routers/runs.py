@@ -197,18 +197,22 @@ async def list_runs(
     db: DatabaseSession,
     page: int = 1,
     page_size: int = 20,
-    status_filter: Optional[str] = None
+    status_filter: Optional[str] = None,
+    country_id: Optional[int] = None
 ):
     """List all pipeline runs with pagination."""
-    
+
     from ...models import Run
-    
+
     # Build query
     query = db.query(Run)
-    
+
     if status_filter:
         query = query.filter(Run.status == status_filter)
-    
+
+    if country_id is not None:
+        query = query.filter(Run.country_id == country_id)
+
     # Get total count
     total = query.count()
     

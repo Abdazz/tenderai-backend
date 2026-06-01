@@ -1,6 +1,6 @@
 """Sources management endpoints."""
 
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
@@ -22,19 +22,26 @@ class SourceListResponse(BaseModel):
 
 
 @router.get("", response_model=SourceListResponse)
-async def list_sources(db: DatabaseSession, enabled_only: bool = False):
+async def list_sources(
+    db: DatabaseSession,
+    enabled_only: bool = False,
+    country_id: Optional[int] = None
+):
     """List all configured sources from database."""
-    
+
     from ...models import Source
-    
+
     # Get sources from database
     query = db.query(Source)
-    
+
     if enabled_only:
         query = query.filter(Source.enabled == True)
-    
+
+    if country_id is not None:
+        query = query.filter(Source.country_id == country_id)
+
     db_sources = query.all()
-    
+
     return SourceListResponse(
         sources=[SourceSchema.from_orm(source) for source in db_sources],
         total=len(db_sources)
