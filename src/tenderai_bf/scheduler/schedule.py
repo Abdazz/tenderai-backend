@@ -43,9 +43,10 @@ def reschedule_country_job(country_id: int, country_code: str, scheduler_cfg: di
     if not scheduler_cfg.get("enabled", True):
         return
 
+    cron = scheduler_cfg.get("cron_schedule") or settings.scheduler.cron_schedule
     trigger = _make_trigger(
-        scheduler_cfg["cron_schedule"],
-        scheduler_cfg.get("timezone", "UTC"),
+        cron,
+        scheduler_cfg.get("timezone", settings.scheduler.timezone),
     )
     scheduler.add_job(
         scheduled_pipeline_run,

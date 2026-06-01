@@ -1,6 +1,6 @@
 """CRUD endpoints for countries and per-country settings."""
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 
 from ...models import Country
@@ -104,7 +104,10 @@ async def update_section(
     country = _get_country_or_404(country_id, db)
     schema_cls = SECTION_SCHEMAS.get(section)
     if schema_cls:
-        schema_cls(**body)
+        try:
+            schema_cls(**body)
+        except Exception as e:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
     CountryStore.put_section(db, country_id, section, body, updated_by=user["username"])
     if section == "scheduler":
         from ...scheduler.schedule import reschedule_country_job
@@ -116,17 +119,21 @@ async def update_section(
 
 
 @router.post("/{country_id}/run", status_code=status.HTTP_202_ACCEPTED)
-async def trigger_run(country_id: int, db: DatabaseSession, user: AuthenticatedUser):
+async def trigger_run(
+    country_id: int,
+    db: DatabaseSession,
+    user: AuthenticatedUser,
+    background_tasks: BackgroundTasks,
+):
     _get_country_or_404(country_id, db)
-    import asyncio
     from ...agents import get_pipeline
 
-    async def _run():
+    def _run():
         get_pipeline().run(
             country_id=country_id,
             triggered_by="api",
             triggered_by_user=user["username"],
         )
 
-    asyncio.create_task(_run())
+    background_tasks.add_task(_run)
     return {"status": "accepted", "country_id": country_id}
