@@ -59,5 +59,4 @@ extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Path"]
 [format]
 quote-style = "double"
 indent-style = "space"
-skip-string-normalization = false
 line-ending = "auto"
