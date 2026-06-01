@@ -52,3 +52,64 @@ def test_recipient_has_country_id_column(db):
     inspector = inspect(engine)
     cols = {c["name"] for c in inspector.get_columns("recipients")}
     assert "country_id" in cols
+
+
+def test_country_store_get_section_returns_none_when_absent(db):
+    from tenderai_bf.models import Country
+    from tenderai_bf.country_store import CountryStore
+    country = Country(name="Test", code="XX", locale="fr")
+    db.add(country)
+    db.commit()
+    assert CountryStore.get_section(db, country.id, "pipeline") is None
+
+
+def test_country_store_put_and_get_section(db):
+    from tenderai_bf.models import Country
+    from tenderai_bf.country_store import CountryStore
+    country = Country(name="Test", code="TT", locale="fr")
+    db.add(country)
+    db.commit()
+    CountryStore.put_section(db, country.id, "pipeline", {"min_relevance_score": 0.6}, updated_by="test")
+    result = CountryStore.get_section(db, country.id, "pipeline")
+    assert result == {"min_relevance_score": 0.6}
+
+
+def test_country_store_get_all_with_fallback_uses_global_for_missing(db):
+    from tenderai_bf.models import Country, AppSettings
+    from tenderai_bf.country_store import CountryStore
+    # Insert global setting
+    db.add(AppSettings(section="email", data={"to_address": "global@example.com"}, updated_by="test"))
+    db.commit()
+    # Country with no country-specific email setting
+    country = Country(name="New", code="NW", locale="fr")
+    db.add(country)
+    db.commit()
+    result = CountryStore.get_all_with_fallback(db, country.id)
+    assert result["email"]["to_address"] == "global@example.com"
+
+
+def test_country_store_get_all_with_fallback_country_overrides_global(db):
+    from tenderai_bf.models import Country, AppSettings
+    from tenderai_bf.country_store import CountryStore
+    db.add(AppSettings(section="email", data={"to_address": "global@example.com"}, updated_by="test"))
+    db.commit()
+    country = Country(name="Override", code="OV", locale="fr")
+    db.add(country)
+    db.commit()
+    CountryStore.put_section(db, country.id, "email", {"to_address": "country@example.com"}, updated_by="test")
+    result = CountryStore.get_all_with_fallback(db, country.id)
+    assert result["email"]["to_address"] == "country@example.com"
+
+
+def test_country_store_seed_from_global_copies_all_sections(db):
+    from tenderai_bf.models import Country, AppSettings
+    from tenderai_bf.country_store import CountryStore
+    db.add(AppSettings(section="pipeline", data={"max_items_per_run": 100}, updated_by="test"))
+    db.add(AppSettings(section="llm", data={"provider": "groq"}, updated_by="test"))
+    db.commit()
+    country = Country(name="Seed", code="SD", locale="fr")
+    db.add(country)
+    db.commit()
+    seeded = CountryStore.seed_from_global(db, country.id)
+    assert set(seeded) == {"pipeline", "llm"}
+    assert CountryStore.get_section(db, country.id, "pipeline") == {"max_items_per_run": 100}
