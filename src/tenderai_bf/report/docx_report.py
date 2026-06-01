@@ -242,12 +242,13 @@ def _add_executive_summary(document: Document, data: Dict[str, Any]) -> None:
     notices = data.get('notices', [])
     sources = data.get('sources', [])
     errors = data.get('errors', [])
-    
+    country_name = data.get('country_name', 'Burkina Faso') or 'Burkina Faso'
+
     # Overview paragraph
     overview = document.add_paragraph()
     overview.add_run(
         f"Ce rapport présente les résultats de la veille automatique des appels d'offres "
-        f"IT/Ingénierie au Burkina Faso pour la période du {data['generated_at'].strftime('%d/%m/%Y')}. "
+        f"IT/Ingénierie au {country_name} pour la période du {data['generated_at'].strftime('%d/%m/%Y')}. "
         f"Le système a analysé {len(sources)} sources et identifié {len(notices)} avis pertinents."
     )
     
@@ -338,11 +339,12 @@ def _add_notices_section(document: Document, data: Dict[str, Any]) -> None:
     
     # Count appel_offres
     appel_offres_count = sum(1 for n in notices if n.get('type', 'appel_offres') == 'appel_offres')
-    
+    country_name = data.get('country_name', 'Burkina Faso') or 'Burkina Faso'
+
     overview_para = document.add_paragraph()
     overview_para.add_run(
         f"Cette section présente les {appel_offres_count} appel(s) d'offre(s) identifié(s) comme pertinent(s) "
-        f"pour les domaines IT/Ingénierie au Burkina Faso."
+        f"pour les domaines IT/Ingénierie au {country_name}."
     )
     
     # Group notices by type
@@ -388,15 +390,16 @@ def _add_other_notices_section(document: Document, data: Dict[str, Any]) -> None
     
     # Count other notices
     other_count = sum(len(notices) for notices in notices_by_type.values())
-    
+    country_name = data.get('country_name', 'Burkina Faso') or 'Burkina Faso'
+
     # Section heading with bookmark
     heading = document.add_heading('III. Autres Avis', level=1)
     add_bookmark(heading, 2, 'section_III')
-    
+
     overview_para = document.add_paragraph()
     overview_para.add_run(
         f"Cette section présente les {other_count} autre(s) avis (rectificatif, prorogation, communiqué, annulation) "
-        f"identifié(s) comme pertinent(s) pour les domaines IT/Ingénierie au Burkina Faso."
+        f"identifié(s) comme pertinent(s) pour les domaines IT/Ingénierie au {country_name}."
     )
     
     # Type labels in French

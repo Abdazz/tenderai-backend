@@ -32,7 +32,8 @@ def compose_report_node(state) -> Dict:
             'statistics': state.stats.dict(),
             'notices': state.unique_items,
             'sources': state.sources,
-            'errors': state.errors
+            'errors': state.errors,
+            'country_name': getattr(state, 'country_name', 'Burkina Faso') or 'Burkina Faso',
         }
         
         # Generate DOCX report
@@ -70,7 +71,8 @@ def compose_report_node(state) -> Dict:
             'statistics': state.stats.dict(),  # Now includes reports_generated and report_time
             'notices': state.unique_items,
             'sources': state.sources,
-            'errors': state.errors
+            'errors': state.errors,
+            'country_name': temp_report_data['country_name'],
         }
         
         # Log output to JSON (include full report data)
