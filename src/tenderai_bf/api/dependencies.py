@@ -51,6 +51,7 @@ async def get_current_user(
             "username": username,
             "email": payload.get("email"),
             "role": payload.get("role", "viewer"),
+            "country_id": payload.get("country_id"),
             "password_reset_required": payload.get("password_reset_required", False),
         }
 
@@ -80,6 +81,16 @@ async def require_admin(current_user: Annotated[dict, Depends(require_auth)]) ->
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required",
+        )
+    return current_user
+
+
+async def require_super_admin(current_user: Annotated[dict, Depends(require_auth)]) -> dict:
+    """Require super_admin role. Raises 403 if not super_admin."""
+    if current_user.get("role") != "super_admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Super-admin access required",
         )
     return current_user
 
@@ -117,3 +128,4 @@ DatabaseSession = Annotated[Session, Depends(get_db)]
 CurrentUser = Annotated[Optional[dict], Depends(get_current_user)]
 AuthenticatedUser = Annotated[dict, Depends(require_auth)]
 AdminUser = Annotated[dict, Depends(require_admin)]
+SuperAdminUser = Annotated[dict, Depends(require_super_admin)]

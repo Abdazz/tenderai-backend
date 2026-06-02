@@ -297,11 +297,14 @@ class User(Base):
     username = Column(String(64), nullable=False, unique=True, index=True)
     email = Column(String(255), nullable=False, unique=True, index=True)
     hashed_password = Column(String(255), nullable=False)
-    role = Column(String(10), nullable=False, default="viewer")
+    role = Column(String(15), nullable=False, default="viewer")  # super_admin | admin | viewer
     is_active = Column(Boolean, nullable=False, default=True)
     password_reset_required = Column(Boolean, nullable=False, default=True)
+    country_id = Column(Integer, ForeignKey("countries.id"), nullable=True, index=True)
     created_at = Column(DateTime, nullable=False, default=func.now())
     last_login_at = Column(DateTime, nullable=True)
+
+    country = relationship("Country", foreign_keys=[country_id])
 
     def __repr__(self) -> str:
         return f"<User(username='{self.username}', role='{self.role}')>"

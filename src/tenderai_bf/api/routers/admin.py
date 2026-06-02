@@ -74,6 +74,7 @@ def _build_token(user: User) -> LoginResponse:
             "sub": user.username,
             "email": user.email,
             "role": user.role,
+            "country_id": user.country_id,
             "password_reset_required": user.password_reset_required,
         }
     )
