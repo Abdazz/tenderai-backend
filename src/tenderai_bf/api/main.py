@@ -51,45 +51,33 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     except Exception as e:
         logger.error("Failed to initialize storage", error=str(e))
 
-    # Seed settings from current config if DB is empty
+    # Seed settings from current config if DB is empty, then seed all countries
     try:
-        from ..config import reload_settings_from_db
         from ..db import get_session_factory
         from ..settings_store import SettingsStore
-
-        SessionLocal = get_session_factory()
-        db_session = SessionLocal()
-        try:
-            seeded = SettingsStore.seed_from_settings(db_session)
-            if seeded:
-                logger.info("Settings seeded from config", sections=seeded)
-            reload_settings_from_db(db_session)
-            logger.info("Settings loaded from DB")
-        finally:
-            db_session.close()
-    except Exception as e:
-        logger.warning("Could not seed/reload settings from DB", error=str(e))
-
-    # Seed BF country if no countries exist yet
-    try:
         from ..country_store import CountryStore as CS
         from ..models import Country as CountryModel
 
-        db_session2 = SessionLocal()
-        try:
-            if not db_session2.query(CountryModel).first():
-                bf = CountryModel(
-                    name="Burkina Faso", code="BF", locale="fr", active=True
-                )
-                db_session2.add(bf)
-                db_session2.commit()
-                db_session2.refresh(bf)
-                CS.seed_from_global(db_session2, bf.id)
-                logger.info("Seeded Burkina Faso as default country")
-        finally:
-            db_session2.close()
+        SessionLocal = get_session_factory()
+        with SessionLocal() as db_session:
+            seeded = SettingsStore.seed_from_settings(db_session)
+            if seeded:
+                logger.info("Settings seeded from config", sections=seeded)
+
+            # Seed country_settings for every active country that is missing rows
+            countries = db_session.query(CountryModel).filter(
+                CountryModel.active == True  # noqa: E712
+            ).all()
+            for country in countries:
+                seeded_cs = CS.seed_from_global(db_session, country.id)
+                if seeded_cs:
+                    logger.info(
+                        "Country settings seeded",
+                        country_code=country.code,
+                        sections=seeded_cs,
+                    )
     except Exception as e:
-        logger.warning("Could not seed BF country", error=str(e))
+        logger.warning("Could not seed settings from DB", error=str(e))
 
     yield
 

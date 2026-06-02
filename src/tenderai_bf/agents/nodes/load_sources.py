@@ -99,8 +99,7 @@ def load_sources_node(state) -> dict:
         if not sources:
             state.add_error(
                 "load_sources",
-                "No active sources found to monitor",
-                config_sources_count=len(config_sources),
+                f"No active sources found for country_id={state.country_id} — seed the sources table first",
             )
             state.should_continue = False
 
