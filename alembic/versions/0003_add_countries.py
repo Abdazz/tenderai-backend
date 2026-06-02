@@ -56,30 +56,40 @@ def upgrade() -> None:
 
     # 3. sources.country_id — nullable first for backfill, then NOT NULL
     # Skip if table doesn't exist yet; create_all() will include the column from the model.
-    if _table_exists(bind, "sources") and not _column_exists(bind, "sources", "country_id"):
-        op.add_column("sources", sa.Column("country_id", sa.Integer(), nullable=True))
-        op.execute("UPDATE sources SET country_id = (SELECT id FROM countries WHERE code = 'BF')")
-        op.execute("ALTER TABLE sources ALTER COLUMN country_id SET NOT NULL")
-        op.create_foreign_key(
-            "fk_sources_country_id", "sources", "countries", ["country_id"], ["id"]
+    if _table_exists(bind, "sources"):
+        if not _column_exists(bind, "sources", "country_id"):
+            op.add_column("sources", sa.Column("country_id", sa.Integer(), nullable=True))
+            op.create_foreign_key(
+                "fk_sources_country_id", "sources", "countries", ["country_id"], ["id"]
+            )
+        # Always backfill — covers the case where create_all() added the column without seeding.
+        op.execute(
+            "UPDATE sources SET country_id = (SELECT id FROM countries WHERE code = 'BF') "
+            "WHERE country_id IS NULL"
         )
 
     # 4. runs.country_id — nullable (older runs may not have a country)
-    if _table_exists(bind, "runs") and not _column_exists(bind, "runs", "country_id"):
-        op.add_column("runs", sa.Column("country_id", sa.Integer(), nullable=True))
-        op.execute("UPDATE runs SET country_id = (SELECT id FROM countries WHERE code = 'BF')")
-        op.create_foreign_key(
-            "fk_runs_country_id", "runs", "countries", ["country_id"], ["id"]
+    if _table_exists(bind, "runs"):
+        if not _column_exists(bind, "runs", "country_id"):
+            op.add_column("runs", sa.Column("country_id", sa.Integer(), nullable=True))
+            op.create_foreign_key(
+                "fk_runs_country_id", "runs", "countries", ["country_id"], ["id"]
+            )
+        op.execute(
+            "UPDATE runs SET country_id = (SELECT id FROM countries WHERE code = 'BF') "
+            "WHERE country_id IS NULL"
         )
 
     # 5. recipients.country_id — nullable
-    if _table_exists(bind, "recipients") and not _column_exists(bind, "recipients", "country_id"):
-        op.add_column("recipients", sa.Column("country_id", sa.Integer(), nullable=True))
+    if _table_exists(bind, "recipients"):
+        if not _column_exists(bind, "recipients", "country_id"):
+            op.add_column("recipients", sa.Column("country_id", sa.Integer(), nullable=True))
+            op.create_foreign_key(
+                "fk_recipients_country_id", "recipients", "countries", ["country_id"], ["id"]
+            )
         op.execute(
-            "UPDATE recipients SET country_id = (SELECT id FROM countries WHERE code = 'BF')"
-        )
-        op.create_foreign_key(
-            "fk_recipients_country_id", "recipients", "countries", ["country_id"], ["id"]
+            "UPDATE recipients SET country_id = (SELECT id FROM countries WHERE code = 'BF') "
+            "WHERE country_id IS NULL"
         )
 
     # 6. Create country_settings table (idempotent: may already exist from create_all)

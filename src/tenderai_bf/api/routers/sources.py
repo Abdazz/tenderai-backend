@@ -87,6 +87,7 @@ async def create_source(
         rate_limit=request.rate_limit,
         enabled=request.enabled,
         patterns=request.patterns,
+        country_id=request.country_id,
     )
 
     db.add(source)

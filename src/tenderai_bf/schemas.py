@@ -21,7 +21,7 @@ class SourceBase(BaseModel):
 class SourceCreate(SourceBase):
     """Schema for creating a new Source."""
 
-    pass
+    country_id: int | None = None
 
 
 class SourceUpdate(BaseModel):
@@ -40,6 +40,7 @@ class Source(SourceBase):
     """Schema for Source with all fields."""
 
     id: int
+    country_id: int | None = None
     last_seen_at: datetime | None = None
     last_success_at: datetime | None = None
     last_error_at: datetime | None = None
