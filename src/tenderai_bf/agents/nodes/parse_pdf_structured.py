@@ -21,7 +21,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from ...config import settings
 from ...logging import get_logger
 from ...utils.llm_utils import get_llm_instance
 from ...utils.pdf import extract_pdf_text_from_bytes
@@ -172,7 +171,9 @@ def _find_avis_section_start(text: str) -> int:
     return 0
 
 
-def _extract_all_tenders_with_llm(document_text: str) -> list[TenderBlock]:
+def _extract_all_tenders_with_llm(
+    document_text: str, llm_provider: str = "unknown"
+) -> list[TenderBlock]:
     """Single LLM call to extract all tenders from the document text.
 
     Returns a (possibly empty) list of TenderBlock objects.
@@ -182,7 +183,7 @@ def _extract_all_tenders_with_llm(document_text: str) -> list[TenderBlock]:
         logger.error("LLM not available for quotidien extraction")
         return []
 
-    provider = settings.llm.provider
+    provider = llm_provider
     prompt = _EXTRACTION_PROMPT.format(document_text=document_text[:_MAX_INPUT_CHARS])
 
     if provider.lower() == "groq":
@@ -220,6 +221,7 @@ def parse_quotidien_structured(
     source_url: str,
     quotidien_title: str,
     run_id: str,
+    llm_cfg: dict | None = None,
 ) -> list[dict]:
     """Parse quotidien PDF with a single LLM call that extracts all notices at once.
 
@@ -229,6 +231,9 @@ def parse_quotidien_structured(
     4. Convert to pipeline dict format with classification_embedded=True
 
     Items returned have classification_embedded=True so classify_node skips them.
+
+    Args:
+        llm_cfg: LLM configuration dict (from state.country_config["llm"]).
     """
     logger.info(
         "Parsing quotidien with single-call LLM extractor",
@@ -251,7 +256,8 @@ def parse_quotidien_structured(
         run_id=run_id,
     )
 
-    tenders = _extract_all_tenders_with_llm(document_text)
+    _llm_provider = (llm_cfg or {}).get("provider", "unknown")
+    tenders = _extract_all_tenders_with_llm(document_text, llm_provider=_llm_provider)
     logger.info(
         f"LLM returned {len(tenders)} notices",
         run_id=run_id,

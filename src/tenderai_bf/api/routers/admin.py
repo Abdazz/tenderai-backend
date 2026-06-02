@@ -257,9 +257,8 @@ async def update_section_settings(
     db: DatabaseSession,
     payload: dict = Body(...),
 ):
-    """Validate and persist a settings section, then reload in-memory config."""
+    """Validate and persist a settings section."""
     from ...api.schemas.settings import SECTION_SCHEMAS
-    from ...config import reload_settings_from_db
     from ...settings_store import MUTABLE_SECTIONS, SettingsStore
 
     if section not in MUTABLE_SECTIONS:
@@ -274,7 +273,6 @@ async def update_section_settings(
     SettingsStore.put_section(
         db, section, validated.model_dump(), updated_by=user["username"]
     )
-    reload_settings_from_db(db)
 
     if section == "scheduler":
         _reschedule_if_running(
@@ -288,11 +286,9 @@ async def update_section_settings(
 @router.post("/settings/seed")
 async def seed_settings(user: AuthenticatedUser, db: DatabaseSession):
     """Seed DB with current in-memory settings (idempotent)."""
-    from ...config import reload_settings_from_db
     from ...settings_store import SettingsStore
 
     seeded = SettingsStore.seed_from_settings(db)
-    reload_settings_from_db(db)
     logger.info("Settings seeded", sections=seeded, requested_by=user["username"])
     return {"status": "ok", "seeded": seeded}
 

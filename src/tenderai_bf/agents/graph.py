@@ -322,23 +322,24 @@ class TenderAIGraph:
         )
 
         # Log LLM configuration at pipeline start
-        llm_provider = settings.llm.provider
+        _llm_cfg = state.country_config.get("llm", {})
+        llm_provider = _llm_cfg.get("provider", "unknown")
         llm_model = None
         log_params = {
             "run_id": run_id,
             "llm_provider": llm_provider,
-            "temperature": settings.llm.temperature,
-            "max_tokens": settings.llm.max_tokens,
+            "temperature": _llm_cfg.get("temperature"),
+            "max_tokens": _llm_cfg.get("max_tokens"),
         }
 
         if llm_provider == "groq":
-            llm_model = settings.llm.groq_model
+            llm_model = _llm_cfg.get("groq_model")
         elif llm_provider == "openai":
-            llm_model = settings.llm.openai_model
+            llm_model = _llm_cfg.get("openai_model")
         elif llm_provider == "ollama":
-            llm_model = settings.llm.ollama_model
-            log_params["ollama_base_url"] = getattr(
-                settings.llm, "ollama_base_url", "http://localhost:11434"
+            llm_model = _llm_cfg.get("ollama_model")
+            log_params["ollama_base_url"] = _llm_cfg.get(
+                "ollama_base_url", "http://localhost:11434"
             )
 
         log_params["llm_model"] = llm_model

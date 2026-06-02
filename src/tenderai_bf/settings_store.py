@@ -86,9 +86,13 @@ class SettingsStore:
             "classification": {
                 "relevant_keywords": s.classification.relevant_keywords,
             },
-            "prompts": s.prompts.model_dump(mode="json")
-            if hasattr(s.prompts, "model_dump")
-            else dict(s.prompts),
+            # prompts defaults: nodes fall back to hardcoded strings when these are empty
+            "prompts": {
+                "extraction": {"system": "", "user_template": ""},
+                "classification": {"system": "", "user_template": ""},
+                "summarization": {"system": "", "user_template": ""},
+                "deduplication": {"system": "", "user_template": ""},
+            },
         }
 
         seeded: list[str] = []

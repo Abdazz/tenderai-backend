@@ -70,19 +70,6 @@ def reschedule_country_job(
 def scheduled_pipeline_run(country_id: int) -> None:
     """Execute the pipeline for one country as a scheduled job."""
 
-    try:
-        from ..config import reload_settings_from_db
-        from ..db import get_session_factory
-
-        SessionLocal = get_session_factory()
-        db_session = SessionLocal()
-        try:
-            reload_settings_from_db(db_session)
-        finally:
-            db_session.close()
-    except Exception as e:
-        logger.warning("Could not reload settings from DB before run", error=str(e))
-
     logger.info("Starting scheduled pipeline run", country_id=country_id)
 
     try:

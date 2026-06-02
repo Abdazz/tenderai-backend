@@ -92,18 +92,7 @@ def test_load_sources_filters_by_country_id():
 
     with patch(
         "tenderai_bf.agents.nodes.load_sources.get_db_context"
-    ) as mock_ctx, patch(
-        "tenderai_bf.agents.nodes.load_sources.settings"
-    ) as mock_settings:
-        mock_settings.use_database_sources = True
-        mock_settings.get_active_sources.return_value = [
-            {
-                "name": "test_source",
-                "base_url": "http://example.com",
-                "list_url": "http://example.com/list",
-                "enabled": True,
-            }
-        ]
+    ) as mock_ctx:
         mock_ctx.return_value.__enter__ = lambda s: mock_session
         mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
 
@@ -213,13 +202,8 @@ def test_email_report_uses_country_to_address():
     state.report_url = "http://minio/report.docx"
 
     with patch(
-        "tenderai_bf.agents.nodes.email_report.settings"
-    ) as mock_settings, patch(
         "tenderai_bf.agents.nodes.email_report.send_report_email"
     ) as mock_send:
-        mock_settings.email.to_address = "global@example.com"
-        mock_settings.is_production = False
-        mock_settings.recipients = []
         mock_send.return_value = True
 
         email_report_node(state)
@@ -227,5 +211,5 @@ def test_email_report_uses_country_to_address():
         # email_report_node does not send if no relevant items in stats
         # The test verifies the country recipient is used, not the global one
         # Since send_email may be skipped if no report_bytes or recipients,
-        # just verify the function ran without error and settings were consulted
+        # just verify the function ran without error
         assert True  # function completed without raising

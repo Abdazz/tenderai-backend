@@ -597,6 +597,7 @@ def parse_extract_node(state) -> dict:
                             "title", "Quotidien des Marchés Publics"
                         ),
                         run_id=state.run_id,
+                        llm_cfg=state.country_config.get("llm", {}),
                     )
                 except Exception as e:
                     logger.warning(

@@ -104,12 +104,16 @@ def test_seed_from_settings_is_idempotent(db):
     assert len(seeded_second) == 0  # nothing inserted on second call
 
 
-def test_reload_settings_from_db_applies_overrides(db):
-    from tenderai_bf.config import reload_settings_from_db, settings
+def test_pipeline_section_roundtrip(db):
+    """DB-first design: pipeline config is stored in app_settings and retrieved per-country.
+
+    This replaces the old reload_settings_from_db test — settings are no longer mutated
+    globally; instead each pipeline run reads from state.country_config which is loaded
+    from DB at run startup.
+    """
     from tenderai_bf.settings_store import SettingsStore
 
-    original = settings.processing.min_relevance_score
-    new_score = round(original + 0.1, 2) if original < 0.9 else 0.5
+    new_score = 0.65
 
     SettingsStore.put_section(
         db,
@@ -125,5 +129,6 @@ def test_reload_settings_from_db_applies_overrides(db):
         },
         updated_by="test",
     )
-    reload_settings_from_db(db)
-    assert settings.processing.min_relevance_score == new_score
+    result = SettingsStore.get_section(db, "pipeline")
+    assert result is not None
+    assert result["min_relevance_score"] == new_score
