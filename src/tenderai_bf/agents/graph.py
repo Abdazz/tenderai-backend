@@ -116,19 +116,7 @@ class TenderAIState(BaseModel):
                 setattr(self.stats, key, value)
 
 
-def cfg(state: "TenderAIState", section: str, key: str) -> Any:
-    """Read state.country_config[section][key]. Raises RuntimeError if absent.
-
-    Use this in every pipeline node instead of settings.* for operational config.
-    Fail-hard: a missing key means the DB was not seeded — surface it immediately.
-    """
-    try:
-        return state.country_config[section][key]
-    except KeyError:
-        raise RuntimeError(
-            f"Missing DB config: country_id={state.country_id} "
-            f"section='{section}' key='{key}' — run seed first"
-        )
+from ._cfg import cfg  # noqa: E402 — re-export for callers that import from graph
 
 
 def _state_get(state: Any, key: str, default: Any = None) -> Any:

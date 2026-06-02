@@ -2,10 +2,10 @@
 
 import time
 
-from ...config import settings
 from ...logging import get_logger, log_classification
 from ...utils.llm_utils import get_llm_instance
 from ...utils.node_logger import clear_node_output, log_node_output
+from .._cfg import cfg
 
 logger = get_logger(__name__)
 
@@ -101,10 +101,7 @@ def classify_node(state) -> dict:
 
     try:
         # Choose classification method based on configuration
-        _pipeline_cfg = getattr(state, "country_config", {}).get("pipeline", {})
-        _use_llm = _pipeline_cfg.get(
-            "use_llm_classification", settings.processing.use_llm_classification
-        )
+        _use_llm = cfg(state, "pipeline", "use_llm_classification")
         if _use_llm:
             # Use LLM-based classification (requires LLM setup)
             logger.info("Using LLM-based classification", run_id=state.run_id)
@@ -132,14 +129,7 @@ def classify_with_keywords(state) -> dict:
         # Combine all keywords from different categories
         it_keywords = []
 
-        _cls_cfg = getattr(state, "country_config", {}).get("classification", {})
-        relevant_keywords = _cls_cfg.get("relevant_keywords", None)
-        if (
-            relevant_keywords is None
-            and hasattr(settings, "classification")
-            and hasattr(settings.classification, "relevant_keywords")
-        ):
-            relevant_keywords = settings.classification.relevant_keywords
+        relevant_keywords = cfg(state, "classification", "relevant_keywords")
         if relevant_keywords:
             for category, keywords in relevant_keywords.items():
                 it_keywords.extend(keywords)
@@ -215,10 +205,8 @@ def classify_with_keywords(state) -> dict:
             # Check if item already has relevance_score from extraction (LLM-scored items)
             existing_score = item.get("relevance_score")
 
-            if existing_score is not None and existing_score >= getattr(
-                state, "country_config", {}
-            ).get("pipeline", {}).get(
-                "min_relevance_score", settings.processing.min_relevance_score
+            if existing_score is not None and existing_score >= cfg(
+                state, "pipeline", "min_relevance_score"
             ):
                 # Item already scored by LLM extraction, preserve that score
                 relevant_items.append(item)
@@ -260,9 +248,7 @@ def classify_with_keywords(state) -> dict:
             # (LLM-scored items already passed through extraction with 0.7 threshold)
             keyword_threshold = min(
                 0.3,
-                getattr(state, "country_config", {})
-                .get("pipeline", {})
-                .get("min_relevance_score", settings.processing.min_relevance_score),
+                cfg(state, "pipeline", "min_relevance_score"),
             )
             is_relevant = relevance_score >= keyword_threshold
 
@@ -295,14 +281,14 @@ def classify_with_keywords(state) -> dict:
             "Keyword-based classification completed",
             total_items=len(state.items_parsed),
             relevant_items=len(relevant_items),
-            threshold=getattr(state, "country_config", {})
-            .get("pipeline", {})
-            .get("min_relevance_score", settings.processing.min_relevance_score),
+            threshold=cfg(state, "pipeline", "min_relevance_score"),
             run_id=state.run_id,
         )
 
         return state
 
+    except RuntimeError:
+        raise
     except Exception as e:
         logger.error(
             "Keyword classification failed",
@@ -328,7 +314,7 @@ def classify_with_llm(state) -> dict:
 
         # Get LLM model name for logging
         llm_model = getattr(llm, "model_name", getattr(llm, "model", "unknown"))
-        llm_provider = settings.llm.provider
+        llm_provider = cfg(state, "llm", "provider")
 
         logger.info(
             "Starting LLM-based classification",
@@ -340,12 +326,9 @@ def classify_with_llm(state) -> dict:
 
         # Get keywords for keyword-based fallback
         it_keywords = []
-        if hasattr(settings, "classification") and hasattr(
-            settings.classification, "relevant_keywords"
-        ):
-            relevant_keywords = settings.classification.relevant_keywords
-            for category, keywords in relevant_keywords.items():
-                it_keywords.extend(keywords)
+        relevant_keywords = cfg(state, "classification", "relevant_keywords")
+        for category, keywords in relevant_keywords.items():
+            it_keywords.extend(keywords)
 
         # Classification prompt — scoped to YULCOM's actual business domains
         classification_prompt = """Vous êtes un expert en marchés publics IT au Burkina Faso. Analysez cet appel d'offres.
@@ -558,13 +541,15 @@ Répondez UNIQUEMENT par "OUI" ou "NON" suivi d'une explication en une phrase.""
             "LLM-based classification completed",
             total_items=len(state.items_parsed),
             relevant_items=len(relevant_items),
-            provider=settings.llm.provider,
+            provider=cfg(state, "llm", "provider"),
             duration_seconds=duration,
             run_id=state.run_id,
         )
 
         return state
 
+    except RuntimeError:
+        raise
     except Exception as e:
         logger.error(
             "LLM classification failed",

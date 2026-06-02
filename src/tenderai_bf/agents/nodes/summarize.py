@@ -2,10 +2,10 @@
 
 import time
 
-from ...config import settings
 from ...logging import get_logger
 from ...utils.llm_utils import get_llm_instance
 from ...utils.node_logger import clear_node_output, log_node_output
+from .._cfg import cfg
 
 logger = get_logger(__name__)
 
@@ -23,7 +23,7 @@ def generate_summary_with_llm(item: dict, state=None) -> str:
 
         # Get LLM model name for logging
         llm_model = getattr(llm, "model_name", getattr(llm, "model", "unknown"))
-        llm_provider = settings.llm.provider
+        llm_provider = cfg(state, "llm", "provider") if state else "unknown"
 
         logger.debug(
             "Generating summary with LLM",
@@ -33,12 +33,7 @@ def generate_summary_with_llm(item: dict, state=None) -> str:
         )
 
         # Get summarization prompts — from country_config (DB-first)
-        _prompts_cfg = (
-            getattr(state, "country_config", {}).get("prompts", {}) if state else {}
-        )
-        _summ = _prompts_cfg.get("summarization", {})
-        if hasattr(_summ, "dict"):
-            _summ = _summ.dict()
+        _summ = state.country_config.get("prompts", {}).get("summarization", {}) if state else {}
         summarization_prompts = _summ if isinstance(_summ, dict) else {}
         system_prompt = summarization_prompts.get("system", "")
         user_template = summarization_prompts.get("user_template", "")

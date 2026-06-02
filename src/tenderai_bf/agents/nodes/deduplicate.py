@@ -4,15 +4,15 @@ import time
 
 from rapidfuzz import fuzz
 
-from ...config import settings
 from ...logging import get_logger
 from ...utils.llm_utils import get_llm_instance
 from ...utils.node_logger import clear_node_output, log_node_output
+from .._cfg import cfg
 
 logger = get_logger(__name__)
 
 
-def check_duplicate_with_llm(item1: dict, item2: dict) -> tuple[bool, float, str]:
+def check_duplicate_with_llm(item1: dict, item2: dict, state=None) -> tuple[bool, float, str]:
     """
     Use LLM to determine if two tenders are duplicates.
     Returns: (is_duplicate, confidence, reasoning)
@@ -27,7 +27,7 @@ def check_duplicate_with_llm(item1: dict, item2: dict) -> tuple[bool, float, str
 
         # Get LLM model name for logging
         llm_model = getattr(llm, "model_name", getattr(llm, "model", "unknown"))
-        llm_provider = settings.llm.provider
+        llm_provider = cfg(state, "llm", "provider") if state else "unknown"
 
         logger.debug(
             "Checking duplicates with LLM",
@@ -37,10 +37,10 @@ def check_duplicate_with_llm(item1: dict, item2: dict) -> tuple[bool, float, str
             item2_id=item2.get("id"),
         )
 
-        # Prompts are sourced from country_config at the node level (see deduplicate_node).
-        # This helper function uses hardcoded fallback prompts.
-        system_prompt = ""
-        user_template = ""
+        # Prompts are sourced from country_config when state is available.
+        dedup_prompts = (state.country_config.get("prompts", {}) if state else {}).get("deduplication", {})
+        system_prompt = dedup_prompts.get("system", "")
+        user_template = dedup_prompts.get("user_template", "")
 
         # Fallback to hardcoded prompt if not configured
         if not user_template:
@@ -124,16 +124,14 @@ def deduplicate_node(state) -> dict:
             state.unique_items = []
             return state
 
-        method = settings.processing.deduplication_method
+        method = cfg(state, "pipeline", "deduplication_method")
         logger.info(f"Using deduplication method: {method}", run_id=state.run_id)
 
         unique_items = []
         seen_hashes = set()
         similar_items = []
 
-        threshold = (
-            settings.processing.deduplication_threshold * 100
-        )  # Convert to percentage
+        threshold = cfg(state, "pipeline", "deduplication_threshold") * 100  # Convert to percentage
 
         for item in state.relevant_items:
             content_hash = item.get("content_hash")
@@ -199,7 +197,7 @@ def deduplicate_node(state) -> dict:
             elif method == "llm_only":
                 for unique_item in unique_items:
                     is_dup_llm, conf, reason = check_duplicate_with_llm(
-                        item, unique_item
+                        item, unique_item, state=state
                     )
                     if is_dup_llm and conf > 0.7:
                         is_duplicate = True
@@ -238,7 +236,7 @@ def deduplicate_node(state) -> dict:
                         # Moderate similarity - use LLM to decide
                         elif 70 <= similarity < threshold:
                             is_dup_llm, conf, reason = check_duplicate_with_llm(
-                                item, unique_item
+                                item, unique_item, state=state
                             )
                             if is_dup_llm and conf > 0.7:
                                 is_duplicate = True
@@ -316,6 +314,8 @@ def deduplicate_node(state) -> dict:
 
         return state
 
+    except RuntimeError:
+        raise
     except Exception as e:
         logger.error(
             "Deduplicate step failed", error=str(e), run_id=state.run_id, exc_info=True

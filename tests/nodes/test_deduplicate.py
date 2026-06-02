@@ -163,3 +163,74 @@ def test_deduplication():
 if __name__ == "__main__":
     print("\n🧪 Testing Deduplication Logic\n")
     test_deduplication()
+
+
+# ---------------------------------------------------------------------------
+# DB-first cfg() tests — use TenderAIState, not MockState
+# ---------------------------------------------------------------------------
+
+import os
+
+os.environ.setdefault("TENDERAI_ENVIRONMENT", "test")
+os.environ.setdefault("TENDERAI_DATABASE_URL", "sqlite:///test.db")
+os.environ.setdefault("TENDERAI_JWT_SECRET", "test-jwt-secret-not-used-for-real-auth-only-pytest-xxxxxxxx")
+os.environ.setdefault("TENDERAI_ADMIN_PASSWORD", "test-admin-password-not-real")
+
+import hashlib  # noqa: E402
+
+import pytest  # noqa: E402
+
+from tenderai_bf.agents.graph import TenderAIState  # noqa: E402
+from tenderai_bf.agents.nodes.deduplicate import deduplicate_node  # noqa: E402
+
+COUNTRY_CONFIG_DEDUP = {
+    "pipeline": {
+        "use_llm_classification": False,
+        "min_relevance_score": 0.3,
+        "deduplication_method": "hash_only",
+        "deduplication_threshold": 0.85,
+        "max_items_per_run": 100,
+        "pdf_timeout": 30,
+        "max_file_size_mb": 10,
+    },
+    "llm": {
+        "provider": "groq", "groq_model": "llama-3.3-70b-versatile",
+        "openai_model": "gpt-4o", "ollama_model": "llama3", "ollama_base_url": "",
+        "temperature": 0.1, "max_tokens": 2000, "timeout": 60,
+    },
+    "prompts": {
+        "deduplication": {"system": "", "user_template": ""},
+        "extraction": {"system": "", "user_template": ""},
+        "classification": {"system": "", "user_template": ""},
+        "summarization": {"system": "", "user_template": ""},
+    },
+}
+
+
+def test_deduplicate_hash_only_uses_country_config():
+    def h(s): return hashlib.sha256(s.encode()).hexdigest()
+
+    state = TenderAIState(
+        country_id=1,
+        country_config=COUNTRY_CONFIG_DEDUP,
+        relevant_items=[
+            {"id": "a", "title": "Tender A", "content_hash": h("unique_a")},
+            {"id": "b", "title": "Tender B", "content_hash": h("unique_b")},
+            {"id": "c", "title": "Tender A dup", "content_hash": h("unique_a")},
+        ],
+    )
+    result = deduplicate_node(state)
+    unique_ids = [i["id"] for i in result.unique_items]
+    assert "a" in unique_ids
+    assert "b" in unique_ids
+    assert "c" not in unique_ids
+
+
+def test_deduplicate_fails_hard_if_config_missing():
+    state = TenderAIState(
+        country_id=1,
+        country_config={},
+        relevant_items=[{"id": "a", "title": "T", "content_hash": "abc"}],
+    )
+    with pytest.raises(RuntimeError, match="Missing DB config"):
+        deduplicate_node(state)

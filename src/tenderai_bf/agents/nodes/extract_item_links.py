@@ -5,9 +5,9 @@ from urllib.parse import urljoin, urlparse
 
 from selectolax.parser import HTMLParser
 
-from ...config import settings
 from ...logging import get_logger
 from ...utils.node_logger import clear_node_output, log_node_output
+from .._cfg import cfg
 
 logger = get_logger(__name__)
 
@@ -425,7 +425,7 @@ def extract_item_links_node(state) -> dict:
         discovered_links = all_links
 
         # Apply max items limit
-        max_items = settings.processing.max_items_per_run
+        max_items = cfg(state, "pipeline", "max_items_per_run")
         if len(discovered_links) > max_items:
             logger.error(
                 "Too many links discovered, limiting",
