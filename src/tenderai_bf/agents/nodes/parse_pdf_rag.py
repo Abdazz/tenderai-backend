@@ -11,7 +11,6 @@ from docling.document_converter import DocumentConverter, PdfFormatOption
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 from ...agents.extraction import extract_tenders_structured
-from ...config import settings
 from ...logging import get_logger
 from .vector_store import get_vector_store
 
@@ -91,17 +90,13 @@ def extract_text_from_pdf(pdf_path: str) -> str:
 
 
 def split_into_chunks(
-    text: str, chunk_size: int | None = None, chunk_overlap: int | None = None
+    text: str, chunk_size: int = 512, chunk_overlap: int = 50
 ) -> list[str]:
     """Split text into overlapping chunks using RecursiveCharacterTextSplitter.
 
     This respects semantic boundaries (paragraphs, sentences, words) rather than
     blindly cutting at character count, producing higher quality chunks for RAG.
     """
-    if chunk_size is None:
-        chunk_size = settings.rag.chunk_size
-    if chunk_overlap is None:
-        chunk_overlap = settings.rag.chunk_overlap
 
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
@@ -178,7 +173,7 @@ def index_pdf_in_vector_store(
 def query_tenders_from_index(
     source_name: str,
     query: str = "Extract all public procurement tenders",
-    top_k: int | None = None,
+    top_k: int = 5,
 ) -> dict[str, Any]:
     """Query similar documents from vector store."""
     try:
@@ -187,7 +182,7 @@ def query_tenders_from_index(
         results = vector_store.query_similar(
             source_name=source_name,
             query=query,
-            top_k=top_k or settings.rag.top_k_results,
+            top_k=top_k,
         )
 
         logger.info(
@@ -211,12 +206,12 @@ def query_tenders_from_index(
 
 
 def extract_tenders_with_llm(
-    relevant_contexts: list[str], source_name: str
+    relevant_contexts: list[str], source_name: str, top_k: int = 5
 ) -> list[dict[str, Any]]:
     """Extract structured tender data using LLM with Pydantic validation."""
     try:
         # Prepare context - join the retrieved documents
-        context = "\n\n".join(relevant_contexts[: settings.rag.top_k_results])
+        context = "\n\n".join(relevant_contexts[:top_k])
 
         logger.info(
             "Calling LLM for structured tender extraction",
@@ -266,6 +261,8 @@ def parse_pdf_with_rag(
     use_llm: bool = True,
     pdf_content: bytes | None = None,
     use_direct_extraction: bool = True,  # NEW: Skip RAG and extract directly from full text
+    rag_cfg: dict | None = None,
+    llm_cfg: dict | None = None,
 ) -> list[dict[str, Any]]:
     """Parse PDF using RAG system or direct extraction.
 
@@ -277,14 +274,23 @@ def parse_pdf_with_rag(
         use_llm: Whether to use LLM for extraction
         pdf_content: Optional PDF bytes (if provided, pdf_path is used for logging only)
         use_direct_extraction: If True, extract from full PDF text directly without RAG
+        rag_cfg: RAG configuration dict (from state.country_config["rag"])
+        llm_cfg: LLM configuration dict (from state.country_config["llm"])
     """
     try:
+        _rag = rag_cfg or {}
+        _llm = llm_cfg or {}
+        _chunk_size = _rag.get("chunk_size", 512)
+        _chunk_overlap = _rag.get("chunk_overlap", 50)
+        _top_k = _rag.get("top_k_results", 5)
+        _search_query = _rag.get("vector_search_query", "appel d'offres marché public")
+        _llm_provider = _llm.get("provider", "unknown")
+
         # Log configuration at the start
         from ...utils.llm_utils import get_llm_instance
 
         llm = get_llm_instance()
         llm_model = getattr(llm, "model_name", getattr(llm, "model", "unknown"))
-        llm_provider = getattr(settings.llm, "provider", "unknown")
 
         logger.info(
             "Starting PDF parsing",
@@ -293,10 +299,10 @@ def parse_pdf_with_rag(
             use_llm=use_llm,
             use_direct_extraction=use_direct_extraction,
             has_content=pdf_content is not None,
-            llm_provider=llm_provider,
+            llm_provider=_llm_provider,
             llm_model=llm_model,
-            chunk_size=settings.rag.chunk_size,
-            chunk_overlap=settings.rag.chunk_overlap,
+            chunk_size=_chunk_size,
+            chunk_overlap=_chunk_overlap,
         )
 
         # If pdf_content is provided, save to temp file
@@ -323,7 +329,7 @@ def parse_pdf_with_rag(
             )
 
             # Split into chunks to avoid token limits
-            chunks = split_into_chunks(full_text)
+            chunks = split_into_chunks(full_text, chunk_size=_chunk_size, chunk_overlap=_chunk_overlap)
 
             logger.info(
                 "Text split into chunks for processing",
@@ -445,14 +451,13 @@ def parse_pdf_with_rag(
         )
 
         # Step 2: Query similar documents
-        # Use semantic query from settings (in French to match the documents)
-        search_query = settings.rag.chroma.vector_search_query
+        # Use semantic query from cfg (in French to match the documents)
         logger.info(
-            "Using vector search query from settings",
+            "Using vector search query from config",
             source=source_name,
-            query=search_query,
+            query=_search_query,
         )
-        results = query_tenders_from_index(source_name=source_name, query=search_query)
+        results = query_tenders_from_index(source_name=source_name, query=_search_query, top_k=_top_k)
 
         # Extract context documents from Chroma results
         # Chroma returns: {'documents': [[doc1, doc2, ...]], 'metadatas': [...], 'distances': [...], 'ids': [...]}
@@ -513,7 +518,7 @@ def parse_pdf_with_rag(
         tenders = []
         if use_llm and relevant_contexts:
             tenders = extract_tenders_with_llm(
-                relevant_contexts=relevant_contexts, source_name=source_name
+                relevant_contexts=relevant_contexts, source_name=source_name, top_k=_top_k
             )
         else:
             logger.info("LLM extraction disabled or no context available")

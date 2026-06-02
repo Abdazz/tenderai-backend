@@ -545,6 +545,8 @@ def parse_extract_node(state) -> dict:
                         },
                         use_llm=True,
                         pdf_content=content,  # Pass the actual PDF bytes
+                        rag_cfg=state.country_config.get("rag", {}),
+                        llm_cfg=state.country_config.get("llm", {}),
                     )
                     parsed_items.extend(rag_tenders)
                 except Exception as e:
