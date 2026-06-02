@@ -330,9 +330,7 @@ class TenderAIGraph:
             run_id,
             triggered_by=triggered_by,
             triggered_by_user=triggered_by_user,
-            sources_count=len(sources_override)
-            if sources_override
-            else len(settings.get_active_sources()),
+            sources_count=len(sources_override) if sources_override else 0,
         )
 
         # Log LLM configuration at pipeline start

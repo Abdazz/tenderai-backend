@@ -78,10 +78,10 @@ def extract_tenders_structured(
                 context, source_name, llm, max_retries
             )
 
-        # Get prompts from configuration
-        extraction_prompts = settings.prompts.get("extraction", {})
-        system_prompt = extraction_prompts.get("system", "")
-        user_template = extraction_prompts.get("user_template", "{context}")
+        # Prompts are sourced from country_config at the node level.
+        # This extraction helper uses a minimal default prompt.
+        system_prompt = ""
+        user_template = "{context}"
 
         # Build the complete prompt
         prompt = f"""{system_prompt}
@@ -191,10 +191,9 @@ def _extract_tenders_json_fallback(
 ) -> TenderExtraction:
     """Fallback JSON parsing method when structured output is not available."""
 
-    # Get prompts from configuration
-    extraction_prompts = settings.prompts.get("extraction", {})
-    system_prompt = extraction_prompts.get("system", "")
-    user_template = extraction_prompts.get("user_template", "{context}")
+    # Prompts are sourced from country_config at the node level.
+    system_prompt = ""
+    user_template = "{context}"
 
     # Build prompt with JSON formatting instructions
     prompt = f"""{system_prompt}

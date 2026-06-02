@@ -61,10 +61,15 @@ def email_report_node(state) -> dict:
     _to = _email_cfg.get("to_address") or settings.email.to_address
     if _to:
         recipients.append(_to)
-    if settings.is_production and settings.recipients:
-        for recipient in settings.recipients:
-            if "email" in recipient and recipient["email"] not in recipients:
-                recipients.append(recipient["email"])
+    # Additional recipients are now sourced from country_config (DB-first).
+    _extra_recipients = (
+        getattr(state, "country_config", {}).get("email", {}).get("recipients", [])
+    )
+    if settings.is_production and _extra_recipients:
+        for recipient in _extra_recipients:
+            _addr = recipient if isinstance(recipient, str) else recipient.get("email", "")
+            if _addr and _addr not in recipients:
+                recipients.append(_addr)
     if not recipients:
         msg = "No email recipients configured"
         logger.error(msg, run_id=state.run_id)

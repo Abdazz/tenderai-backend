@@ -386,22 +386,6 @@ class Settings(BaseSettings):
     rag: RAGSettings = Field(default_factory=RAGSettings)
     google_search: GoogleSearchSettings = Field(default_factory=GoogleSearchSettings)
 
-    # Sources configuration mode (added after nested settings)
-    use_database_sources: bool = Field(
-        default=False,
-        description="If True, sync and use sources from database. If False, use only settings.yaml (dev mode)",
-    )
-
-    # Sources and recipients
-
-    # External configuration
-    sources: list[dict[str, Any]] = Field(default_factory=list)
-    rate_limits: dict[str, str] = Field(default_factory=dict)
-    recipients: list[dict[str, str]] = Field(default_factory=list)
-    prompts: dict[str, Any] = Field(
-        default_factory=dict, description="LLM prompts templates from settings.yaml"
-    )
-
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore"
     )
@@ -413,136 +397,29 @@ class Settings(BaseSettings):
         self._validate_security()
 
     def _load_yaml_config(self) -> None:
-        """Load configuration from settings.yaml if it exists."""
+        """Load infra-only overrides from settings.yaml.
+
+        Operational config (llm, pipeline, classification, prompts, rag,
+        scheduler, email) is seeded into the DB at startup and read from
+        country_settings at runtime — not from this file.
+        """
         yaml_path = Path("settings.yaml")
-        if yaml_path.exists():
-            try:
-                with open(yaml_path, encoding="utf-8") as f:
-                    yaml_config = yaml.safe_load(f)
-
-                # Expand environment variables in the entire config
-                if yaml_config:
-                    yaml_config = expand_env_vars(yaml_config)
-                    # Update sources if present
-                    if "sources" in yaml_config:
-                        self.sources = yaml_config["sources"]
-
-                    # Update rate limits if present
-                    if "rate_limits" in yaml_config:
-                        self.rate_limits = yaml_config["rate_limits"]
-
-                    # Update recipients if present
-                    if "recipients" in yaml_config:
-                        self.recipients = yaml_config["recipients"]
-
-                    # Update prompts if present
-                    if "prompts" in yaml_config:
-                        self.prompts = yaml_config["prompts"]
-
-                    # Update scheduler if present
-                    if "scheduler" in yaml_config:
-                        scheduler_config = yaml_config["scheduler"]
-                        if "cron_schedule" in scheduler_config:
-                            self.scheduler.cron_schedule = scheduler_config[
-                                "cron_schedule"
-                            ]
-                        if "timezone" in scheduler_config:
-                            self.scheduler.timezone = scheduler_config["timezone"]
-
-                    # Update LLM provider if present
-                    if "llm" in yaml_config:
-                        llm_config = yaml_config["llm"]
-                        if "provider" in llm_config:
-                            self.llm.provider = llm_config["provider"]
-                        if "ollama_base_url" in llm_config:
-                            self.llm.ollama_base_url = llm_config["ollama_base_url"]
-                        if "ollama_model" in llm_config:
-                            self.llm.ollama_model = llm_config["ollama_model"]
-                        if "groq_model" in llm_config:
-                            self.llm.groq_model = llm_config["groq_model"]
-                        if "openai_model" in llm_config:
-                            self.llm.openai_model = llm_config["openai_model"]
-                        if "temperature" in llm_config:
-                            self.llm.temperature = llm_config["temperature"]
-                        if "max_tokens" in llm_config:
-                            self.llm.max_tokens = llm_config["max_tokens"]
-
-                    # Update OCR settings if present
-                    if "ocr" in yaml_config:
-                        ocr_config = yaml_config["ocr"]
-                        if "enabled" in ocr_config:
-                            self.ocr.enabled = ocr_config["enabled"]
-                        if "language" in ocr_config:
-                            self.ocr.language = ocr_config["language"]
-
-                    # Update classification keywords if present
-                    if "classification" in yaml_config:
-                        classification_config = yaml_config["classification"]
-                        if "relevant_keywords" in classification_config:
-                            self.classification.relevant_keywords = (
-                                classification_config["relevant_keywords"]
-                            )
-
-                    # Update processing settings if present
-                    if "processing" in yaml_config:
-                        processing_config = yaml_config["processing"]
-                        if "min_relevance_score" in processing_config:
-                            # Ensure it's converted to float (env vars are strings)
-                            self.processing.min_relevance_score = float(
-                                processing_config["min_relevance_score"]
-                            )
-                        if "use_llm_classification" in processing_config:
-                            self.processing.use_llm_classification = processing_config[
-                                "use_llm_classification"
-                            ]
-                        if "deduplication_threshold" in processing_config:
-                            self.processing.deduplication_threshold = float(
-                                processing_config["deduplication_threshold"]
-                            )
-                        if "deduplication_method" in processing_config:
-                            self.processing.deduplication_method = processing_config[
-                                "deduplication_method"
-                            ]
-
-                    # Update RAG settings if present
-                    if "rag" in yaml_config:
-                        rag_config = yaml_config["rag"]
-                        # Update top-level RAG settings
-                        if "enabled" in rag_config:
-                            self.rag.enabled = rag_config["enabled"]
-                        if "chunk_size" in rag_config:
-                            self.rag.chunk_size = rag_config["chunk_size"]
-                        if "chunk_overlap" in rag_config:
-                            self.rag.chunk_overlap = rag_config["chunk_overlap"]
-                        if "top_k_results" in rag_config:
-                            self.rag.top_k_results = rag_config["top_k_results"]
-                        if "embedding_model" in rag_config:
-                            self.rag.embedding_model = rag_config["embedding_model"]
-                        # Update Chroma settings
-                        if "chroma" in rag_config:
-                            chroma_config = rag_config["chroma"]
-                            if "vector_search_query" in chroma_config:
-                                self.rag.chroma.vector_search_query = chroma_config[
-                                    "vector_search_query"
-                                ]
-                            if "llm_query_template" in chroma_config:
-                                self.rag.chroma.llm_query_template = chroma_config[
-                                    "llm_query_template"
-                                ]
-                            if (
-                                chroma_config.get("persist_directory")
-                            ):
-                                self.rag.chroma.persist_directory = chroma_config[
-                                    "persist_directory"
-                                ]
-                            if "collection_prefix" in chroma_config:
-                                self.rag.chroma.collection_prefix = chroma_config[
-                                    "collection_prefix"
-                                ]
-
-            except Exception as e:
-                # Log warning but don't fail
-                print(f"Warning: Could not load settings.yaml: {e}")
+        if not yaml_path.exists():
+            return
+        try:
+            with open(yaml_path, encoding="utf-8") as f:
+                yaml_config = yaml.safe_load(f)
+            if not yaml_config:
+                return
+            yaml_config = expand_env_vars(yaml_config)
+            if "ocr" in yaml_config:
+                ocr_config = yaml_config["ocr"]
+                if "enabled" in ocr_config:
+                    self.ocr.enabled = ocr_config["enabled"]
+                if "language" in ocr_config:
+                    self.ocr.language = ocr_config["language"]
+        except Exception as e:
+            print(f"Warning: Could not load settings.yaml: {e}")
 
     def _validate_security(self) -> None:
         """Refuse to boot if security credentials are missing or trivially weak.
@@ -632,49 +509,6 @@ class Settings(BaseSettings):
     def get_database_url(self) -> str:
         """Get the complete database URL."""
         return self.database.url
-
-    def get_active_sources(self) -> list[dict[str, Any]]:
-        """Get only enabled sources."""
-        return [source for source in self.sources if source.get("enabled", True)]
-
-    def apply_db_override(self, section: str, data: dict) -> None:
-        """Update in-memory settings for a section from a DB data dict."""
-        if section == "pipeline":
-            for key, value in data.items():
-                if hasattr(self.processing, key):
-                    setattr(self.processing, key, value)
-        elif section == "scheduler":
-            for key, value in data.items():
-                if hasattr(self.scheduler, key):
-                    setattr(self.scheduler, key, value)
-        elif section == "llm":
-            for key, value in data.items():
-                if hasattr(self.llm, key):
-                    setattr(self.llm, key, value)
-        elif section == "email":
-            for key, value in data.items():
-                if hasattr(self.email, key):
-                    setattr(self.email, key, value)
-        elif section == "rag":
-            for key, value in data.items():
-                if key == "vector_search_query":
-                    self.rag.chroma.vector_search_query = value
-                elif hasattr(self.rag, key):
-                    setattr(self.rag, key, value)
-        elif section == "classification":
-            if "relevant_keywords" in data:
-                self.classification.relevant_keywords = data["relevant_keywords"]
-        elif section == "prompts":
-            self.prompts = data
-
-
-def reload_settings_from_db(db) -> None:
-    """Refresh the global settings singleton from DB. Call after startup seeding."""
-    from .settings_store import SettingsStore
-
-    all_sections = SettingsStore.get_all(db)
-    for section, data in all_sections.items():
-        settings.apply_db_override(section, data)
 
 
 # Global settings instance

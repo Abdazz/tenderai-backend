@@ -37,10 +37,10 @@ def check_duplicate_with_llm(item1: dict, item2: dict) -> tuple[bool, float, str
             item2_id=item2.get("id"),
         )
 
-        # Get deduplication prompts from configuration
-        dedup_prompts = settings.prompts.get("deduplication", {})
-        system_prompt = dedup_prompts.get("system", "")
-        user_template = dedup_prompts.get("user_template", "")
+        # Prompts are sourced from country_config at the node level (see deduplicate_node).
+        # This helper function uses hardcoded fallback prompts.
+        system_prompt = ""
+        user_template = ""
 
         # Fallback to hardcoded prompt if not configured
         if not user_template:

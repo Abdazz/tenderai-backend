@@ -32,16 +32,11 @@ def generate_summary_with_llm(item: dict, state=None) -> str:
             item_id=item.get("id"),
         )
 
-        # Get summarization prompts — country-specific if available
+        # Get summarization prompts — from country_config (DB-first)
         _prompts_cfg = (
             getattr(state, "country_config", {}).get("prompts", {}) if state else {}
         )
-        _global_prompts = settings.prompts if hasattr(settings, "prompts") else {}
-        _summ = _prompts_cfg.get("summarization") or (
-            _global_prompts.get("summarization", {})
-            if isinstance(_global_prompts, dict)
-            else getattr(_global_prompts, "summarization", {})
-        )
+        _summ = _prompts_cfg.get("summarization", {})
         if hasattr(_summ, "dict"):
             _summ = _summ.dict()
         summarization_prompts = _summ if isinstance(_summ, dict) else {}

@@ -3,6 +3,7 @@
 import os
 import sys
 import uuid
+from pathlib import Path
 
 import click
 
@@ -178,7 +179,7 @@ def health_check():
     click.echo("\n📊 Configuration:")
     click.echo(f"   • Environment: {settings.environment}")
     click.echo(f"   • Log level: {settings.monitoring.log_level}")
-    click.echo(f"   • Active sources: {len(settings.get_active_sources())}")
+    click.echo("   • Active sources: (loaded from DB at runtime)")
     click.echo(f"   • LLM provider: {settings.llm.provider}")
 
 
@@ -390,9 +391,17 @@ def seed_sources(force: bool):
 
     from sqlalchemy import text
 
-    sources = settings.sources
+    import yaml
+
+    yaml_path = Path("settings.yaml")
+    if not yaml_path.exists():
+        click.echo("No settings.yaml found.")
+        return
+    with open(yaml_path, encoding="utf-8") as _f:
+        _yaml_cfg = yaml.safe_load(_f) or {}
+    sources = _yaml_cfg.get("sources", [])
     if not sources:
-        click.echo("No sources found in configuration (settings.sources is empty).")
+        click.echo("No sources found in settings.yaml (key 'sources' is empty).")
         return
 
     try:
