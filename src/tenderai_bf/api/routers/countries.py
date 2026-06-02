@@ -5,7 +5,7 @@ from sqlalchemy.exc import IntegrityError
 
 from ...country_store import MUTABLE_SECTIONS, CountryStore
 from ...models import Country
-from ..dependencies import AuthenticatedUser, DatabaseSession
+from ..dependencies import AuthenticatedUser, DatabaseSession, SuperAdminUser
 from ..schemas.countries import CountryCreate, CountryRead, CountryUpdate
 from ..schemas.settings import SECTION_SCHEMAS
 
@@ -26,7 +26,7 @@ async def list_countries(db: DatabaseSession, user: AuthenticatedUser):
 
 @router.post("", response_model=CountryRead, status_code=status.HTTP_201_CREATED)
 async def create_country(
-    body: CountryCreate, db: DatabaseSession, user: AuthenticatedUser
+    body: CountryCreate, db: DatabaseSession, user: SuperAdminUser
 ):
     country = Country(name=body.name, code=body.code.upper(), locale=body.locale)
     db.add(country)
@@ -51,7 +51,7 @@ async def get_country(country_id: int, db: DatabaseSession, user: AuthenticatedU
 
 @router.put("/{country_id}", response_model=CountryRead)
 async def update_country(
-    country_id: int, body: CountryUpdate, db: DatabaseSession, user: AuthenticatedUser
+    country_id: int, body: CountryUpdate, db: DatabaseSession, user: SuperAdminUser
 ):
     country = _get_country_or_404(country_id, db)
     if body.name is not None:
@@ -66,7 +66,7 @@ async def update_country(
 
 
 @router.delete("/{country_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_country(country_id: int, db: DatabaseSession, user: AuthenticatedUser):
+async def delete_country(country_id: int, db: DatabaseSession, user: SuperAdminUser):
     country = _get_country_or_404(country_id, db)
     country.active = False
     db.commit()
@@ -110,6 +110,9 @@ async def update_section(
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST, detail=f"Unknown section: {section}"
         )
+    # Non-super_admin can only update their own country's settings
+    if user.get("role") != "super_admin" and user.get("country_id") != country_id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Access denied for this country")
     country = _get_country_or_404(country_id, db)
     schema_cls = SECTION_SCHEMAS.get(section)
     if schema_cls:
