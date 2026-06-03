@@ -194,6 +194,7 @@ def fetch_items_node(state) -> dict:
         rag_pdfs = []
         joffres_items = []
         ungm_items = []
+        tavily_items = []
         regular_urls = []
 
         for link in state.discovered_links:
@@ -205,6 +206,8 @@ def fetch_items_node(state) -> dict:
                 joffres_items.append(link)
             elif isinstance(link, dict) and link.get("source") == "ungm":
                 ungm_items.append(link)
+            elif isinstance(link, dict) and link.get("source") == "tavily":
+                tavily_items.append(link)
             else:
                 # Regular URL
                 url = link if isinstance(link, str) else link.get("url")
@@ -250,6 +253,27 @@ def fetch_items_node(state) -> dict:
             logger.info(
                 "UNGM items passed through (no detail fetch needed)",
                 count=len(ungm_items),
+                run_id=state.run_id,
+            )
+
+        # Process Tavily items (fully fetched by Tavily API — pass through)
+        for link in tavily_items:
+            items.append(
+                {
+                    "url": link.get("url", ""),
+                    "content": link.get("content", link.get("raw_content", "")),
+                    "status": "success",
+                    "fetched_at": datetime.utcnow().isoformat(),
+                    "parser_type": link.get("parser_type", "tavily_search"),
+                    "source": "tavily",
+                    "title": link.get("title", ""),
+                    "score": link.get("score"),
+                }
+            )
+        if tavily_items:
+            logger.info(
+                "Tavily items passed through (no detail fetch needed)",
+                count=len(tavily_items),
                 run_id=state.run_id,
             )
 

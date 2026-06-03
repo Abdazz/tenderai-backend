@@ -392,6 +392,12 @@ def extract_item_links_node(state) -> dict:
                         if url and url not in seen_urls:
                             valid_links.append(link)
                             seen_urls.add(url)
+                    # Handle Tavily search results (dict with source='tavily')
+                    elif isinstance(link, dict) and link.get("source") == "tavily":
+                        url = link.get("url")
+                        if url and url not in seen_urls:
+                            valid_links.append(link)
+                            seen_urls.add(url)
                     # Handle RAG PDFs (dict format with type='pdf_rag')
                     elif isinstance(link, dict) and link.get("type") == "pdf_rag":
                         url = link.get("url")
