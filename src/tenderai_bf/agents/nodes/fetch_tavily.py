@@ -19,6 +19,19 @@ TAVILY_SEARCH_URL = "https://api.tavily.com/search"
 TAVILY_EXTRACT_URL = "https://api.tavily.com/extract"
 
 
+def _error_result(source: dict, parser_type: str, error: str) -> dict:
+    return {
+        "source": source,
+        "content": None,
+        "listings": [],
+        "url": source["list_url"],
+        "status": "failed",
+        "error": error,
+        "fetched_at": datetime.utcnow().isoformat(),
+        "parser_type": parser_type,
+    }
+
+
 async def fetch_tavily_search(source: dict, run_id: str) -> dict:
     """Call Tavily /search for each query configured in source.patterns.queries."""
     source_name = source["name"]
@@ -26,15 +39,7 @@ async def fetch_tavily_search(source: dict, run_id: str) -> dict:
 
     if not api_key:
         logger.warning("TAVILY_API_KEY not set — skipping", source=source_name, run_id=run_id)
-        return {
-            "source": source,
-            "content": None,
-            "url": source["list_url"],
-            "status": "failed",
-            "error": "TAVILY_API_KEY not set",
-            "fetched_at": datetime.utcnow().isoformat(),
-            "parser_type": "tavily_search",
-        }
+        return _error_result(source, "tavily_search", "TAVILY_API_KEY not set")
 
     queries = source.get("patterns", {}).get("queries", [])
     if not queries:
@@ -82,33 +87,27 @@ async def fetch_tavily_search(source: dict, run_id: str) -> dict:
     except httpx.HTTPStatusError as e:
         error_msg = f"HTTP {e.response.status_code}"
         logger.error("Tavily search HTTP error", source=source_name, error=error_msg, run_id=run_id)
-        return {
-            "source": source,
-            "content": None,
-            "url": source["list_url"],
-            "status": "failed",
-            "error": error_msg,
-            "fetched_at": datetime.utcnow().isoformat(),
-            "parser_type": "tavily_search",
-        }
+        return _error_result(source, "tavily_search", error_msg)
     except Exception as e:
         logger.error("Tavily search failed", source=source_name, error=str(e), run_id=run_id)
-        return {
-            "source": source,
-            "content": None,
-            "url": source["list_url"],
-            "status": "failed",
-            "error": str(e),
-            "fetched_at": datetime.utcnow().isoformat(),
-            "parser_type": "tavily_search",
-        }
+        return _error_result(source, "tavily_search", str(e))
 
     logger.info("Tavily search completed", source=source_name, total=len(all_results), run_id=run_id)
 
+    normalized = [
+        {
+            "url": r.get("url", ""),
+            "content": r.get("content") or r.get("raw_content", ""),
+            "title": r.get("title", ""),
+            "score": r.get("score"),
+        }
+        for r in all_results
+    ]
+
     return {
         "source": source,
-        "content": json.dumps(all_results, ensure_ascii=False),
-        "listings": all_results,
+        "content": json.dumps(normalized, ensure_ascii=False),
+        "listings": normalized,
         "url": source["list_url"],
         "status": "success",
         "parser_type": "tavily_search",
@@ -123,22 +122,14 @@ async def fetch_tavily_extract(source: dict, run_id: str) -> dict:
 
     if not api_key:
         logger.warning("TAVILY_API_KEY not set — skipping", source=source_name, run_id=run_id)
-        return {
-            "source": source,
-            "content": None,
-            "url": source["list_url"],
-            "status": "failed",
-            "error": "TAVILY_API_KEY not set",
-            "fetched_at": datetime.utcnow().isoformat(),
-            "parser_type": "tavily_extract",
-        }
+        return _error_result(source, "tavily_extract", "TAVILY_API_KEY not set")
 
     patterns = source.get("patterns", {})
     payload = {
         "api_key": api_key,
         "urls": [source["list_url"]],
         "include_raw_content": patterns.get("include_raw_content", True),
-        "extract_depth": patterns.get("extract_depth", settings.tavily.search_depth),
+        "extract_depth": patterns.get("extract_depth", "basic"),
     }
 
     try:
@@ -150,26 +141,10 @@ async def fetch_tavily_extract(source: dict, run_id: str) -> dict:
     except httpx.HTTPStatusError as e:
         error_msg = f"HTTP {e.response.status_code}"
         logger.error("Tavily extract HTTP error", source=source_name, error=error_msg, run_id=run_id)
-        return {
-            "source": source,
-            "content": None,
-            "url": source["list_url"],
-            "status": "failed",
-            "error": error_msg,
-            "fetched_at": datetime.utcnow().isoformat(),
-            "parser_type": "tavily_extract",
-        }
+        return _error_result(source, "tavily_extract", error_msg)
     except Exception as e:
         logger.error("Tavily extract failed", source=source_name, error=str(e), run_id=run_id)
-        return {
-            "source": source,
-            "content": None,
-            "url": source["list_url"],
-            "status": "failed",
-            "error": str(e),
-            "fetched_at": datetime.utcnow().isoformat(),
-            "parser_type": "tavily_extract",
-        }
+        return _error_result(source, "tavily_extract", str(e))
 
     results = data.get("results", [])
     normalized = [
