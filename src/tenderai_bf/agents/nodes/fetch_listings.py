@@ -186,6 +186,14 @@ async def fetch_single_listing(
                 "url": list_url,
             }
 
+    # Tavily web sources
+    if parser_type in ("tavily_search", "tavily_extract"):
+        from .fetch_tavily import fetch_tavily_extract, fetch_tavily_search
+
+        if parser_type == "tavily_search":
+            return await fetch_tavily_search(source, run_id)
+        return await fetch_tavily_extract(source, run_id)
+
     # Google Custom Search source
     if parser_type == "google_search":
         return await fetch_google_search_listings(source, run_id)
