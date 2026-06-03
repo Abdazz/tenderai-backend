@@ -329,6 +329,27 @@ def extract_item_links_node(state) -> dict:
                         )
                     except Exception:
                         links = []
+                elif parser_type in ("tavily_search", "tavily_extract"):
+                    import json as _json
+
+                    try:
+                        results = (
+                            _json.loads(content)
+                            if isinstance(content, str)
+                            else item.get("listings", [])
+                        )
+                        for result in results:
+                            result["source"] = "tavily"
+                            result["parser_type"] = parser_type
+                        links = results
+                        logger.info(
+                            f"Tavily: {len(results)} results extracted",
+                            source_name=source_name,
+                            run_id=state.run_id,
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to parse Tavily results: {e}")
+                        links = []
                 elif parser_type == "html":
                     links = extract_links_from_html(content, base_url, patterns)
                 elif parser_type == "html-pdf-mixed":
