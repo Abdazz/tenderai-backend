@@ -587,7 +587,7 @@ def parse_extract_node(state) -> dict:
 
             # Handle Tavily results (search or extract — already structured)
             elif parser_type in ("tavily_search", "tavily_extract"):
-                import uuid as _uuid
+                import uuid
 
                 content_text = item.get("content") or ""
                 if isinstance(content_text, bytes):
@@ -595,7 +595,7 @@ def parse_extract_node(state) -> dict:
 
                 parsed_items.append(
                     {
-                        "id": str(_uuid.uuid4()),
+                        "id": str(uuid.uuid4()),
                         "url": item["url"],
                         "content_hash": content_hash,
                         "title": item.get("title", ""),
