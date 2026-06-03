@@ -585,6 +585,33 @@ def parse_extract_node(state) -> dict:
                 )
                 continue
 
+            # Handle Tavily results (search or extract — already structured)
+            elif parser_type in ("tavily_search", "tavily_extract"):
+                import uuid as _uuid
+
+                content_text = item.get("content") or ""
+                if isinstance(content_text, bytes):
+                    content_text = content_text.decode("utf-8", errors="replace")
+
+                parsed_items.append(
+                    {
+                        "id": str(_uuid.uuid4()),
+                        "url": item["url"],
+                        "content_hash": content_hash,
+                        "title": item.get("title", ""),
+                        "tender_object": item.get("title", ""),
+                        "description": content_text[:2000],
+                        "raw_text": content_text,
+                        "reference": "",
+                        "ref_no": "",
+                        "entity": "",
+                        "category": "Autre",
+                        "source": "tavily",
+                        "score": item.get("score"),
+                    }
+                )
+                continue
+
             # Handle quotidien PDFs — structured LLM extractor (extraction + classification in one pass)
             elif parser_type == "pdf_quotidien" or item.get("type") == "quotidien_pdf":
                 try:

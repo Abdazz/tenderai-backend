@@ -76,3 +76,71 @@ def test_extraction():
 
 if __name__ == "__main__":
     test_extraction()
+
+
+def test_parse_extract_tavily_search_item():
+    """Tavily search item is normalized into a Notice-compatible dict."""
+    from unittest.mock import MagicMock
+
+    from tenderai_bf.agents.nodes.parse_extract import parse_extract_node
+
+    state = MagicMock()
+    state.error_occurred = False
+    state.run_id = "run-test"
+    state.country_config = {"rag": {}, "llm": {}}
+    state.items_raw = [
+        {
+            "url": "https://example.com/tenders/123",
+            "content": "Fourniture équipements réseau pour le MEFP Sénégal...",
+            "status": "success",
+            "parser_type": "tavily_search",
+            "source": "tavily",
+            "title": "Appel d'offres réseau MEFP",
+            "score": 0.91,
+            "fetched_at": "2026-06-03T10:00:00",
+        }
+    ]
+    state.items_parsed = []
+    state.update_stats = MagicMock()
+
+    result = parse_extract_node(state)
+
+    assert len(result.items_parsed) == 1
+    item = result.items_parsed[0]
+    assert item["title"] == "Appel d'offres réseau MEFP"
+    assert item["url"] == "https://example.com/tenders/123"
+    assert "réseau" in item["description"]
+    assert item["source"] == "tavily"
+
+
+def test_parse_extract_tavily_extract_item():
+    """Tavily extract item is normalized into a Notice-compatible dict."""
+    from unittest.mock import MagicMock
+
+    from tenderai_bf.agents.nodes.parse_extract import parse_extract_node
+
+    state = MagicMock()
+    state.error_occurred = False
+    state.run_id = "run-test"
+    state.country_config = {"rag": {}, "llm": {}}
+    state.items_raw = [
+        {
+            "url": "https://gov.example.com/tenders",
+            "content": "Liste des marchés publics en cours...",
+            "status": "success",
+            "parser_type": "tavily_extract",
+            "source": "tavily",
+            "title": "Portail marchés Sénégal",
+            "score": None,
+            "fetched_at": "2026-06-03T10:00:00",
+        }
+    ]
+    state.items_parsed = []
+    state.update_stats = MagicMock()
+
+    result = parse_extract_node(state)
+
+    assert len(result.items_parsed) == 1
+    item = result.items_parsed[0]
+    assert item["source"] == "tavily"
+    assert item["url"] == "https://gov.example.com/tenders"
