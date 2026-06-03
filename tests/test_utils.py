@@ -185,5 +185,21 @@ class TestPDFUtils:
         assert "\n\n\n" not in clean_text  # No triple newlines
 
 
+def test_tavily_settings_defaults():
+    from tenderai_bf.config import settings
+    assert hasattr(settings, "tavily")
+    assert settings.tavily.max_results == 10
+    assert settings.tavily.search_depth == "basic"
+
+def test_tavily_settings_api_key_from_env(monkeypatch):
+    monkeypatch.setenv("TAVILY_API_KEY", "tvly-test-key")
+    from importlib import reload
+    import tenderai_bf.config as cfg_module
+    reload(cfg_module)
+    from tenderai_bf.config import TavilySettings
+    s = TavilySettings()
+    assert s.api_key.get_secret_value() == "tvly-test-key"
+
+
 if __name__ == "__main__":
     pytest.main([__file__])

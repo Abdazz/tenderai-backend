@@ -345,6 +345,16 @@ class GoogleSearchSettings(BaseSettings):
     model_config = SettingsConfigDict(case_sensitive=False)
 
 
+class TavilySettings(BaseSettings):
+    """Tavily web search/extract API configuration."""
+
+    api_key: SecretStr = Field(default="", validation_alias="TAVILY_API_KEY")
+    max_results: int = Field(default=10)
+    search_depth: str = Field(default="basic")  # "basic" | "advanced"
+
+    model_config = SettingsConfigDict(case_sensitive=False)
+
+
 class RAGSettings(BaseSettings):
     """RAG (Retrieval-Augmented Generation) configuration."""
 
@@ -385,6 +395,7 @@ class Settings(BaseSettings):
     fetch: FetchSettings = Field(default_factory=FetchSettings)
     rag: RAGSettings = Field(default_factory=RAGSettings)
     google_search: GoogleSearchSettings = Field(default_factory=GoogleSearchSettings)
+    tavily: TavilySettings = Field(default_factory=TavilySettings)
 
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore"
