@@ -1,7 +1,6 @@
 """Tests for fetch_tavily.py — Tavily API calls are always mocked."""
 
 import asyncio
-import json
 import os
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
