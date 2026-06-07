@@ -421,6 +421,19 @@ def extract_item_links_node(state) -> dict:
                         if url and url not in seen_urls:
                             valid_links.append(link)
                             seen_urls.add(url)
+                    # Handle Playwright results (dict with source='playwright')
+                    elif isinstance(link, dict) and link.get("source") == "playwright":
+                        url = link.get("url")
+                        if url and url not in seen_urls:
+                            valid_links.append(link)
+                            seen_urls.add(url)
+                    # Handle Le Devoir OCR notices (dict with source='ledevoir')
+                    elif isinstance(link, dict) and link.get("source") == "ledevoir":
+                        # Each notice has a unique content_hash — use it as dedup key
+                        notice_key = link.get("title", "") + link.get("url", "")
+                        if notice_key not in seen_urls:
+                            valid_links.append(link)
+                            seen_urls.add(notice_key)
                     # Handle RAG PDFs (dict format with type='pdf_rag')
                     elif isinstance(link, dict) and link.get("type") == "pdf_rag":
                         url = link.get("url")
