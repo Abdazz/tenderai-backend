@@ -8,7 +8,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Install system dependencies including OCR tools
+# Install system dependencies including OCR tools and Chromium deps for Playwright
 RUN apt-get update && apt-get install -y \
     curl \
     gcc \
@@ -24,6 +24,22 @@ RUN apt-get update && apt-get install -y \
     libxext6 \
     libxrender-dev \
     libgomp1 \
+    # Chromium system deps required by Playwright
+    libnss3 \
+    libnspr4 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdrm2 \
+    libxkbcommon0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    libgbm1 \
+    libasound2 \
+    libpango-1.0-0 \
+    libcairo2 \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
@@ -43,8 +59,11 @@ ENV POETRY_NO_INTERACTION=1 \
 # Copy dependency files
 COPY pyproject.toml poetry.lock* README.md ./
 
-# Install dependencies with full extras for OCR support
+# Install dependencies with full extras (includes playwright)
 RUN poetry install --only=main --extras "full" --no-root && rm -rf $POETRY_CACHE_DIR
+
+# Install Playwright Chromium browser
+RUN playwright install chromium
 
 # Copy application code
 COPY src/ src/
