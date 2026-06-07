@@ -187,6 +187,20 @@ async def test_email(request: EmailTestRequest, user: AuthenticatedUser):
         )
 
 
+@router.get("/logs")
+async def get_logs(user: AuthenticatedUser, lines: int = 200):
+    """Get recent log lines. Requires authentication."""
+    import os
+
+    log_file = "/app/logs/tenderai.log"
+    if os.path.exists(log_file):
+        with open(log_file) as f:
+            all_lines = f.readlines()
+        recent = all_lines[-lines:] if len(all_lines) > lines else all_lines
+        return {"logs": "".join(recent), "total_lines": len(all_lines)}
+    return {"logs": "Fichier de logs non trouvé.", "total_lines": 0}
+
+
 @router.post("/clear-cache")
 async def clear_cache(user: AuthenticatedUser):
     """Clear application caches. Requires authentication."""

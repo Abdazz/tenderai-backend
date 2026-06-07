@@ -390,7 +390,11 @@ def _build_notices_table_text(notices: list) -> str:
 
 
 def _generate_report_email_body(
-    stats: dict, report_url: str, run_id: str, notices: list | None = None
+    stats: dict,
+    report_url: str,
+    run_id: str,
+    notices: list | None = None,
+    country_name: str = "Burkina Faso",
 ) -> tuple[str, str]:
     """Generate French email body for report distribution."""
 
@@ -422,7 +426,7 @@ def _generate_report_email_body(
     text_body = f"""{dev_warning}
 Bonjour,
 
-Voici le rapport quotidien de veille des appels d'offres IT/Ingénierie pour YULCOM Burkina.
+Voici le rapport quotidien de veille des appels d'offres IT/Ingénierie pour YULCOM {country_name}.
 
 RÉSUMÉ DE L'EXÉCUTION
 ━━━━━━━━━━━━━━━━━━━━━
@@ -546,7 +550,7 @@ Pour vous désabonner ou modifier vos préférences, contactez l'administrateur.
 
         <p>Bonjour,</p>
 
-        <p>Voici le rapport quotidien de veille des appels d'offres IT/Ingénierie au Burkina Faso.</p>
+        <p>Voici le rapport quotidien de veille des appels d'offres IT/Ingénierie au {country_name}.</p>
 
         <div class="stats">
             <h3>📊 Résumé de l'exécution</h3>
@@ -607,6 +611,7 @@ def send_report_email(
     stats: dict,
     recipients: list[str] | None = None,
     notices: list | None = None,
+    country_name: str = "Burkina Faso",
 ) -> bool:
     """Send the daily report email with attachment."""
 
@@ -628,11 +633,11 @@ def send_report_email(
             if settings.environment == "development"
             else settings.email.subject_prefix
         )
-        subject = f"{subject_prefix} – {timestamp_str}"
+        subject = f"{subject_prefix} [{country_name}] – {timestamp_str}"
 
         # Generate email body
         text_body, html_body = _generate_report_email_body(
-            stats, report_url, run_id, notices=notices
+            stats, report_url, run_id, notices=notices, country_name=country_name
         )
 
         # Prepare attachment

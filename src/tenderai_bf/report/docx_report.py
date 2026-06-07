@@ -198,6 +198,15 @@ def _add_title_page(document: Document, data: dict[str, Any]) -> None:
     subtitle_run.font.italic = True
     subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
+    # Country name
+    country_name = data.get("country_name", "Burkina Faso") or "Burkina Faso"
+    country_para = document.add_paragraph()
+    country_run = country_para.add_run(country_name)
+    country_run.font.size = Pt(14)
+    country_run.font.bold = True
+    country_run.font.color.rgb = RGBColor(0x2E, 0x74, 0xB5)
+    country_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
     # Date and run info
     document.add_paragraph()  # Empty line
 

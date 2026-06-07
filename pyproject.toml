@@ -55,8 +55,6 @@ python-jose = {extras = ["cryptography"], version = "^3.3.0"}
 passlib = {extras = ["bcrypt"], version = "^1.7.4"}
 bcrypt = "^4.1.0"  # Updated to 4.x for chromadb 1.3.4 compatibility
 python-multipart = "^0.0.9"
-gradio = "^4.44.0"
-
 # Configuration & Settings
 pydantic = "^2.5.0"
 pydantic-settings = "^2.1.0"
@@ -140,7 +138,6 @@ module = [
     "rapidfuzz.*",
     "boto3.*",
     "aioboto3.*",
-    "gradio.*",
     "apscheduler.*",
     "structlog.*",
     "prometheus_client.*",
