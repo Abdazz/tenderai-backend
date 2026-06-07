@@ -85,6 +85,7 @@ mypy = "^1.7.1"
 pre-commit = "^3.5.0"
 
 # Optional dependencies for specific features
+playwright = "^1.60.0"
 [tool.poetry.extras]
 spacy = ["spacy"]
 playwright = ["playwright"]
