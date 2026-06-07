@@ -646,8 +646,47 @@ def parse_extract_node(state) -> dict:
                 )
                 continue
 
-            # Handle Tavily snippet results (search or extract — structured by Tavily)
-            elif parser_type in ("tavily_search", "tavily_extract"):
+            # Handle Tavily extract — listing page content → LLM extracts individual notices
+            elif parser_type == "tavily_extract":
+                from .parse_tavily_listing import parse_tavily_listing
+
+                content_text = item.get("content") or ""
+                if isinstance(content_text, bytes):
+                    content_text = content_text.decode("utf-8", errors="replace")
+
+                source_name = item.get("title") or item.get("source_name") or "Tavily source"
+                listing_items = parse_tavily_listing(
+                    page_content=content_text,
+                    source_url=item["url"],
+                    source_name=source_name,
+                    run_id=state.run_id,
+                    llm_cfg=state.country_config.get("llm", {}),
+                )
+                if listing_items:
+                    parsed_items.extend(listing_items)
+                else:
+                    # Fallback: create single item with snippet so the source is not lost
+                    import uuid
+                    parsed_items.append(
+                        {
+                            "id": str(uuid.uuid4()),
+                            "url": item["url"],
+                            "content_hash": content_hash,
+                            "title": source_name,
+                            "tender_object": source_name,
+                            "description": content_text[:2000],
+                            "raw_text": content_text,
+                            "reference": "",
+                            "ref_no": "",
+                            "entity": "",
+                            "category": "Autre",
+                            "source": "tavily",
+                        }
+                    )
+                continue
+
+            # Handle Tavily search snippets (keyword search results, not listing pages)
+            elif parser_type == "tavily_search":
                 import uuid
 
                 content_text = item.get("content") or ""
