@@ -1,6 +1,8 @@
 """Classify items for IT/Engineering relevance."""
 
+import re
 import time
+from datetime import datetime, timezone
 
 from ...logging import get_logger, log_classification
 from ...utils.llm_utils import get_llm_instance
@@ -69,6 +71,42 @@ def _is_attribution_notice(item: dict) -> bool:
         ]
     ).lower()
     return any(signal in text for signal in _ATTRIBUTION_SIGNALS)
+
+
+def _parse_deadline(item: dict) -> datetime | None:
+    """Extract deadline date from item fields or raw description text."""
+    # Try structured field first
+    raw = item.get("deadline_at") or item.get("deadline") or ""
+    if not raw:
+        # Fall back to scanning the description for explicit close dates
+        text = (item.get("description") or "") + " " + (item.get("raw_text") or "")
+        # Patterns: "Date de cloture : 2024-02-28", "closing date: 2024/06/30", etc.
+        for pattern in [
+            r"(?:date\s+de\s+cl[oô]ture|closing\s+date|deadline|date\s+limite)[^\d]{0,10}(\d{4}[-/]\d{2}[-/]\d{2})",
+            r"(\d{4}[-/]\d{2}[-/]\d{2})",  # bare ISO date
+        ]:
+            m = re.search(pattern, text, re.IGNORECASE)
+            if m:
+                raw = m.group(1)
+                break
+
+    if not raw:
+        return None
+
+    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%d-%m-%Y", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(str(raw)[:10], fmt).replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+    return None
+
+
+def _is_expired(item: dict) -> bool:
+    """Return True if the tender deadline is clearly in the past."""
+    deadline = _parse_deadline(item)
+    if deadline is None:
+        return False
+    return deadline < datetime.now(tz=timezone.utc)
 
 
 def _is_supplier_registration(item: dict) -> bool:
@@ -202,6 +240,19 @@ def classify_with_keywords(state) -> dict:
                 )
                 continue
 
+            # Exclude expired tenders (deadline clearly in the past)
+            if _is_expired(item):
+                item["relevance_score"] = 0.0
+                item["is_relevant"] = False
+                item["classification_method"] = "expired_filter"
+                logger.debug(
+                    "Excluded expired tender",
+                    item_id=item.get("id"),
+                    deadline=str(_parse_deadline(item)),
+                    run_id=state.run_id,
+                )
+                continue
+
             # Check if item already has relevance_score from extraction (LLM-scored items)
             existing_score = item.get("relevance_score")
 
@@ -330,29 +381,40 @@ def classify_with_llm(state) -> dict:
         for category, keywords in relevant_keywords.items():
             it_keywords.extend(keywords)
 
-        # Classification prompt — scoped to YULCOM's actual business domains
-        classification_prompt = """Vous êtes un expert en marchés publics IT au Burkina Faso. Analysez cet appel d'offres.
+        # Classification prompt — two-gate: (1) is it a procurement notice? (2) is it IT/engineering?
+        classification_prompt = """Vous êtes un expert en marchés publics IT. Analysez le contenu suivant.
 
 Entité : {entity}
 Référence : {reference}
 Objet : {objet}
 Description : {description}
 
-DOMAINES CIBLÉS (répondez OUI uniquement si l'objet correspond à l'un de ces domaines) :
+ÉTAPE 1 — EST-CE UN APPEL D'OFFRES OU UN AVIS DE MARCHÉ ?
+Répondez NON immédiatement si le contenu est :
+- Une page d'aide, guide utilisateur, documentation ou tutoriel (ex. "comment utiliser X", "introduction à Y")
+- Une offre d'emploi ou annonce de recrutement
+- Un article de blog, actualité, rapport statistique ou étude de marché
+- Une page d'accueil, annuaire ou agrégateur listant des ressources
+- Une page institutionnelle de présentation d'un organisme
+- Un contrat déjà attribué ou un résultat d'appel d'offres
+- Une inscription à une base de données de fournisseurs
+
+Pour être un appel d'offres valide, le contenu doit explicitement solliciter des soumissions, offres ou propositions de la part de fournisseurs, avec un objet de marché, une entité adjudicatrice et généralement une date limite de soumission.
+
+ÉTAPE 2 — EST-CE DANS LES DOMAINES CIBLÉS ? (seulement si ÉTAPE 1 = OUI)
+Répondez OUI uniquement si l'objet de l'appel d'offres correspond à :
 1. Services IT : développement logiciel, systèmes d'information, ERP, CRM, SIG, cybersécurité, cloud, hébergement, infogérance, réseau informatique, fibre optique, wifi, vidéoconférence, intelligence artificielle
 2. Matériel informatique : ordinateurs, serveurs, imprimantes, scanners, photocopieurs, routeurs, switches, modems, écrans, onduleurs, accessoires informatiques
 3. Conseil/ingénierie IT : études informatiques, audits de sécurité, assistance technique IT, schémas directeurs informatiques, formation informatique, déploiement/intégration de systèmes
 
-Répondez NON si l'objet concerne :
+Répondez NON à l'étape 2 si l'appel d'offres concerne :
 - Travaux de génie civil, construction, BTP, routes, bâtiments, hydraulique, assainissement
 - Agriculture, élevage, alimentation, nettoyage, gardiennage
 - Véhicules, carburant, mobilier de bureau non informatique
 - Fournitures générales de bureau (papier, stylos, mobilier)
 - Matériel médical, pharmaceutique ou agricole
-- Constitution d'une base de données de fournisseurs/prestataires (inscription administrative)
-- Publication de résultats, attribution de marchés, PV de dépouillement
 
-Répondez UNIQUEMENT par "OUI" ou "NON" suivi d'une explication en une phrase."""
+Répondez UNIQUEMENT par "OUI" ou "NON" suivi d'une explication en une phrase précisant pourquoi ce contenu est ou n'est pas un appel d'offres IT pertinent."""
 
         # Classify each item
         for item in state.items_parsed:
@@ -387,6 +449,19 @@ Répondez UNIQUEMENT par "OUI" ou "NON" suivi d'une explication en une phrase.""
                 logger.debug(
                     "Excluded supplier registration call",
                     item_id=item.get("id"),
+                    run_id=state.run_id,
+                )
+                continue
+
+            # Exclude expired tenders (deadline clearly in the past)
+            if _is_expired(item):
+                item["relevance_score"] = 0.0
+                item["is_relevant"] = False
+                item["classification_method"] = "expired_filter"
+                logger.debug(
+                    "Excluded expired tender",
+                    item_id=item.get("id"),
+                    deadline=str(_parse_deadline(item)),
                     run_id=state.run_id,
                 )
                 continue

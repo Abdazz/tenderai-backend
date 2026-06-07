@@ -585,7 +585,68 @@ def parse_extract_node(state) -> dict:
                 )
                 continue
 
-            # Handle Tavily results (search or extract — already structured)
+            # Handle Tavily PDF — downloaded PDF bytes, full text extraction
+            elif parser_type == "tavily_pdf":
+                import uuid
+
+                pdf_bytes = item.get("content")
+                if not isinstance(pdf_bytes, bytes):
+                    logger.warning("tavily_pdf item has no bytes content", url=item["url"], run_id=state.run_id)
+                    continue
+
+                try:
+                    full_text = extract_pdf_text_from_bytes(pdf_bytes)
+                except Exception as e:
+                    logger.error("Failed to extract text from Tavily PDF", url=item["url"], error=str(e), run_id=state.run_id)
+                    continue
+
+                # Extract deadline from text using common procurement patterns
+                deadline_at = None
+                for pat in [
+                    r"[Dd]ate\s+de\s+cl[oô]ture\s*[:\-]?\s*(\d{4}[-/]\d{2}[-/]\d{2})",
+                    r"[Cc]losing\s+[Dd]ate\s*[:\-]?\s*(\d{4}[-/]\d{2}[-/]\d{2})",
+                    r"[Dd]eadline\s*[:\-]?\s*(\d{4}[-/]\d{2}[-/]\d{2})",
+                    r"[Dd]ate\s+limite\s*[:\-]?\s*(\d{4}[-/]\d{2}[-/]\d{2})",
+                    r"(\d{4}[-/]\d{2}[-/]\d{2})\s+\d{1,2}:\d{2}",  # ISO date followed by time
+                ]:
+                    m = re.search(pat, full_text)
+                    if m:
+                        deadline_at = m.group(1).replace("/", "-")
+                        break
+
+                # Extract reference number
+                ref_match = re.search(r"(?:Num[eé]ro\s+de\s+la\s+demande|[Rr][eé]f[eé]rence|[Ss]olicitation\s+[Nn]o\.?)\s*[:\-]?\s*([A-Z0-9/_\-]{4,30})", full_text)
+                reference = ref_match.group(1).strip() if ref_match else ""
+
+                parsed_items.append(
+                    {
+                        "id": str(uuid.uuid4()),
+                        "url": item["url"],
+                        "content_hash": content_hash,
+                        "title": item.get("title", ""),
+                        "tender_object": item.get("title", ""),
+                        "description": full_text[:3000],
+                        "raw_text": full_text,
+                        "reference": reference,
+                        "ref_no": reference,
+                        "entity": "",
+                        "category": "Autre",
+                        "deadline_at": deadline_at,
+                        "source": "tavily",
+                        "score": item.get("score"),
+                    }
+                )
+                logger.info(
+                    "Tavily PDF parsed",
+                    url=item["url"],
+                    text_length=len(full_text),
+                    deadline_at=deadline_at,
+                    reference=reference,
+                    run_id=state.run_id,
+                )
+                continue
+
+            # Handle Tavily snippet results (search or extract — structured by Tavily)
             elif parser_type in ("tavily_search", "tavily_extract"):
                 import uuid
 

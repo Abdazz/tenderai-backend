@@ -41,7 +41,8 @@ async def fetch_tavily_search(source: dict, run_id: str) -> dict:
         logger.warning("TAVILY_API_KEY not set — skipping", source=source_name, run_id=run_id)
         return _error_result(source, "tavily_search", "TAVILY_API_KEY not set")
 
-    queries = source.get("patterns", {}).get("queries", [])
+    patterns = source.get("patterns", {})
+    queries = patterns.get("queries", [])
     if not queries:
         logger.warning("No queries configured for tavily_search source", source=source_name, run_id=run_id)
         return {
@@ -54,28 +55,46 @@ async def fetch_tavily_search(source: dict, run_id: str) -> dict:
             "fetched_at": datetime.utcnow().isoformat(),
         }
 
+    include_domains: list[str] = patterns.get("include_domains", [])
+    exclude_domains: list[str] = patterns.get("exclude_domains", [])
+    exclude_url_patterns: list[str] = patterns.get("exclude_url_patterns", [])
+    # days=N restricts Tavily to results published/indexed within the last N days.
+    # Prevents stale procurement notices (already closed) from appearing in results.
+    days: int | None = patterns.get("days")
+
     all_results: list[dict] = []
     seen_urls: set[str] = set()
 
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
             for query in queries:
-                payload = {
+                payload: dict = {
                     "api_key": api_key,
                     "query": query,
                     "search_depth": settings.tavily.search_depth,
                     "max_results": settings.tavily.max_results,
                     "include_raw_content": False,
                 }
+                if include_domains:
+                    payload["include_domains"] = include_domains
+                if exclude_domains:
+                    payload["exclude_domains"] = exclude_domains
+                if days is not None:
+                    payload["days"] = days
+
                 response = await client.post(TAVILY_SEARCH_URL, json=payload)
                 response.raise_for_status()
                 data = response.json()
 
                 for item in data.get("results", []):
                     url = item.get("url", "")
-                    if url and url not in seen_urls:
-                        seen_urls.add(url)
-                        all_results.append(item)
+                    if not url or url in seen_urls:
+                        continue
+                    if exclude_url_patterns and any(pat in url for pat in exclude_url_patterns):
+                        logger.debug("Tavily result excluded by URL pattern", url=url, run_id=run_id)
+                        continue
+                    seen_urls.add(url)
+                    all_results.append(item)
 
                 logger.info(
                     "Tavily search query completed",

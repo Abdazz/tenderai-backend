@@ -166,6 +166,39 @@ async def fetch_joffres_item_detail(
         }
 
 
+async def _fetch_tavily_pdf(client: httpx.AsyncClient, link: dict, run_id: str) -> dict:
+    """Download a PDF found by Tavily and return it with parser_type=tavily_pdf."""
+    url = link.get("url", "")
+    try:
+        response = await client.get(url)
+        response.raise_for_status()
+        logger.info("Tavily PDF downloaded", url=url, size_bytes=len(response.content), run_id=run_id)
+        return {
+            "url": url,
+            "content": response.content,  # bytes — routed to PDF text extraction
+            "content_type": "application/pdf",
+            "status": "success",
+            "fetched_at": datetime.utcnow().isoformat(),
+            "parser_type": "tavily_pdf",
+            "source": "tavily",
+            "title": link.get("title", ""),
+            "score": link.get("score"),
+        }
+    except Exception as e:
+        logger.warning("Tavily PDF download failed, using snippet", url=url, error=str(e), run_id=run_id)
+        # Fall back to snippet so the item isn't lost entirely
+        return {
+            "url": url,
+            "content": link.get("content", ""),
+            "status": "success",
+            "fetched_at": datetime.utcnow().isoformat(),
+            "parser_type": link.get("parser_type", "tavily_search"),
+            "source": "tavily",
+            "title": link.get("title", ""),
+            "score": link.get("score"),
+        }
+
+
 def fetch_items_node(state) -> dict:
     """Fetch individual item pages from discovered links."""
 
@@ -256,8 +289,18 @@ def fetch_items_node(state) -> dict:
                 run_id=state.run_id,
             )
 
-        # Process Tavily items (fully fetched by Tavily API — pass through)
+        # Process Tavily items: PDF URLs are downloaded for full content analysis;
+        # non-PDF URLs use the Tavily snippet directly.
+        tavily_snippet_items = []
+        tavily_pdf_items = []
         for link in tavily_items:
+            url = link.get("url", "")
+            if url.lower().endswith(".pdf"):
+                tavily_pdf_items.append(link)
+            else:
+                tavily_snippet_items.append(link)
+
+        for link in tavily_snippet_items:
             items.append(
                 {
                     "url": link.get("url", ""),
@@ -270,10 +313,59 @@ def fetch_items_node(state) -> dict:
                     "score": link.get("score"),
                 }
             )
+
+        if tavily_pdf_items:
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+                async def fetch_tavily_pdfs():
+                    async with httpx.AsyncClient(
+                        headers={"User-Agent": settings.fetch.user_agent},
+                        timeout=httpx.Timeout(60.0),
+                    ) as client:
+                        tasks = [
+                            _fetch_tavily_pdf(client, link, state.run_id)
+                            for link in tavily_pdf_items
+                        ]
+                        return await asyncio.gather(*tasks, return_exceptions=True)
+
+                pdf_results = loop.run_until_complete(fetch_tavily_pdfs())
+                loop.close()
+
+                for result in pdf_results:
+                    if isinstance(result, Exception):
+                        logger.error("Error fetching Tavily PDF", error=str(result), run_id=state.run_id)
+                    else:
+                        items.append(result)
+
+                logger.info(
+                    "Tavily PDFs downloaded",
+                    count=len(tavily_pdf_items),
+                    successful=len([r for r in pdf_results if not isinstance(r, Exception)]),
+                    run_id=state.run_id,
+                )
+            except Exception as e:
+                logger.error("Failed to fetch Tavily PDFs", error=str(e), run_id=state.run_id, exc_info=True)
+                # Fall back to snippet for failed PDFs
+                for link in tavily_pdf_items:
+                    items.append({
+                        "url": link.get("url", ""),
+                        "content": link.get("content", ""),
+                        "status": "success",
+                        "fetched_at": datetime.utcnow().isoformat(),
+                        "parser_type": link.get("parser_type", "tavily_search"),
+                        "source": "tavily",
+                        "title": link.get("title", ""),
+                        "score": link.get("score"),
+                    })
+
         if tavily_items:
             logger.info(
-                "Tavily items passed through (no detail fetch needed)",
-                count=len(tavily_items),
+                "Tavily items processed",
+                total=len(tavily_items),
+                snippets=len(tavily_snippet_items),
+                pdfs=len(tavily_pdf_items),
                 run_id=state.run_id,
             )
 
