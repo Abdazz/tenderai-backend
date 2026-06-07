@@ -48,7 +48,10 @@ def compose_report_node(state) -> dict:
         # Store report in MinIO
         storage_client = get_storage_client()
         report_url = storage_client.store_report(
-            report_data=report_bytes, run_id=state.run_id, timestamp=datetime.utcnow()
+            report_data=report_bytes,
+            run_id=state.run_id,
+            timestamp=datetime.utcnow(),
+            country_name=temp_report_data.get("country_name"),
         )
 
         if not report_url:

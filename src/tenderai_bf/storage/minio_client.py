@@ -343,16 +343,26 @@ class MinIOClient:
             return []
 
     def store_report(
-        self, report_data: bytes, run_id: str, timestamp: datetime | None = None
+        self,
+        report_data: bytes,
+        run_id: str,
+        timestamp: datetime | None = None,
+        country_name: str | None = None,
     ) -> str | None:
         """Store a report and return the download URL."""
 
         if timestamp is None:
             timestamp = datetime.utcnow()
 
-        # Generate filename based on project name
+        # Build filename: TenderAI_<Country>_YYYY-MM-DD-HH-MM.docx
+        import re
+        country_slug = re.sub(r"[^a-zA-Z0-9]+", "_", country_name or "").strip("_") if country_name else ""
         project_slug = settings.app_name.replace(" ", "_")
-        filename = f"{project_slug}_{timestamp.strftime('%Y-%m-%d-%H-%M')}.docx"
+        name_parts = [project_slug]
+        if country_slug:
+            name_parts.append(country_slug)
+        name_parts.append(timestamp.strftime("%Y-%m-%d-%H-%M"))
+        filename = "_".join(name_parts) + ".docx"
         key = f"reports/{timestamp.strftime('%Y-%m-%d_%H-%M')}_{run_id}/{filename}"
 
         # Store report
