@@ -674,7 +674,7 @@ def parse_extract_node(state) -> dict:
                 continue
 
             # Handle Tavily extract — listing page content → LLM extracts individual notices
-            elif parser_type == "tavily_extract":
+            elif parser_type in ("tavily_extract", "playwright"):
                 from .parse_tavily_listing import parse_tavily_listing
 
                 content_text = item.get("content") or ""

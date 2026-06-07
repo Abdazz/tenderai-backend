@@ -242,7 +242,7 @@ def fetch_items_node(state) -> dict:
                 ungm_items.append(link)
             elif isinstance(link, dict) and link.get("source") == "ledevoir":
                 ledevoir_items.append(link)
-            elif isinstance(link, dict) and link.get("source") == "tavily":
+            elif isinstance(link, dict) and link.get("source") in ("tavily", "playwright"):
                 tavily_items.append(link)
             else:
                 # Regular URL

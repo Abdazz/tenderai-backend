@@ -191,6 +191,11 @@ async def fetch_single_listing(
         from .fetch_ledevoir import fetch_ledevoir
         return await fetch_ledevoir(source, run_id)
 
+    # Playwright — headless Chromium for JS-rendered SPAs
+    if parser_type == "playwright":
+        from .fetch_playwright import fetch_playwright
+        return await fetch_playwright(source, run_id)
+
     # Tavily web sources
     if parser_type in ("tavily_search", "tavily_extract"):
         from .fetch_tavily import fetch_tavily_extract, fetch_tavily_search
