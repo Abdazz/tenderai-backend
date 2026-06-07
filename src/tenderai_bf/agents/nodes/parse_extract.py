@@ -558,6 +558,33 @@ def parse_extract_node(state) -> dict:
                     # Continue with other items
                     continue
 
+            # Handle Le Devoir notices — OCR + classification already done at fetch stage
+            elif parser_type == "ledevoir":
+                is_relevant = item.get("is_relevant", False)
+                parsed_items.append(
+                    {
+                        "id": str(uuid.uuid4()),
+                        "url": item["url"],
+                        "content_hash": content_hash,
+                        "title": item.get("title", ""),
+                        "tender_object": item.get("title", ""),
+                        "entity": item.get("entity", ""),
+                        "reference": item.get("reference", ""),
+                        "ref_no": item.get("reference", ""),
+                        "description": item.get("content", ""),
+                        "deadline_at": item.get("deadline"),
+                        "category": "it_services" if is_relevant else "hors_perimetre",
+                        "source": "ledevoir",
+                        "source_type": "ledevoir",
+                        # Embedded classification — classify_node passes through
+                        "classification_embedded": True,
+                        "is_relevant": is_relevant,
+                        "relevance_score": 0.8 if is_relevant else 0.1,
+                        "classification_method": "groq_vision_ocr",
+                    }
+                )
+                continue
+
             # Handle UNGM listings (all fields pre-extracted from search response)
             elif parser_type == "ungm":
                 import uuid

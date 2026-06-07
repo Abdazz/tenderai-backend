@@ -186,6 +186,11 @@ async def fetch_single_listing(
                 "url": list_url,
             }
 
+    # Le Devoir — HTML fetch + Groq vision OCR on scanned images
+    if parser_type == "ledevoir":
+        from .fetch_ledevoir import fetch_ledevoir
+        return await fetch_ledevoir(source, run_id)
+
     # Tavily web sources
     if parser_type in ("tavily_search", "tavily_extract"):
         from .fetch_tavily import fetch_tavily_extract, fetch_tavily_search

@@ -293,6 +293,27 @@ def extract_item_links_node(state) -> dict:
                             source_name=source_name,
                         )
                         links = []
+                elif parser_type == "ledevoir":
+                    import json as _json
+
+                    try:
+                        listings = (
+                            _json.loads(content)
+                            if isinstance(content, str)
+                            else item.get("listings", [])
+                        )
+                        for listing in listings:
+                            listing["source"] = "ledevoir"
+                            listing["parser_type"] = "ledevoir"
+                        links = listings
+                        logger.info(
+                            f"Le Devoir: {len(listings)} notices extracted via OCR",
+                            source_name=source_name,
+                            run_id=state.run_id,
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to parse Le Devoir listings: {e}")
+                        links = []
                 elif parser_type == "ungm":
                     import json as _json
 

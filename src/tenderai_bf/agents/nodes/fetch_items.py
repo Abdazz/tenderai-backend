@@ -228,6 +228,7 @@ def fetch_items_node(state) -> dict:
         joffres_items = []
         ungm_items = []
         tavily_items = []
+        ledevoir_items = []
         regular_urls = []
 
         for link in state.discovered_links:
@@ -239,12 +240,36 @@ def fetch_items_node(state) -> dict:
                 joffres_items.append(link)
             elif isinstance(link, dict) and link.get("source") == "ungm":
                 ungm_items.append(link)
+            elif isinstance(link, dict) and link.get("source") == "ledevoir":
+                ledevoir_items.append(link)
             elif isinstance(link, dict) and link.get("source") == "tavily":
                 tavily_items.append(link)
             else:
                 # Regular URL
                 url = link if isinstance(link, str) else link.get("url")
                 regular_urls.append(url)
+
+        # Le Devoir items — OCR already done at fetch stage, pass through with embedded classification
+        for link in ledevoir_items:
+            items.append({
+                "url": link.get("url", "https://www.ledevoir.com/services-et-annonces/avis-publics"),
+                "content": link.get("description", link.get("content", "")),
+                "status": "success",
+                "fetched_at": datetime.utcnow().isoformat(),
+                "parser_type": "ledevoir",
+                "source": "ledevoir",
+                "title": link.get("title", ""),
+                "entity": link.get("entity", ""),
+                "reference": link.get("reference", ""),
+                "deadline": link.get("deadline"),
+                "is_relevant": link.get("is_relevant", False),
+            })
+        if ledevoir_items:
+            logger.info(
+                "Le Devoir notices passed through",
+                count=len(ledevoir_items),
+                run_id=state.run_id,
+            )
 
         # Process quotidien PDFs (already downloaded, no need to fetch)
         for link in quotidien_pdfs:
