@@ -587,8 +587,6 @@ def parse_extract_node(state) -> dict:
 
             # Handle UNGM listings (all fields pre-extracted from search response)
             elif parser_type == "ungm":
-                import uuid
-
                 details = item.get("details", {})
                 parsed_items.append(
                     {
@@ -614,8 +612,6 @@ def parse_extract_node(state) -> dict:
 
             # Handle Tavily PDF — downloaded PDF bytes, full text extraction
             elif parser_type == "tavily_pdf":
-                import uuid
-
                 pdf_bytes = item.get("content")
                 if not isinstance(pdf_bytes, bytes):
                     logger.warning("tavily_pdf item has no bytes content", url=item["url"], run_id=state.run_id)
@@ -693,7 +689,6 @@ def parse_extract_node(state) -> dict:
                     parsed_items.extend(listing_items)
                 else:
                     # Fallback: create single item with snippet so the source is not lost
-                    import uuid
                     parsed_items.append(
                         {
                             "id": str(uuid.uuid4()),
@@ -714,8 +709,6 @@ def parse_extract_node(state) -> dict:
 
             # Handle Tavily search snippets (keyword search results, not listing pages)
             elif parser_type == "tavily_search":
-                import uuid
-
                 content_text = item.get("content") or ""
                 if isinstance(content_text, bytes):
                     content_text = content_text.decode("utf-8", errors="replace")

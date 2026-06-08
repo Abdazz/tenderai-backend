@@ -72,7 +72,7 @@ COPY src/ src/
 RUN pip install -e .
 
 # Create necessary directories with proper permissions
-RUN mkdir -p logs cache temp reports /tmp/ocr && \
+RUN mkdir -p logs/nodes cache temp reports /tmp/ocr && \
     chmod -R 777 logs cache temp reports /tmp/ocr && \
     chown -R tenderai:tenderai /app /tmp/ocr
 
