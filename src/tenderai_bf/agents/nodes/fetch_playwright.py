@@ -45,6 +45,10 @@ async def fetch_playwright(source: dict, run_id: str) -> dict:
     scroll: bool = bool(patterns.get("scroll_to_bottom", False))
     extra_wait: int = int(patterns.get("extra_wait_ms", 1_000))
     block_media: bool = bool(patterns.get("block_media", True))
+    item_link_selector: str | None = patterns.get("item_link_selector")
+    pagination_selector: str | None = patterns.get("pagination_selector")
+    pagination_url_template: str | None = patterns.get("pagination_url_template")
+    max_pages: int = int(patterns.get("max_pages", 5))
 
     try:
         async with async_playwright() as pw:
@@ -106,11 +110,155 @@ async def fetch_playwright(source: dict, run_id: str) -> dict:
             if extra_wait > 0:
                 await page.wait_for_timeout(extra_wait)
 
-            # Get full rendered text content (cleaner than raw HTML for LLM)
-            text_content = await page.inner_text("body")
-            html_content = await page.content()
+            if item_link_selector:
+                # ── Link-extraction mode ─────────────────────────────────────
+                # Extract individual item links from the rendered HTML and
+                # follow pagination links up to max_pages.  Returns URL strings
+                # so each detail page is fetched and parsed separately by
+                # fetch_items / parse_extract (no LLM needed for listing page).
+                import json
+                from urllib.parse import urlparse as _urlparse, urljoin as _urljoin
 
-            await browser.close()
+                _parsed = _urlparse(url)
+                _base_origin = f"{_parsed.scheme}://{_parsed.netloc}"
+
+                all_links: list[str] = []
+                seen_hrefs: set[str] = set()
+
+                async def _collect_links(pg) -> int:
+                    elems = await pg.query_selector_all(item_link_selector)
+                    count = 0
+                    for elem in elems:
+                        href = await elem.get_attribute("href")
+                        if not href:
+                            continue
+                        if href.startswith("/"):
+                            href = _base_origin + href
+                        elif not href.startswith("http"):
+                            href = _urljoin(url, href)
+                        if href not in seen_hrefs:
+                            seen_hrefs.add(href)
+                            all_links.append(href)
+                            count += 1
+                    return count
+
+                new_count = await _collect_links(page)
+                logger.info(
+                    "Playwright links: page 1",
+                    source=source_name,
+                    new_links=new_count,
+                    run_id=run_id,
+                )
+
+                if pagination_url_template:
+                    # URL-template pagination: navigate directly to page N via a
+                    # URL pattern like "https://example.com/list?page={page_num}"
+                    for page_num in range(2, max_pages + 1):
+                        next_url = pagination_url_template.format(page_num=page_num)
+                        await page.goto(
+                            next_url, wait_until="domcontentloaded", timeout=wait_timeout
+                        )
+                        try:
+                            await page.wait_for_selector(wait_selector, timeout=wait_timeout)
+                        except Exception:
+                            pass
+                        if extra_wait > 0:
+                            await page.wait_for_timeout(extra_wait)
+
+                        new_count = await _collect_links(page)
+                        logger.info(
+                            f"Playwright links: page {page_num}",
+                            source=source_name,
+                            new_links=new_count,
+                            total=len(all_links),
+                            run_id=run_id,
+                        )
+                        if new_count == 0:
+                            logger.info(
+                                "Playwright pagination: no new links on page",
+                                page=page_num,
+                                source=source_name,
+                                run_id=run_id,
+                            )
+                            break
+
+                elif pagination_selector:
+                    for page_num in range(2, max_pages + 1):
+                        next_elem = await page.query_selector(pagination_selector)
+                        if not next_elem:
+                            logger.info(
+                                "Playwright pagination: no more pages",
+                                last_page=page_num - 1,
+                                source=source_name,
+                                run_id=run_id,
+                            )
+                            break
+
+                        next_href = await next_elem.get_attribute("href")
+                        if next_href:
+                            if next_href.startswith("/"):
+                                next_href = _base_origin + next_href
+                            elif not next_href.startswith("http"):
+                                next_href = _urljoin(url, next_href)
+                            await page.goto(
+                                next_href, wait_until="domcontentloaded", timeout=wait_timeout
+                            )
+                        else:
+                            await next_elem.click()
+                            await page.wait_for_load_state(
+                                "domcontentloaded", timeout=wait_timeout
+                            )
+
+                        try:
+                            await page.wait_for_selector(wait_selector, timeout=wait_timeout)
+                        except Exception:
+                            pass
+
+                        if extra_wait > 0:
+                            await page.wait_for_timeout(extra_wait)
+
+                        new_count = await _collect_links(page)
+                        logger.info(
+                            f"Playwright links: page {page_num}",
+                            source=source_name,
+                            new_links=new_count,
+                            total=len(all_links),
+                            run_id=run_id,
+                        )
+                        if new_count == 0:
+                            logger.info(
+                                "Playwright pagination: no new links on page",
+                                page=page_num,
+                                source=source_name,
+                                run_id=run_id,
+                            )
+                            break
+
+                await browser.close()
+
+                logger.info(
+                    "Playwright link extraction complete",
+                    source=source_name,
+                    total_links=len(all_links),
+                    run_id=run_id,
+                )
+
+                return {
+                    "source": source,
+                    "content": json.dumps(all_links, ensure_ascii=False),
+                    "listings": all_links,
+                    "url": url,
+                    "status": "success",
+                    "parser_type": "playwright_links",
+                    "fetched_at": datetime.utcnow().isoformat(),
+                }
+
+            else:
+                # ── Text-blob mode (legacy, no item_link_selector) ───────────
+                # Capture the rendered page text and return as a single blob
+                # for LLM extraction in parse_tavily_listing.
+                text_content = await page.inner_text("body")
+                await browser.close()
 
         logger.info(
             "Playwright: page rendered",

@@ -83,6 +83,7 @@ TEXTE DE LA PAGE :
 {page_text}
 
 SOURCE : {source_name}
+URL_DE_BASE : {source_url}
 
 Ta mission :
 1. Identifier TOUS les appels d'offres listés dans ce texte (même partiellement).
@@ -105,6 +106,10 @@ PV de dépouillement
 carburant, fournitures générales, gardiennage, nettoyage
 - Si la page ne contient aucun appel d'offres identifiable, retourne une liste vide.
 - N'invente pas d'informations absentes du texte.
+- Pour tender_url : le texte peut contenir des liens au format [Titre](/chemin/vers/fiche). \
+Extrais le chemin (ex: /fr/occasions-de-marche/appels-d-offres/ID) pour chaque appel. \
+Si le chemin est relatif (commence par /), le retourner tel quel — il sera rendu absolu \
+automatiquement avec l'URL_DE_BASE fournie. Si l'URL complète est visible, l'utiliser directement.
 
 Retourne UNIQUEMENT du JSON valide (pas de markdown, pas d'explication) :
 {{
@@ -115,7 +120,7 @@ Retourne UNIQUEMENT du JSON valide (pas de markdown, pas d'explication) :
       "reference": "",
       "deadline": null,
       "description": "Description courte",
-      "tender_url": null,
+      "tender_url": "/chemin/vers/fiche-ou-null",
       "is_results_notice": false,
       "is_relevant": false,
       "domain": "hors_perimetre",
@@ -155,7 +160,7 @@ def _normalize_tender_dict(raw: dict) -> TenderItem | None:
 
 
 def _extract_tenders_from_page(
-    page_text: str, source_name: str, llm_provider: str
+    page_text: str, source_name: str, source_url: str, llm_provider: str
 ) -> list[TenderItem]:
     """Single LLM call to extract all tenders from a listing page."""
     llm = get_llm_instance(temperature=0.0, max_tokens=8000)
@@ -166,6 +171,7 @@ def _extract_tenders_from_page(
     prompt = _EXTRACTION_PROMPT.format(
         page_text=page_text[:_MAX_INPUT_CHARS],
         source_name=source_name,
+        source_url=source_url,
     )
 
     if llm_provider.lower() == "groq":
@@ -232,7 +238,7 @@ def parse_tavily_listing(
     )
 
     llm_provider = (llm_cfg or {}).get("provider", "groq")
-    tenders = _extract_tenders_from_page(page_content, source_name, llm_provider)
+    tenders = _extract_tenders_from_page(page_content, source_name, source_url, llm_provider)
 
     logger.info(
         f"LLM returned {len(tenders)} notices from listing page",
@@ -240,12 +246,24 @@ def parse_tavily_listing(
         run_id=run_id,
     )
 
+    # Pre-compute base origin from source_url for resolving relative paths
+    from urllib.parse import urlparse
+    _parsed_base = urlparse(source_url)
+    _base_origin = f"{_parsed_base.scheme}://{_parsed_base.netloc}"
+
     results = []
     for i, tender in enumerate(tenders):
         is_actionable = tender.is_relevant and not tender.is_results_notice
 
-        # Use the tender's own URL if extracted, otherwise fall back to source listing URL
-        item_url = tender.tender_url or source_url
+        # Resolve tender URL: make relative paths absolute, fall back to source listing URL
+        raw_url = tender.tender_url
+        if raw_url:
+            if raw_url.startswith("/"):
+                raw_url = _base_origin + raw_url
+            elif not raw_url.startswith("http"):
+                from urllib.parse import urljoin
+                raw_url = urljoin(source_url, raw_url)
+        item_url = raw_url or source_url
 
         item = {
             "id": str(uuid.uuid4()),

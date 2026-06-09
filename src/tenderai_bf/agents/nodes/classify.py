@@ -61,15 +61,20 @@ _SUPPLIER_REGISTRATION_SIGNALS = [
 ]
 
 
+def _normalize_apostrophes(text: str) -> str:
+    """Replace typographic/curly apostrophes with the standard ASCII apostrophe."""
+    return text.replace("’", "'").replace("‘", "'").replace("ʼ", "'")
+
+
 def _is_attribution_notice(item: dict) -> bool:
     """Return True if this item concerns attribution results, not an open procurement."""
-    text = " ".join(
+    text = _normalize_apostrophes(" ".join(
         [
             item.get("title") or "",
             item.get("tender_object") or "",
             item.get("description") or "",
         ]
-    ).lower()
+    ).lower())
     return any(signal in text for signal in _ATTRIBUTION_SIGNALS)
 
 
@@ -80,24 +85,49 @@ def _parse_deadline(item: dict) -> datetime | None:
     if not raw:
         # Fall back to scanning the description for explicit close dates
         text = (item.get("description") or "") + " " + (item.get("raw_text") or "")
-        # Patterns: "Date de cloture : 2024-02-28", "closing date: 2024/06/30", etc.
+        # First pass: require an explicit deadline keyword
         for pattern in [
             r"(?:date\s+de\s+cl[oô]ture|closing\s+date|deadline|date\s+limite)[^\d]{0,10}(\d{4}[-/]\d{2}[-/]\d{2})",
-            r"(\d{4}[-/]\d{2}[-/]\d{2})",  # bare ISO date
         ]:
             m = re.search(pattern, text, re.IGNORECASE)
             if m:
                 raw = m.group(1)
                 break
 
+        if not raw:
+            # Second pass: bare ISO date — skip dates preceded by modification/publication keywords
+            # (e.g. "Date de modification: 2026-06-05") to avoid false expiry filtering
+            _EXCLUDE_PREFIXES = ("modif", "publi", "créé", "créat", "posted", "annoncé", "soumis")
+            for date_match in re.finditer(r"(\d{4}[-/]\d{2}[-/]\d{2})", text):
+                preceding = text[max(0, date_match.start() - 40):date_match.start()].lower()
+                if not any(excl in preceding for excl in _EXCLUDE_PREFIXES):
+                    raw = date_match.group(1)
+                    break
+
     if not raw:
         return None
 
+    raw_str = str(raw).strip()
+
     for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%d-%m-%Y", "%d/%m/%Y"):
         try:
-            return datetime.strptime(str(raw)[:10], fmt).replace(tzinfo=timezone.utc)
+            return datetime.strptime(raw_str[:10], fmt).replace(tzinfo=timezone.utc)
         except ValueError:
             continue
+
+    # Handle "DD-Mon-YY" and "DD-Mon-YYYY" (e.g. "08-Jun-26", "08-Jun-2026")
+    import calendar
+    month_abbr = {m.lower(): i for i, m in enumerate(calendar.month_abbr) if m}
+    m = re.match(r"(\d{1,2})-([A-Za-z]{3})-(\d{2,4})$", raw_str)
+    if m:
+        day, mon, yr = int(m.group(1)), m.group(2).lower(), int(m.group(3))
+        if mon in month_abbr:
+            year = 2000 + yr if yr < 100 else yr
+            try:
+                return datetime(year, month_abbr[mon], day, tzinfo=timezone.utc)
+            except ValueError:
+                pass
+
     return None
 
 
@@ -123,6 +153,172 @@ def _is_supplier_registration(item: dict) -> bool:
         ]
     ).lower()
     return any(signal in text for signal in _SUPPLIER_REGISTRATION_SIGNALS)
+
+
+def _is_geographic_mismatch(item: dict, country_name: str) -> bool:
+    """Return True if the item explicitly targets a different country than the target.
+
+    Only uses hard signals to avoid false positives: (1) the location field names
+    another country, (2) the UNDP entity code encodes a different country.
+    Returns False when uncertain so legitimate items are never dropped.
+    """
+    if not country_name:
+        return False
+
+    country_lower = country_name.lower()
+
+    # 1. Explicit location field — skip if absent or placeholder
+    location = (item.get("location") or "").strip()
+    if location and location.lower() not in ("n/a", "non disponible", "none", "-", ""):
+        if country_lower not in location.lower():
+            logger.debug(
+                "Geographic mismatch: location does not match target country",
+                location=location,
+                target=country_name,
+                item_id=item.get("id"),
+            )
+            return True
+
+    # 2. UNDP country code in entity ("UNDP-ZWE/ZIMBABWE") or reference ("UNDP-LBR-00899")
+    for field_name in ("entity", "reference", "ref_no"):
+        field_val = (item.get(field_name) or "").strip()
+        # Pattern: UNDP-{ISO3}/{COUNTRY} or UNDP-{ISO3}-{number}
+        undp_match = re.match(r"UNDP-([A-Z]{3})(?:/(.+)|-\d)", field_val, re.IGNORECASE)
+        if undp_match:
+            iso3 = undp_match.group(1).upper()
+            country_in_field = (undp_match.group(2) or "").lower()
+            if country_lower not in country_in_field and not _iso3_matches_country(iso3, country_lower):
+                logger.debug(
+                    "Geographic mismatch: UNDP country code does not match target",
+                    field=field_name,
+                    value=field_val,
+                    target=country_name,
+                    item_id=item.get("id"),
+                )
+                return True
+
+    # 3. Entity field is itself a country name (e.g. entity="Géorgie")
+    entity_lower = (item.get("entity") or "").strip().lower()
+    for iso3, fragments in _ISO3_TO_FRAGMENTS.items():
+        if entity_lower in fragments:  # exact match: entity IS a country name
+            if not any(frag in country_lower for frag in fragments):
+                logger.debug(
+                    "Geographic mismatch: entity is a foreign country name",
+                    entity=entity_lower,
+                    target=country_name,
+                    item_id=item.get("id"),
+                )
+                return True
+
+    return False
+
+
+def _is_real_open_tender(item: dict) -> bool:
+    """Heuristic fallback: item has a verifiable future deadline.
+
+    Used only in keyword-mode where no LLM is available.
+    Prefer _llm_verify_is_real_tender() when an LLM instance is at hand.
+    """
+    deadline = _parse_deadline(item)
+    if deadline is None:
+        return False
+    return deadline >= datetime.now(tz=timezone.utc)
+
+
+def _llm_verify_is_real_tender(item: dict, llm) -> bool:
+    """Ask the LLM whether this is a genuine open procurement tender.
+
+    Called only for items with no geographic context (location=N/A), to filter out
+    consultant postings, attribution notices, and other non-bidable content that
+    slipped through earlier filters.
+    Fails open (returns True) on LLM errors to avoid dropping legitimate tenders.
+    """
+    title = (item.get("tender_object") or item.get("title") or "")[:200]
+    entity = (item.get("entity") or "")[:100]
+    reference = (item.get("reference") or item.get("ref_no") or "")[:80]
+    description = (item.get("description") or "")[:400]
+    deadline_raw = str(item.get("deadline_at") or item.get("deadline") or "non précisée")
+
+    prompt = (
+        "Tu analyses un marché public. Réponds UNIQUEMENT par OUI ou NON.\n\n"
+        "Est-ce un appel d'offres ouvert auquel une entreprise peut soumissionner "
+        "(pas un avis d'attribution déjà attribué, pas un recrutement de consultant, "
+        "pas une inscription fournisseur, pas une actualité ou étude) ?\n\n"
+        f"Titre : {title}\n"
+        f"Entité : {entity}\n"
+        f"Référence : {reference}\n"
+        f"Date limite : {deadline_raw}\n"
+        f"Description : {description}\n\n"
+        "Réponse (OUI/NON uniquement) :"
+    )
+    try:
+        response = llm.invoke(prompt)
+        text = (
+            response.content.strip().upper()
+            if hasattr(response, "content")
+            else str(response).strip().upper()
+        )
+        is_real = "OUI" in text or "YES" in text
+        logger.debug(
+            "LLM real-tender verification",
+            item_id=item.get("id"),
+            title=title[:60],
+            is_real=is_real,
+            llm_response=text[:80],
+        )
+        return is_real
+    except Exception as e:
+        logger.warning(
+            "LLM real-tender check failed, defaulting to keep",
+            item_id=item.get("id"),
+            error=str(e),
+        )
+        return True  # fail-open: keep dubious item rather than silently drop a real one
+
+
+# Mapping of UNDP/UN ISO-3 country codes to country name fragments for target matching
+_ISO3_TO_FRAGMENTS: dict[str, list[str]] = {
+    "BFA": ["burkina"],
+    "CAN": ["canada"],
+    "CIV": ["côte d'ivoire", "cote d'ivoire", "ivory coast"],
+    "SEN": ["sénégal", "senegal"],
+    "MLI": ["mali"],
+    "NER": ["niger"],
+    "GIN": ["guinée", "guinea"],
+    "TGO": ["togo"],
+    "BEN": ["bénin", "benin"],
+    "CMR": ["cameroun", "cameroon"],
+    "TCD": ["tchad", "chad"],
+    "GHA": ["ghana"],
+    "NGA": ["nigeria"],
+    "KEN": ["kenya"],
+    "ETH": ["éthiopie", "ethiopia"],
+    "RWA": ["rwanda"],
+    "UGA": ["uganda"],
+    "TZA": ["tanzanie", "tanzania"],
+    "MOZ": ["mozambique"],
+    "ZWE": ["zimbabwe"],
+    "ZMB": ["zambie", "zambia"],
+    "MWI": ["malawi"],
+    "MDG": ["madagascar"],
+    "LBR": ["liberia"],
+    "SLE": ["sierra leone"],
+    "LSO": ["lesotho"],
+    "ZAF": ["south africa", "afrique du sud"],
+    "BDI": ["burundi"],
+    "IND": ["india", "inde"],
+    "KAZ": ["kazakhstan"],
+    "KGZ": ["kyrgyzstan", "kirghizistan"],
+    "MDA": ["moldova"],
+    "HND": ["honduras"],
+    "GEO": ["georgie", "géorgie", "georgia"],
+}
+
+
+def _iso3_matches_country(iso3: str, country_lower: str) -> bool:
+    """Return True if the ISO-3 code corresponds to the target country."""
+    fragments = _ISO3_TO_FRAGMENTS.get(iso3.upper(), [])
+    return any(frag in country_lower for frag in fragments)
 
 
 def classify_node(state) -> dict:
@@ -202,21 +398,19 @@ def classify_with_keywords(state) -> dict:
             run_id=state.run_id,
         )
 
+        target_country = getattr(state, "country_name", "") or ""
+
         for item in state.items_parsed:
-            # Items from structured PDF extraction carry embedded classification — pass through
-            if item.get("classification_embedded"):
-                if item.get("is_relevant") and not item.get("is_results_notice"):
-                    relevant_items.append(item)
-                    logger.debug(
-                        "Pass-through: structured extraction pre-classified item as relevant",
-                        item_id=item.get("id"),
-                        domain=item.get("domain"),
-                        score=item.get("relevance_score"),
-                        run_id=state.run_id,
-                    )
+            # Hard disqualification filters — applied to ALL items regardless of whether
+            # they were pre-classified by the extraction LLM (classification_embedded).
+            # Pre-classification is a relevance signal, not an override of these rules.
+
+            if _is_geographic_mismatch(item, target_country):
+                item["relevance_score"] = 0.0
+                item["is_relevant"] = False
+                item["classification_method"] = "geographic_filter"
                 continue
 
-            # Exclude attribution/results notices regardless of content
             if _is_attribution_notice(item):
                 item["relevance_score"] = 0.0
                 item["is_relevant"] = False
@@ -228,7 +422,6 @@ def classify_with_keywords(state) -> dict:
                 )
                 continue
 
-            # Exclude supplier/provider registration calls (not actionable IT tenders)
             if _is_supplier_registration(item):
                 item["relevance_score"] = 0.0
                 item["is_relevant"] = False
@@ -240,7 +433,6 @@ def classify_with_keywords(state) -> dict:
                 )
                 continue
 
-            # Exclude expired tenders (deadline clearly in the past)
             if _is_expired(item):
                 item["relevance_score"] = 0.0
                 item["is_relevant"] = False
@@ -251,6 +443,33 @@ def classify_with_keywords(state) -> dict:
                     deadline=str(_parse_deadline(item)),
                     run_id=state.run_id,
                 )
+                continue
+
+            # Items pre-classified by the extraction LLM — pass through directly.
+            if item.get("classification_embedded"):
+                if item.get("is_relevant") and not item.get("is_results_notice"):
+                    # Quality gate: items with no geographic context kept only if genuinely open
+                    loc = (item.get("location") or "").strip()
+                    has_location = bool(loc and loc.lower() not in ("n/a", "non disponible", "none", "-", ""))
+                    if not has_location and not _is_real_open_tender(item):
+                        item["relevance_score"] = 0.0
+                        item["is_relevant"] = False
+                        item["classification_method"] = "quality_filter"
+                        logger.debug(
+                            "Quality filter: no location + no open deadline, item rejected",
+                            item_id=item.get("id"),
+                            score=item.get("relevance_score"),
+                            run_id=state.run_id,
+                        )
+                    else:
+                        relevant_items.append(item)
+                        logger.debug(
+                            "Pass-through: structured extraction pre-classified item as relevant",
+                            item_id=item.get("id"),
+                            domain=item.get("domain"),
+                            score=item.get("relevance_score"),
+                            run_id=state.run_id,
+                        )
                 continue
 
             # Check if item already has relevance_score from extraction (LLM-scored items)
@@ -416,24 +635,23 @@ Répondez NON à l'étape 2 si l'appel d'offres concerne :
 
 Répondez UNIQUEMENT par "OUI" ou "NON" suivi d'une explication en une phrase précisant pourquoi ce contenu est ou n'est pas un appel d'offres IT pertinent."""
 
+        target_country = getattr(state, "country_name", "") or ""
+
         # Classify each item
         for item in state.items_parsed:
-            # Items from structured PDF extraction carry embedded classification — pass through
-            if item.get("classification_embedded"):
-                if item.get("is_relevant") and not item.get("is_results_notice"):
-                    relevant_items.append(item)
-                    logger.debug(
-                        "Pass-through: structured extraction pre-classified item as relevant",
-                        item_id=item.get("id"),
-                        domain=item.get("domain"),
-                        score=item.get("relevance_score"),
-                        run_id=state.run_id,
-                    )
+            # Hard disqualification filters — applied to ALL items regardless of whether
+            # they were pre-classified by the extraction LLM (classification_embedded).
+            # Pre-classification is a relevance signal, not an override of these rules.
+
+            if _is_geographic_mismatch(item, target_country):
+                item["relevance_score"] = 0.0
+                item["is_relevant"] = False
+                item["classification_method"] = "geographic_filter"
                 continue
 
-            # Exclude attribution/results notices regardless of content
             if _is_attribution_notice(item):
                 item["relevance_score"] = 0.0
+                item["is_relevant"] = False
                 item["classification_method"] = "attribution_filter"
                 logger.debug(
                     "Excluded attribution notice",
@@ -442,9 +660,9 @@ Répondez UNIQUEMENT par "OUI" ou "NON" suivi d'une explication en une phrase pr
                 )
                 continue
 
-            # Exclude supplier/provider registration calls (not actionable IT tenders)
             if _is_supplier_registration(item):
                 item["relevance_score"] = 0.0
+                item["is_relevant"] = False
                 item["classification_method"] = "supplier_registration_filter"
                 logger.debug(
                     "Excluded supplier registration call",
@@ -453,7 +671,6 @@ Répondez UNIQUEMENT par "OUI" ou "NON" suivi d'une explication en une phrase pr
                 )
                 continue
 
-            # Exclude expired tenders (deadline clearly in the past)
             if _is_expired(item):
                 item["relevance_score"] = 0.0
                 item["is_relevant"] = False
@@ -464,6 +681,33 @@ Répondez UNIQUEMENT par "OUI" ou "NON" suivi d'une explication en une phrase pr
                     deadline=str(_parse_deadline(item)),
                     run_id=state.run_id,
                 )
+                continue
+
+            # Items pre-classified by the extraction LLM — pass through directly.
+            if item.get("classification_embedded"):
+                if item.get("is_relevant") and not item.get("is_results_notice"):
+                    # Quality gate: items with no geographic context — ask LLM if it's a real tender
+                    loc = (item.get("location") or "").strip()
+                    has_location = bool(loc and loc.lower() not in ("n/a", "non disponible", "none", "-", ""))
+                    if not has_location and not _llm_verify_is_real_tender(item, llm):
+                        item["relevance_score"] = 0.0
+                        item["is_relevant"] = False
+                        item["classification_method"] = "quality_filter"
+                        logger.info(
+                            "Quality filter (LLM): no location + LLM says not a real open tender",
+                            item_id=item.get("id"),
+                            title=(item.get("tender_object") or item.get("title") or "")[:80],
+                            run_id=state.run_id,
+                        )
+                    else:
+                        relevant_items.append(item)
+                        logger.debug(
+                            "Pass-through: structured extraction pre-classified item as relevant",
+                            item_id=item.get("id"),
+                            domain=item.get("domain"),
+                            score=item.get("relevance_score"),
+                            run_id=state.run_id,
+                        )
                 continue
 
             llm_error = None

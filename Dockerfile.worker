@@ -62,8 +62,9 @@ COPY pyproject.toml poetry.lock* README.md ./
 # Install dependencies with full extras (includes playwright)
 RUN poetry install --only=main --extras "full" --no-root && rm -rf $POETRY_CACHE_DIR
 
-# Install Playwright Chromium browser
-RUN playwright install chromium
+# Install Playwright Chromium to a fixed path accessible by the tenderai user
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN playwright install chromium && chmod -R 755 /ms-playwright
 
 # Copy application code
 COPY src/ src/

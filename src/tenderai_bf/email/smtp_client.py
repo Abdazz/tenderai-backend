@@ -315,6 +315,16 @@ def _build_notices_table_html(notices: list) -> str:
             except Exception:
                 pass
 
+        import html as _html
+        from urllib.parse import urlparse as _urlparse
+        raw_url = notice.get("source_url") or notice.get("url") or ""
+        _scheme = _urlparse(raw_url).scheme.lower() if raw_url else ""
+        if raw_url and _scheme in ("http", "https"):
+            safe_url = _html.escape(raw_url, quote=True)
+            url_cell = f'<a href="{safe_url}" style="color:#667eea;text-decoration:none;font-weight:600;">Voir ↗</a>'
+        else:
+            url_cell = "—"
+
         row_bg = "#ffffff" if i % 2 == 1 else "#f8f9fa"
         rows += f"""
         <tr style="background:{row_bg};">
@@ -324,6 +334,7 @@ def _build_notices_table_html(notices: list) -> str:
             <td style="padding:8px 10px;text-align:center;border:1px solid #dee2e6;">{pub_date}</td>
             <td style="padding:8px 10px;text-align:center;border:1px solid #dee2e6;">{start_date}</td>
             <td style="padding:8px 10px;text-align:center;border:1px solid #dee2e6;font-weight:600;color:#dc3545;">{deadline}</td>
+            <td style="padding:8px 10px;text-align:center;border:1px solid #dee2e6;">{url_cell}</td>
         </tr>"""
 
     return f"""
@@ -331,11 +342,12 @@ def _build_notices_table_html(notices: list) -> str:
         <thead>
             <tr style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;">
                 <th style="padding:10px;border:1px solid #dee2e6;white-space:nowrap;width:40px;">N°</th>
-                <th style="padding:10px;border:1px solid #dee2e6;text-align:left;width:40%;">Titre</th>
-                <th style="padding:10px;border:1px solid #dee2e6;text-align:left;width:20%;">Organisme</th>
-                <th style="padding:10px;border:1px solid #dee2e6;white-space:nowrap;width:10%;">Date de publication</th>
-                <th style="padding:10px;border:1px solid #dee2e6;white-space:nowrap;width:10%;">Début soumissions</th>
-                <th style="padding:10px;border:1px solid #dee2e6;white-space:nowrap;width:10%;">Fin soumissions</th>
+                <th style="padding:10px;border:1px solid #dee2e6;text-align:left;width:35%;">Titre</th>
+                <th style="padding:10px;border:1px solid #dee2e6;text-align:left;width:18%;">Organisme</th>
+                <th style="padding:10px;border:1px solid #dee2e6;white-space:nowrap;width:9%;">Date de publication</th>
+                <th style="padding:10px;border:1px solid #dee2e6;white-space:nowrap;width:9%;">Début soumissions</th>
+                <th style="padding:10px;border:1px solid #dee2e6;white-space:nowrap;width:9%;">Fin soumissions</th>
+                <th style="padding:10px;border:1px solid #dee2e6;white-space:nowrap;width:7%;">Lien</th>
             </tr>
         </thead>
         <tbody>{rows}
@@ -349,8 +361,8 @@ def _build_notices_table_text(notices: list) -> str:
         return "Aucun avis pertinent trouvé pour cette période.\n"
 
     lines = [
-        f"{'N°':<4} {'Titre':<55} {'Organisme':<35} {'Publication':<14} {'Début':<14} {'Fin':<14}",
-        "-" * 140,
+        f"{'N°':<4} {'Titre':<55} {'Organisme':<35} {'Publication':<14} {'Début':<14} {'Fin':<14} {'URL'}",
+        "-" * 160,
     ]
     for i, notice in enumerate(notices, start=1):
         title = (notice.get("tender_object") or notice.get("title") or "—")[:54]
@@ -382,8 +394,10 @@ def _build_notices_table_text(notices: list) -> str:
             except Exception:
                 pass
 
+        url = notice.get("source_url") or notice.get("url") or "—"
+
         lines.append(
-            f"{i:<4} {title:<55} {entity:<35} {pub_date:<14} {start_date:<14} {deadline:<14}"
+            f"{i:<4} {title:<55} {entity:<35} {pub_date:<14} {start_date:<14} {deadline:<14} {url}"
         )
 
     return "\n".join(lines) + "\n"
@@ -640,11 +654,13 @@ def send_report_email(
             stats, report_url, run_id, notices=notices, country_name=country_name
         )
 
-        # Prepare attachment
-        project_slug = settings.app_name.replace(" ", "_")
+        # Prepare attachment — filename uses country name when available
+        import re as _re
+        _country_slug = _re.sub(r"[^a-zA-Z0-9]+", "_", country_name or "").strip("_")
+        _filename_base = f"TenderAI_{_country_slug}" if _country_slug else settings.app_name.replace(" ", "_")
         attachments = [
             {
-                "filename": f"{project_slug}_{timestamp_str}.docx",
+                "filename": f"{_filename_base}_{timestamp_str}.docx",
                 "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 "data": report_data,
             }

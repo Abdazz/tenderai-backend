@@ -676,7 +676,7 @@ def _add_appendices(document: Document, data: dict[str, Any]) -> None:
 
     footer_para = document.add_paragraph()
     footer_run = footer_para.add_run(
-        f"Rapport généré par TenderAI BF v{settings.app_version} - "
+        f"Rapport généré par TenderAI v{settings.app_version} - "
         f"YULCOM Technologies - {data['generated_at'].strftime('%d/%m/%Y %H:%M UTC')}"
     )
     footer_run.font.size = Pt(8)

@@ -433,17 +433,38 @@ def parse_html_item(
         parser = HTMLParser(content)
 
         # Try to extract title from various locations
-        title_elem = parser.select_first("h1, h2, .title, [data-title]")
+        title_elem = parser.css_first(
+            "h1, h2, h3, .title, [data-title], [class*='title'], [class*='titre']"
+        )
         if title_elem:
-            title = title_elem.text(strip=True)
+            extracted = title_elem.text(strip=True)
+            if len(extracted) > 5:
+                title = extracted
 
         # Try to extract entity/organization
         entity = "Unknown"
-        entity_elem = parser.select_first(
-            ".entity, .organization, .company, [data-entity]"
+        entity_elem = parser.css_first(
+            ".entity, .organization, .company, [data-entity],"
+            " [class*='organization'], [class*='organis'], [class*='buyer'],"
+            " [class*='acheteur'], [class*='entité']"
         )
         if entity_elem:
             entity = entity_elem.text(strip=True)
+
+        # Fallback: scan definition list text for "Organisation" label (government portals)
+        if entity == "Unknown":
+            for dl in parser.css("dl"):
+                dl_text = dl.text(strip=True)
+                m = re.search(
+                    r"(?:Organisation|Organization|Organisme|Entité|Buyer)\s*(.+?)(?:\n|Adresse|Address|$)",
+                    dl_text,
+                    re.IGNORECASE | re.DOTALL,
+                )
+                if m:
+                    candidate = m.group(1).strip()[:150]
+                    if candidate and len(candidate) > 3:
+                        entity = candidate
+                        break
 
         # Try to extract deadline
         deadline = None
@@ -451,7 +472,7 @@ def parse_html_item(
             r"(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})",
             r"(\d{4}-\d{2}-\d{2})",
         ]
-        for elem in parser.select("[data-deadline], .deadline, .date-limite"):
+        for elem in parser.css("[data-deadline], .deadline, .date-limite"):
             text = elem.text(strip=True)
             for pattern in deadline_patterns:
                 match = re.search(pattern, text)
@@ -461,15 +482,33 @@ def parse_html_item(
             if deadline:
                 break
 
-        # Extract description from paragraphs or divs
+        # Extract description — prefer definition lists (government/procurement portals)
+        # then fall back to <p> tags inside the main content area.
         description_parts = []
-        for elem in parser.select("p, .description, .content")[:3]:
-            text = elem.text(strip=True)
-            if len(text) > 20:
-                description_parts.append(text)
+
+        # Definition lists often contain structured procurement metadata (type, region, duration…)
+        for dl in parser.css("dl")[:4]:
+            dl_text = dl.text(strip=True)
+            # Skip very short DLs (e.g. "Date de modification: 2026-…") and navigation DLs
+            if len(dl_text) > 80 and any(
+                kw in dl_text.lower()
+                for kw in ["type", "région", "durée", "méthode", "organisation", "objet", "description", "scope", "category"]
+            ):
+                description_parts.append(dl_text[:600])
+
+        if not description_parts:
+            content_root = parser.css_first("main, #main, #content, [role='main'], article") or parser
+            for elem in content_root.css("p, .description, .content")[:5]:
+                text = elem.text(strip=True)
+                # Skip navigation boilerplate patterns
+                if len(text) > 30 and not any(
+                    nav in text.lower()
+                    for nav in ["aller au contenu", "passer à", "sélection de la langue", "rechercher dans"]
+                ):
+                    description_parts.append(text)
 
         description = (
-            " ".join(description_parts)[:500] if description_parts else content[:500]
+            " | ".join(description_parts)[:800] if description_parts else content[:500]
         )
 
         return {
@@ -482,7 +521,7 @@ def parse_html_item(
             "description": description,
             "published_at": datetime.utcnow().isoformat(),
             "deadline_at": deadline,
-            "location": "Burkina Faso",
+            "location": "",
             "content_hash": hashlib.sha256(content.encode()).hexdigest(),
             "parser_type": "html",
         }

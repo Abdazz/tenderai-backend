@@ -30,12 +30,32 @@ def main():
 @click.option(
     "--country-id", default=1, type=int, help="Country ID to run pipeline for"
 )
-def run_once(triggered_by: str, user: str | None, country_id: int):
+@click.option(
+    "--country-code",
+    default=None,
+    help="ISO-2 country code (CA, BF, CI, SN…) — overrides --country-id",
+)
+def run_once(triggered_by: str, user: str | None, country_id: int, country_code: str | None):
     """Execute the pipeline once and generate a report."""
 
     click.echo("🚀 Starting TenderAI BF pipeline...")
 
     try:
+        # Resolve country code → country ID when --country-code is provided
+        if country_code:
+            from sqlalchemy import text as _text
+            _engine = get_engine()
+            with _engine.connect() as _conn:
+                _row = _conn.execute(
+                    _text("SELECT id, name FROM countries WHERE UPPER(code) = UPPER(:code)"),
+                    {"code": country_code},
+                ).fetchone()
+            if not _row:
+                click.echo(f"❌ Unknown country code '{country_code}'. Check the countries table.")
+                sys.exit(1)
+            country_id = _row[0]
+            click.echo(f"   Country: {_row[1]} (code={country_code.upper()}, id={country_id})")
+
         # Get pipeline
         pipeline = get_pipeline()
 

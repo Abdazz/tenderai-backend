@@ -216,9 +216,8 @@ def extract_item_links_node(state) -> dict:
             base_url = source.get("base_url", item["url"])
             content = item["content"]
             patterns = source.get("patterns", {})
-            parser_type = source.get(
-                "parser_type", "html"
-            )  # Changed from 'parser' to 'parser_type'
+            # Item's parser_type may override source's (e.g. playwright → playwright_links)
+            parser_type = item.get("parser_type") or source.get("parser_type", "html")
 
             try:
                 # Extract links based on parser type
@@ -350,6 +349,74 @@ def extract_item_links_node(state) -> dict:
                         )
                     except Exception:
                         links = []
+                elif parser_type == "playwright_links":
+                    # Playwright ran in link-extraction mode: content is a JSON list of URL strings
+                    import json as _json
+                    try:
+                        url_list = (
+                            _json.loads(content) if isinstance(content, str)
+                            else item.get("listings", [])
+                        )
+                        _use_pw_detail = bool(patterns.get("fetch_detail_with_playwright", False))
+                        if _use_pw_detail:
+                            # Wrap as dicts so fetch_items routes them through Playwright
+                            links = [
+                                {"url": u, "source": "playwright_detail"}
+                                for u in url_list if isinstance(u, str)
+                            ]
+                        else:
+                            links = [u for u in url_list if isinstance(u, str)]
+                        logger.info(
+                            f"Playwright links: {len(links)} individual URLs to fetch",
+                            source_name=source_name,
+                            use_playwright_detail=_use_pw_detail,
+                            run_id=state.run_id,
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to parse playwright_links content: {e}")
+                        links = []
+                elif parser_type == "tavily_extract" and patterns.get("link_regex"):
+                    # Deterministic link extraction from Tavily markdown using a regex.
+                    # Avoids LLM for structured listing pages where individual item URLs
+                    # are visible in the markdown content (e.g. [Title](/path/to/detail)).
+                    import json as _json
+                    import re as _re
+                    from urllib.parse import urljoin as _urljoin, urlparse as _urlparse
+
+                    link_regex = patterns["link_regex"]
+                    _parsed_base = _urlparse(base_url)
+                    _base_origin = f"{_parsed_base.scheme}://{_parsed_base.netloc}"
+
+                    try:
+                        page_items = (
+                            _json.loads(content) if isinstance(content, str) else []
+                        )
+                        extracted_urls: list[str] = []
+                        for page_item in page_items:
+                            page_text = (
+                                page_item.get("content", "")
+                                if isinstance(page_item, dict) else ""
+                            )
+                            for m in _re.finditer(link_regex, page_text):
+                                href = m.group(1) if m.lastindex else m.group(0)
+                                if href.startswith("/"):
+                                    href = _base_origin + href
+                                elif not href.startswith("http"):
+                                    href = _urljoin(base_url, href)
+                                extracted_urls.append(href)
+                        # Deduplicate while preserving order
+                        links = list(dict.fromkeys(extracted_urls))
+                        logger.info(
+                            f"Tavily link_regex: {len(links)} individual URLs extracted",
+                            source_name=source_name,
+                            run_id=state.run_id,
+                        )
+                    except Exception as e:
+                        logger.error(
+                            f"Failed to extract links with link_regex: {e}",
+                            source_name=source_name,
+                        )
+                        links = []
                 elif parser_type in ("tavily_search", "tavily_extract", "playwright"):
                     import json as _json
 
@@ -427,10 +494,16 @@ def extract_item_links_node(state) -> dict:
                         if url and url not in seen_urls:
                             valid_links.append(link)
                             seen_urls.add(url)
+                    # Handle Playwright detail pages (detail pages that need browser fetch)
+                    elif isinstance(link, dict) and link.get("source") == "playwright_detail":
+                        url = link.get("url")
+                        if url and url not in seen_urls:
+                            valid_links.append(link)
+                            seen_urls.add(url)
                     # Handle Le Devoir OCR notices (dict with source='ledevoir')
                     elif isinstance(link, dict) and link.get("source") == "ledevoir":
                         # Each notice has a unique content_hash — use it as dedup key
-                        notice_key = link.get("title", "") + link.get("url", "")
+                        notice_key = (link.get("title") or "") + (link.get("url") or "")
                         if notice_key not in seen_urls:
                             valid_links.append(link)
                             seen_urls.add(notice_key)

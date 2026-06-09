@@ -15,6 +15,71 @@ from .fetch_joffres import extract_joffres_detail
 logger = get_logger(__name__)
 
 
+async def _fetch_playwright_detail_items(urls: list[str], run_id: str) -> list[dict]:
+    """Fetch individual detail pages via Playwright for sites that block plain HTTP clients."""
+    try:
+        from playwright.async_api import async_playwright
+    except ImportError:
+        logger.error("Playwright not installed; cannot fetch detail pages", run_id=run_id)
+        return [{"url": u, "content": None, "status": "failed", "error": "playwright not installed",
+                 "fetched_at": datetime.utcnow().isoformat(), "parser_type": "html"} for u in urls]
+
+    semaphore = asyncio.Semaphore(5)  # max 5 concurrent pages
+
+    async def _fetch_one(url: str, context) -> dict:
+        async with semaphore:
+            page = await context.new_page()
+            try:
+                await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
+                await page.wait_for_timeout(1500)
+                content = await page.content()  # full HTML so parse_extract can use CSS selectors
+                return {
+                    "url": url,
+                    "content": content,
+                    "status": "success",
+                    "fetched_at": datetime.utcnow().isoformat(),
+                    "parser_type": "html",
+                }
+            except Exception as e:
+                logger.warning("Playwright detail fetch failed", url=url, error=str(e), run_id=run_id)
+                return {
+                    "url": url,
+                    "content": None,
+                    "status": "failed",
+                    "error": str(e),
+                    "fetched_at": datetime.utcnow().isoformat(),
+                    "parser_type": "html",
+                }
+            finally:
+                await page.close()
+
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(headless=True)
+        context = await browser.new_context(
+            user_agent=(
+                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+            ),
+            locale="fr-CA",
+            viewport={"width": 1280, "height": 900},
+        )
+        # Block media to speed up fetching
+        await context.route(
+            "**/*.{png,jpg,jpeg,gif,webp,svg,ico,woff,woff2,ttf}",
+            lambda route: route.abort(),
+        )
+        tasks = [_fetch_one(url, context) for url in urls]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        await browser.close()
+
+    return [
+        r if not isinstance(r, Exception)
+        else {"url": urls[i], "content": None, "status": "failed", "error": str(r),
+              "fetched_at": datetime.utcnow().isoformat(), "parser_type": "html"}
+        for i, r in enumerate(results)
+    ]
+
+
 async def fetch_single_item(
     client: httpx.AsyncClient, url: str, run_id: str, parser_type: str = "html"
 ) -> dict:
@@ -229,6 +294,7 @@ def fetch_items_node(state) -> dict:
         ungm_items = []
         tavily_items = []
         ledevoir_items = []
+        playwright_detail_urls = []
         regular_urls = []
 
         for link in state.discovered_links:
@@ -244,6 +310,8 @@ def fetch_items_node(state) -> dict:
                 ledevoir_items.append(link)
             elif isinstance(link, dict) and link.get("source") in ("tavily", "playwright"):
                 tavily_items.append(link)
+            elif isinstance(link, dict) and link.get("source") == "playwright_detail":
+                playwright_detail_urls.append(link.get("url"))
             else:
                 # Regular URL
                 url = link if isinstance(link, str) else link.get("url")
@@ -419,6 +487,30 @@ def fetch_items_node(state) -> dict:
                 size_mb=round(len(link["content"]) / (1024 * 1024), 2),
                 run_id=state.run_id,
             )
+
+        # Fetch detail pages that require a real browser (anti-bot sites)
+        if playwright_detail_urls:
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                results = loop.run_until_complete(
+                    _fetch_playwright_detail_items(playwright_detail_urls, state.run_id)
+                )
+                loop.close()
+                items.extend(results)
+                logger.info(
+                    "Playwright detail pages fetched",
+                    count=len(playwright_detail_urls),
+                    successful=sum(1 for r in results if r.get("status") == "success"),
+                    run_id=state.run_id,
+                )
+            except Exception as e:
+                logger.error(
+                    "Failed to fetch Playwright detail pages",
+                    error=str(e),
+                    run_id=state.run_id,
+                    exc_info=True,
+                )
 
         # Fetch regular URLs asynchronously
         if regular_urls:
