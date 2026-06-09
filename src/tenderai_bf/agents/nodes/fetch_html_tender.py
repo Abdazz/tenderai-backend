@@ -78,6 +78,7 @@ async def fetch_html_tender(source: dict, run_id: str) -> dict:
         "listings": listings,
         "url": list_url,
         "status": "success" if listings else "failed",
+        "error": None if listings else "No listings extracted",
         "parser_type": "html-tender",
         "fetched_at": _now(),
     }

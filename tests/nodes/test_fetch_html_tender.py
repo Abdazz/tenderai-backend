@@ -174,3 +174,41 @@ def test_empty_page_returns_failed():
 
     assert result["status"] == "failed"
     assert result["listings"] == []
+
+
+def test_pagination_fetches_multiple_pages():
+    """max_pages=2 doit déclencher deux requêtes GET avec pagination_url."""
+    from tenderai_bf.agents.nodes.fetch_html_tender import fetch_html_tender
+
+    source = {
+        "name": "Enabel - Test Pagination",
+        "list_url": "https://www.enabel.be/fr/marches-publics/?in_country=1726&is_status=0",
+        "parser_type": "html-tender",
+        "patterns": {
+            "card_selector": "div.card--news.card--tenders",
+            "title_selector": "p.h5 span",
+            "deadline_selector": "p",
+            "deadline_text_prefix": "Date de clôture",
+            "entity": "Enabel",
+            "location": "Burkina Faso",
+            "max_pages": 2,
+            "pagination_url": "https://www.enabel.be/fr/marches-publics/page/{page}/?in_country=1726&is_status=0",
+        },
+    }
+
+    mock_resp = _make_mock_response(ENABEL_HTML)
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    mock_client.get = AsyncMock(return_value=mock_resp)
+
+    with patch("tenderai_bf.agents.nodes.fetch_html_tender.httpx.AsyncClient", return_value=mock_client):
+        result = _run(fetch_html_tender(source, "run-test"))
+
+    # Should have fetched 2 pages
+    assert mock_client.get.call_count == 2
+    called_urls = [str(call.args[0]) for call in mock_client.get.call_args_list]
+    assert any("is_status=0" in u and "page" not in u for u in called_urls), "page 1 URL should be the base URL"
+    assert any("page/2" in u for u in called_urls), "page 2 URL should use pagination_url template"
+    # Both pages return the same HTML so 2 listings total
+    assert len(result["listings"]) == 2
