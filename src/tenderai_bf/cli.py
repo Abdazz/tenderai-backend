@@ -1,5 +1,6 @@
 """Command-line interface for TenderAI BF."""
 
+import json
 import os
 import sys
 import uuid
@@ -436,6 +437,8 @@ def seed_sources(force: bool):
                 parser_type = source.get("parser", source.get("parser_type", "html"))
                 rate_limit = source.get("rate_limit", "10/m")
                 enabled = source.get("enabled", True)
+                patterns_raw = source.get("patterns")
+                patterns_json = json.dumps(patterns_raw) if patterns_raw else None
 
                 if not name or not list_url:
                     click.echo(
@@ -461,7 +464,7 @@ def seed_sources(force: bool):
                         text(
                             "UPDATE sources SET base_url=:base_url, list_url=:list_url, "
                             "parser_type=:parser_type, rate_limit=:rate_limit, enabled=:enabled, "
-                            "updated_at=NOW() WHERE name=:name"
+                            "patterns=:patterns, updated_at=NOW() WHERE name=:name"
                         ),
                         {
                             "name": name,
@@ -470,6 +473,7 @@ def seed_sources(force: bool):
                             "parser_type": parser_type,
                             "rate_limit": rate_limit,
                             "enabled": enabled,
+                            "patterns": patterns_json,
                         },
                     )
                     conn.commit()
@@ -479,9 +483,9 @@ def seed_sources(force: bool):
                     conn.execute(
                         text(
                             "INSERT INTO sources (name, base_url, list_url, parser_type, "
-                            "rate_limit, enabled, created_at, updated_at) "
+                            "rate_limit, enabled, patterns, created_at, updated_at) "
                             "VALUES (:name, :base_url, :list_url, :parser_type, "
-                            ":rate_limit, :enabled, NOW(), NOW())"
+                            ":rate_limit, :enabled, :patterns, NOW(), NOW())"
                         ),
                         {
                             "name": name,
@@ -490,6 +494,7 @@ def seed_sources(force: bool):
                             "parser_type": parser_type,
                             "rate_limit": rate_limit,
                             "enabled": enabled,
+                            "patterns": patterns_json,
                         },
                     )
                     conn.commit()

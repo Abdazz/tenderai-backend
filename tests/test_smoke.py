@@ -194,6 +194,62 @@ def test_file_structure():
     assert (utils_dir / "robots.py").exists()
 
 
+def test_seed_sources_persists_patterns(tmp_path, monkeypatch):
+    """seed_sources doit sauvegarder le champ patterns en DB."""
+    import json
+    from unittest.mock import MagicMock, patch
+
+    yaml_content = """
+sources:
+  - name: "Test Source Patterns"
+    list_url: "https://example.com/tenders"
+    parser: "html-tender"
+    enabled: true
+    patterns:
+      card_selector: "div.card"
+      title_selector: "h3"
+      entity: "TestOrg"
+"""
+    yaml_file = tmp_path / "settings.yaml"
+    yaml_file.write_text(yaml_content)
+
+    captured_inserts = []
+
+    mock_conn = MagicMock()
+
+    def fake_execute(stmt, params=None):
+        if params:
+            captured_inserts.append(params)
+        row = MagicMock()
+        row.__iter__ = MagicMock(return_value=iter([]))
+        mock_result = MagicMock()
+        mock_result.fetchone.return_value = None
+        return mock_result
+
+    mock_conn.execute = fake_execute
+    mock_conn.__enter__ = MagicMock(return_value=mock_conn)
+    mock_conn.__exit__ = MagicMock(return_value=False)
+
+    mock_engine = MagicMock()
+    mock_engine.connect.return_value = mock_conn
+
+    with patch("tenderai_bf.cli.Path") as mock_path_cls, \
+         patch("tenderai_bf.cli.get_engine", return_value=mock_engine):
+        mock_path_cls.return_value = yaml_file
+        from click.testing import CliRunner
+        from tenderai_bf.cli import main
+        runner = CliRunner()
+        result = runner.invoke(main, ["seed-sources"])
+
+    insert_params = [p for p in captured_inserts if "card_selector" in str(p.get("patterns", ""))]
+    assert len(insert_params) == 1, "patterns should be persisted in INSERT"
+    patterns = insert_params[0]["patterns"]
+    if isinstance(patterns, str):
+        patterns = json.loads(patterns)
+    assert patterns["card_selector"] == "div.card"
+    assert patterns["entity"] == "TestOrg"
+
+
 if __name__ == "__main__":
     import pytest
 
