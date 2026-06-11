@@ -334,6 +334,25 @@ def extract_item_links_node(state) -> dict:
                     except Exception as e:
                         logger.error(f"Failed to parse UNGM listings: {e}")
                         links = []
+                elif parser_type in ("html-tender", "crawl4ai"):
+                    import json as _json
+                    try:
+                        listings = (
+                            _json.loads(content)
+                            if isinstance(content, str)
+                            else item.get("listings", [])
+                        )
+                        for listing in listings:
+                            listing["parser_type"] = parser_type
+                        links = listings
+                        logger.info(
+                            f"{parser_type}: {len(listings)} listings extracted",
+                            source_name=source_name,
+                            run_id=state.run_id,
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to parse {parser_type} listings: {e}")
+                        links = []
                 elif parser_type == "google_search":
                     import json as _json
 
