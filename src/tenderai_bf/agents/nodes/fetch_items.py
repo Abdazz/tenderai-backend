@@ -292,6 +292,7 @@ def fetch_items_node(state) -> dict:
         rag_pdfs = []
         joffres_items = []
         ungm_items = []
+        html_tender_items = []
         tavily_items = []
         ledevoir_items = []
         playwright_detail_urls = []
@@ -306,6 +307,8 @@ def fetch_items_node(state) -> dict:
                 joffres_items.append(link)
             elif isinstance(link, dict) and link.get("source") == "ungm":
                 ungm_items.append(link)
+            elif isinstance(link, dict) and link.get("parser_type") in ("html-tender", "crawl4ai"):
+                html_tender_items.append(link)
             elif isinstance(link, dict) and link.get("source") == "ledevoir":
                 ledevoir_items.append(link)
             elif isinstance(link, dict) and link.get("source") in ("tavily", "playwright"):
@@ -379,6 +382,24 @@ def fetch_items_node(state) -> dict:
             logger.info(
                 "UNGM items passed through (no detail fetch needed)",
                 count=len(ungm_items),
+                run_id=state.run_id,
+            )
+
+        # html-tender and crawl4ai — data already extracted, no detail fetch needed
+        for link in html_tender_items:
+            items.append({
+                "url": link.get("url", ""),
+                "content": link.get("description", ""),
+                "status": "success",
+                "fetched_at": datetime.utcnow().isoformat(),
+                "parser_type": link.get("parser_type", "html-tender"),
+                "source": link.get("source", ""),
+                "details": link,
+            })
+        if html_tender_items:
+            logger.info(
+                "html-tender/crawl4ai items passed through (no detail fetch needed)",
+                count=len(html_tender_items),
                 run_id=state.run_id,
             )
 
