@@ -27,6 +27,7 @@ selectolax = "^0.3.17"
 beautifulsoup4 = "^4.12.2"
 # tenacity is pulled in transitively by langchain — no explicit pin needed.
 playwright = {version = "^1.40.0", optional = true}
+crawl4ai = {version = ">=0.4.0", optional = true}
 
 # Document processing
 pdfminer-six = "^20231228"
@@ -89,7 +90,7 @@ playwright = "^1.60.0"
 [tool.poetry.extras]
 spacy = ["spacy"]
 playwright = ["playwright"]
-full = ["spacy", "playwright"]
+full = ["spacy", "playwright", "crawl4ai"]
 
 [tool.poetry.scripts]
 tenderai = "tenderai_bf.cli:main"
