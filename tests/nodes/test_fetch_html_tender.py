@@ -95,7 +95,7 @@ def _make_mock_response(html: str, status: int = 200):
 
 
 def _run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 def test_uemoa_extracts_two_items():
