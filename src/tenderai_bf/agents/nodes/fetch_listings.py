@@ -246,6 +246,46 @@ async def fetch_single_listing(
                 "fetched_at": datetime.utcnow().isoformat(),
             }
 
+    # html-tender — config-driven CSS extraction
+    if parser_type == "html-tender":
+        from .fetch_html_tender import fetch_html_tender
+        try:
+            result = await fetch_html_tender(source, run_id)
+            log_source_fetch(
+                source_name, list_url,
+                result["status"],
+                size=len(result.get("listings", [])),
+            )
+            return result
+        except Exception as e:
+            logger.error("html-tender fetch failed", source=source_name, error=str(e), run_id=run_id)
+            log_source_fetch(source_name, list_url, "failed", error=str(e))
+            return {
+                "source": source, "content": None, "url": list_url,
+                "status": "failed", "error": str(e),
+                "fetched_at": datetime.utcnow().isoformat(),
+            }
+
+    # crawl4ai — LLM-based extraction
+    if parser_type == "crawl4ai":
+        from .fetch_crawl4ai import fetch_crawl4ai
+        try:
+            result = await fetch_crawl4ai(source, run_id)
+            log_source_fetch(
+                source_name, list_url,
+                result["status"],
+                size=len(result.get("listings", [])),
+            )
+            return result
+        except Exception as e:
+            logger.error("crawl4ai fetch failed", source=source_name, error=str(e), run_id=run_id)
+            log_source_fetch(source_name, list_url, "failed", error=str(e))
+            return {
+                "source": source, "content": None, "url": list_url,
+                "status": "failed", "error": str(e),
+                "fetched_at": datetime.utcnow().isoformat(),
+            }
+
     # Standard HTML listing source (ARCOP and others)
     try:
         # Respect rate limits
