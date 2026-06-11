@@ -649,6 +649,30 @@ def parse_extract_node(state) -> dict:
                 )
                 continue
 
+            # html-tender and crawl4ai — fields already normalised in fetcher
+            elif parser_type in ("html-tender", "crawl4ai"):
+                details = item.get("details", {})
+                parsed_items.append(
+                    {
+                        "id": str(uuid.uuid4()),
+                        "url": item["url"],
+                        "content_hash": content_hash,
+                        "title": details.get("title", ""),
+                        "tender_object": details.get("tender_object") or details.get("title", ""),
+                        "reference": details.get("reference", ""),
+                        "ref_no": details.get("ref_no", details.get("reference", "")),
+                        "entity": details.get("entity", ""),
+                        "category": details.get("category", "Autre"),
+                        "description": details.get("description", ""),
+                        "deadline": details.get("deadline", ""),
+                        "published_at": details.get("published_at", ""),
+                        "location": details.get("location", ""),
+                        "type": details.get("type", "appel_offres"),
+                        "source": details.get("source", parser_type),
+                    }
+                )
+                continue
+
             # Handle Tavily PDF — downloaded PDF bytes, full text extraction
             elif parser_type == "tavily_pdf":
                 pdf_bytes = item.get("content")
