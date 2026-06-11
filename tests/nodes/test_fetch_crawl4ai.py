@@ -37,12 +37,12 @@ EXTRACTED_ITEMS = [
 
 
 def _run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 def _make_crawler_mock(extracted_content):
     mock_result = MagicMock()
-    mock_result.extracted_content = json.dumps(extracted_content)
+    mock_result.extracted_content = json.dumps(extracted_content) if extracted_content is not None else None
 
     mock_crawler = AsyncMock()
     mock_crawler.__aenter__ = AsyncMock(return_value=mock_crawler)
@@ -86,16 +86,9 @@ def test_crawl4ai_not_installed_returns_failed():
 
 def test_crawl4ai_empty_extraction_returns_failed():
     """extracted_content vide → status failed."""
-    mock_result = MagicMock()
-    mock_result.extracted_content = None
+    mock_crawler = _make_crawler_mock(None)
 
-    mock_crawler = AsyncMock()
-    mock_crawler.__aenter__ = AsyncMock(return_value=mock_crawler)
-    mock_crawler.__aexit__ = AsyncMock(return_value=False)
-    mock_crawler.arun = AsyncMock(return_value=mock_result)
-
-    with patch("tenderai_bf.agents.nodes.fetch_crawl4ai._CRAWL4AI_AVAILABLE", True), \
-         patch("tenderai_bf.agents.nodes.fetch_crawl4ai.AsyncWebCrawler", return_value=mock_crawler), \
+    with patch("tenderai_bf.agents.nodes.fetch_crawl4ai.AsyncWebCrawler", return_value=mock_crawler), \
          patch("tenderai_bf.agents.nodes.fetch_crawl4ai.LLMExtractionStrategy"), \
          patch("tenderai_bf.agents.nodes.fetch_crawl4ai._get_llm_config", return_value=("groq/llama-3.3-70b-versatile", "test-key")):
         result = _run(__import__("tenderai_bf.agents.nodes.fetch_crawl4ai", fromlist=["fetch_crawl4ai"]).fetch_crawl4ai(SOURCE, "run-test"))

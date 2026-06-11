@@ -83,8 +83,8 @@ async def fetch_crawl4ai(source: dict, run_id: str) -> dict:
         try:
             from crawl4ai import BrowserConfig
             crawler_kwargs["config"] = BrowserConfig(ignore_https_errors=True)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("BrowserConfig unavailable, ssl_verify=False ignored", error=str(exc))
 
     listings: list[dict] = []
 
@@ -133,6 +133,7 @@ async def fetch_crawl4ai(source: dict, run_id: str) -> dict:
         "listings": listings,
         "url": list_url,
         "status": "success" if listings else "failed",
+        "error": None if listings else "No listings extracted",
         "parser_type": "crawl4ai",
         "fetched_at": datetime.utcnow().isoformat(),
     }
