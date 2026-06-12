@@ -208,7 +208,9 @@ def extract_item_links_node(state) -> dict:
 
         # Process each successful fetch
         for item in state.items_raw:
-            if item["status"] != "success" or not item["content"]:
+            # html-tender/crawl4ai items carry data in "listings", not "content"
+            has_data = item["content"] or item.get("listings")
+            if item["status"] != "success" or not has_data:
                 continue
 
             source = item["source"]
@@ -526,6 +528,13 @@ def extract_item_links_node(state) -> dict:
                         if notice_key not in seen_urls:
                             valid_links.append(link)
                             seen_urls.add(notice_key)
+                    # Handle html-tender / crawl4ai structured listings — pass through as-is
+                    elif isinstance(link, dict) and link.get("parser_type") in ("html-tender", "crawl4ai"):
+                        url = link.get("url") or link.get("link", "")
+                        key = url if url else f"html-tender-{len(seen_urls)}"
+                        if key not in seen_urls:
+                            valid_links.append(link)
+                            seen_urls.add(key)
                     # Handle RAG PDFs (dict format with type='pdf_rag')
                     elif isinstance(link, dict) and link.get("type") == "pdf_rag":
                         url = link.get("url")
