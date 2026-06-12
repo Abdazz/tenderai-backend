@@ -621,17 +621,23 @@ Répondez NON immédiatement si le contenu est :
 Pour être un appel d'offres valide, le contenu doit explicitement solliciter des soumissions, offres ou propositions de la part de fournisseurs, avec un objet de marché, une entité adjudicatrice et généralement une date limite de soumission.
 
 ÉTAPE 2 — EST-CE DANS LES DOMAINES CIBLÉS ? (seulement si ÉTAPE 1 = OUI)
-Répondez OUI uniquement si l'objet de l'appel d'offres correspond à :
-1. Services IT : développement logiciel, systèmes d'information, ERP, CRM, SIG, cybersécurité, cloud, hébergement, infogérance, réseau informatique, fibre optique, wifi, vidéoconférence, intelligence artificielle
-2. Matériel informatique : ordinateurs, serveurs, imprimantes, scanners, photocopieurs, routeurs, switches, modems, écrans, onduleurs, accessoires informatiques
-3. Conseil/ingénierie IT : études informatiques, audits de sécurité, assistance technique IT, schémas directeurs informatiques, formation informatique, déploiement/intégration de systèmes
+Répondez OUI UNIQUEMENT si l'objet porte EXPLICITEMENT sur l'un des domaines suivants :
+1. Services IT : développement logiciel, systèmes d'information, ERP, CRM, SIG, GIS, cybersécurité, cloud, hébergement, infogérance, réseau informatique, fibre optique, wifi, vidéoconférence, intelligence artificielle, data center
+2. Matériel informatique : ordinateurs, serveurs, imprimantes, scanners, photocopieurs, routeurs, switches, modems, écrans, onduleurs, tablettes, téléphones, accessoires informatiques, consommables informatiques
+3. Conseil/ingénierie IT : études informatiques, audits de sécurité informatique, assistance technique IT, schémas directeurs informatiques, formation informatique, déploiement/intégration de systèmes, licences logicielles
 
-Répondez NON à l'étape 2 si l'appel d'offres concerne :
+Répondez NON à l'étape 2 si l'appel d'offres concerne — même partiellement — l'un des domaines suivants :
 - Travaux de génie civil, construction, BTP, routes, bâtiments, hydraulique, assainissement
-- Agriculture, élevage, alimentation, nettoyage, gardiennage
-- Véhicules, carburant, mobilier de bureau non informatique
-- Fournitures générales de bureau (papier, stylos, mobilier)
-- Matériel médical, pharmaceutique ou agricole
+- Agriculture, élevage, alimentation, nettoyage, gardiennage, sécurité physique
+- Véhicules, carburant, mobilier de bureau (tables, chaises, armoires)
+- Fournitures générales de bureau (papier, stylos, cartouches non-informatiques)
+- Matériel médical, équipements de laboratoire, instruments de mesure scientifique
+- Équipements de surveillance environnementale, matériel de terrain, capteurs météo
+- Matériel pharmaceutique, agricole, vétérinaire
+- Services de transport, logistique ou manutention
+- Entretien de véhicules, bâtiments ou équipements non-informatiques (si l'objet ne mentionne pas explicitement "informatique" ou "numérique")
+
+RÈGLE ABSOLUE : si l'objet est trop vague ou tronqué et ne mentionne PAS explicitement un terme IT (informatique, logiciel, numérique, digital, réseau, serveur, cloud, etc.), répondez NON.
 
 Répondez UNIQUEMENT par "OUI" ou "NON" suivi d'une explication en une phrase précisant pourquoi ce contenu est ou n'est pas un appel d'offres IT pertinent."""
 
@@ -782,7 +788,9 @@ Répondez UNIQUEMENT par "OUI" ou "NON" suivi d'une explication en une phrase pr
                                 + (keyword_matches / max(len(it_keywords), 1) * 0.2),
                             )
                         else:
-                            relevance_score = 0.8
+                            # LLM OUI but no IT keyword found — penalise score.
+                            # Threshold for this path is 0.7, so 0.6 will be rejected.
+                            relevance_score = 0.6
                     else:
                         # LLM says NON → reject; keywords cannot override LLM judgment
                         relevance_score = 0.1
@@ -802,9 +810,9 @@ Répondez UNIQUEMENT par "OUI" ou "NON" suivi d'une explication en une phrase pr
 
                 # When LLM says OUI, be permissive. When LLM says NON, always be strict.
                 if is_relevant and keyword_matches > 0:
-                    threshold = 0.3  # LLM OUI + keywords
+                    threshold = 0.3  # LLM OUI + keywords → permissif
                 elif is_relevant:
-                    threshold = 0.5  # LLM OUI alone
+                    threshold = 0.7  # LLM OUI seul, sans keyword IT → exiger confirmation
                 else:
                     threshold = 0.7  # LLM NON → strict regardless of keyword count
 
