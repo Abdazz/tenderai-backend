@@ -186,43 +186,88 @@ def extract_tenders_structured(
         return TenderExtraction(tenders=[], total_extracted=0)
 
 
+_HALLUCINATION_SENTINELS = {
+    "entity": {"nom de l'organisation", "organization name", "nom organisation"},
+    "reference": {"numéro de référence", "reference number", "ref number"},
+    "source_url": {"example.com", "paris.fr", "marches-publics.fr"},
+}
+
+_MIN_CHUNK_CHARS = 100
+
+
+def _is_hallucinated(tender: dict) -> bool:
+    """Return True if the tender looks like LLM placeholder/example data."""
+    entity = (tender.get("entity") or "").lower()
+    if any(s in entity for s in _HALLUCINATION_SENTINELS["entity"]):
+        return True
+    ref = (tender.get("reference") or "").lower()
+    if any(s in ref for s in _HALLUCINATION_SENTINELS["reference"]):
+        return True
+    url = (tender.get("source_url") or "").lower()
+    if any(s in url for s in _HALLUCINATION_SENTINELS["source_url"]):
+        return True
+    # Reject entries where all identifying fields are None/empty
+    identifying = [tender.get("entity"), tender.get("reference"), tender.get("tender_object")]
+    if all(not v or v in ("Inconnu", "None") for v in identifying):
+        return True
+    return False
+
+
+def _coerce_budget(value) -> str | None:
+    """Convert budget to string — LLM sometimes returns a dict for multi-lot tenders."""
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        return " / ".join(f"{k}: {v}" for k, v in value.items())
+    return str(value)
+
+
 def _extract_tenders_json_fallback(
     context: str, source_name: str, llm, max_retries: int
 ) -> TenderExtraction:
     """Fallback JSON parsing method when structured output is not available."""
 
-    # Prompts are sourced from country_config at the node level.
-    system_prompt = ""
-    user_template = "{context}"
+    # Skip chunks that are too short to contain real tender data
+    if len(context.strip()) < _MIN_CHUNK_CHARS:
+        return TenderExtraction(tenders=[], total_extracted=0, confidence=0.0)
 
-    # Build prompt with JSON formatting instructions
-    prompt = f"""{system_prompt}
+    prompt = f"""Tu es un extracteur d'appels d'offres officiels. Tu dois analyser le texte fourni et en extraire UNIQUEMENT les appels d'offres, demandes de prix, ou marchés publics qui apparaissent EXPLICITEMENT dans ce texte.
 
-IMPORTANT : Retournez UNIQUEMENT un objet JSON valide avec cette structure exacte :
+RÈGLES ABSOLUES — INTERDICTIONS FORMELLES :
+1. N'invente AUCUNE donnée. Si un champ n'est pas présent dans le texte, mets null.
+2. N'utilise JAMAIS d'exemples, de modèles, ou de données fictives.
+3. Ne remplis JAMAIS entity avec "Nom de l'organisation" ou toute valeur générique.
+4. Ne remplis JAMAIS reference avec "Numéro de référence" ou toute valeur générique.
+5. Ne génère JAMAIS une URL source_url qui n'est pas explicitement dans le texte.
+6. Si le texte ne contient aucun appel d'offres réel, retourne {{"tenders": [], "total_extracted": 0, "confidence": 1.0}}.
+7. N'extrais PAS les résultats de dépouillement (tableaux comparatifs d'offres reçues) comme s'ils étaient de nouveaux appels d'offres.
+
+Structure JSON attendue :
 {{
   "tenders": [
     {{
-      "type": "appel_offres/rectificatif/prorogation/communique/annulation/autre",
-      "entity": "Nom de l'organisation",
-      "reference": "Numéro de référence",
-      "tender_object": "Objet de l'appel d'offres tel qu'il apparaît dans le document",
-      "deadline": "Date limite au format DD-MM-YYYY",
-      "description": "Description détaillée incluant nature des travaux, lieux, lots, conditions",
-      "category": "IT/Ingénierie/Services/Biens/Travaux/Autre",
-      "keywords": ["mot-clé1", "mot-clé2"],
-      "relevance_score": 0.8,
-      "budget": null ou "montant",
-      "location": null ou "localisation",
-      "source_url": null ou "URL"
+      "type": "appel_offres | demande_de_prix | rectificatif | prorogation | annulation | autre",
+      "entity": "<nom réel de l'entité émettrice, extrait du texte, ou null>",
+      "reference": "<référence réelle extraite du texte, ou null>",
+      "tender_object": "<objet exact extrait du texte, ou null>",
+      "deadline": "<date limite DD-MM-YYYY extraite du texte, ou null>",
+      "description": "<description factuelle extraite du texte>",
+      "category": "IT | Services | Biens | Travaux | Prestations intellectuelles | Autre",
+      "keywords": ["<mots-clés réels>"],
+      "relevance_score": <0.0 à 1.0>,
+      "budget": "<montant exact extrait du texte, ou null>",
+      "location": "<localisation extraite du texte, ou null>",
+      "source_url": null
     }}
   ],
-  "total_extracted": 1,
-  "confidence": 1.0
+  "total_extracted": <nombre>,
+  "confidence": <0.0 à 1.0>
 }}
 
-{user_template.format(context=context)}
+Texte à analyser :
+{context}
 
-RETOURNEZ UNIQUEMENT DU JSON VALIDE, rien d'autre. Commencez par {{ et terminez par }}"""
+RETOURNEZ UNIQUEMENT DU JSON VALIDE. Si aucun appel d'offres réel n'est présent, retournez {{"tenders":[],"total_extracted":0,"confidence":1.0}}"""
 
     for attempt in range(max_retries):
         try:
@@ -240,7 +285,6 @@ RETOURNEZ UNIQUEMENT DU JSON VALIDE, rien d'autre. Commencez par {{ et terminez 
             try:
                 result_json = json.loads(response_text)
             except json.JSONDecodeError:
-                # Try to extract JSON from response if parsing fails
                 import re
 
                 json_match = re.search(r"\{.*\}", response_text, re.DOTALL)
@@ -253,6 +297,26 @@ RETOURNEZ UNIQUEMENT DU JSON VALIDE, rien d'autre. Commencez par {{ et terminez 
                         response=response_text[:500],
                     )
                     continue
+
+            # Coerce budget field: LLM sometimes returns a dict for multi-lot tenders
+            for t in result_json.get("tenders", []):
+                if isinstance(t.get("budget"), dict):
+                    t["budget"] = _coerce_budget(t["budget"])
+
+            # Filter hallucinated / placeholder tenders before Pydantic validation
+            original_count = len(result_json.get("tenders", []))
+            result_json["tenders"] = [
+                t for t in result_json.get("tenders", [])
+                if not _is_hallucinated(t)
+            ]
+            filtered = original_count - len(result_json["tenders"])
+            if filtered:
+                logger.warning(
+                    "Hallucinated tenders filtered",
+                    source=source_name,
+                    count=filtered,
+                )
+            result_json["total_extracted"] = len(result_json["tenders"])
 
             # Validate with Pydantic
             extraction = TenderExtraction(**result_json)

@@ -556,15 +556,19 @@ async def fetch_google_search_listings(source: dict, run_id: str) -> dict:
 async def fetch_all_listings(sources: list[dict], run_id: str) -> list[dict]:
     """Fetch all listing pages concurrently."""
 
-    # Configure HTTP client
+    # Configure HTTP client — use a real browser UA to avoid anti-bot blocks
+    # (sites like joffres.net drop connections on non-browser User-Agents)
     headers = {
-        "User-Agent": "TenderAI-BF/1.0 (+https://yulcom.com/tenderai)",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
-        "Accept-Encoding": "gzip, deflate",
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Accept-Encoding": "gzip, deflate, br",
         "DNT": "1",
         "Connection": "keep-alive",
         "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
     }
 
     # Create async HTTP client
