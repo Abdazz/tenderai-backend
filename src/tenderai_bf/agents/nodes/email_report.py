@@ -8,7 +8,6 @@ as failed. Instead, the node records a non-fatal warning via
 schema-level errors) remain errors via ``state.add_error(...)``.
 """
 
-import os
 import time
 from datetime import datetime
 
@@ -63,7 +62,7 @@ def email_report_node(state) -> dict:
 
     if test_mode:
         # Test mode: send only to admin (TENDERAI_ADMIN_EMAIL or EMAIL_TO_ADDRESS fallback)
-        admin_email = os.environ.get("TENDERAI_ADMIN_EMAIL") or settings.email.to_address
+        admin_email = settings.email.to_address
         recipients = [admin_email]
         logger.info(
             "Test mode active — sending to admin only",
