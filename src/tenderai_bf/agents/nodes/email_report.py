@@ -8,9 +8,11 @@ as failed. Instead, the node records a non-fatal warning via
 schema-level errors) remain errors via ``state.add_error(...)``.
 """
 
+import os
 import time
 from datetime import datetime
 
+from ...config import settings
 from ...db import get_db_context
 from ...email import send_report_email
 from ...logging import get_logger
@@ -56,22 +58,35 @@ def email_report_node(state) -> dict:
         return state
 
     # Resolve recipients (also fatal if empty: misconfiguration, not transient).
+    test_mode = getattr(state, "test_mode", False)
     recipients = []
-    _primary = cfg(state, "email", "to_address")
-    if _primary:
-        recipients.append(_primary)
-    with get_db_context() as _db:
-        db_recipients = (
-            _db.query(Recipient)
-            .filter(
-                Recipient.country_id == state.country_id,
-                Recipient.enabled == True,  # noqa: E712
-            )
-            .all()
+
+    if test_mode:
+        # Test mode: send only to admin (TENDERAI_ADMIN_EMAIL or EMAIL_TO_ADDRESS fallback)
+        admin_email = os.environ.get("TENDERAI_ADMIN_EMAIL") or settings.email.to_address
+        recipients = [admin_email]
+        logger.info(
+            "Test mode active — sending to admin only",
+            admin_email=admin_email,
+            run_id=state.run_id,
         )
-        for r in db_recipients:
-            if r.email not in recipients:
-                recipients.append(r.email)
+    else:
+        _primary = cfg(state, "email", "to_address")
+        if _primary:
+            recipients.append(_primary)
+        with get_db_context() as _db:
+            db_recipients = (
+                _db.query(Recipient)
+                .filter(
+                    Recipient.country_id == state.country_id,
+                    Recipient.enabled == True,  # noqa: E712
+                )
+                .all()
+            )
+            for r in db_recipients:
+                if r.email not in recipients:
+                    recipients.append(r.email)
+
     if not recipients:
         msg = "No email recipients configured"
         logger.error(msg, run_id=state.run_id)

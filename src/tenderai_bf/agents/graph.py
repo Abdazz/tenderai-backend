@@ -73,6 +73,7 @@ class TenderAIState(BaseModel):
     should_continue: bool = True
     error_occurred: bool = False
     send_email: bool = True  # Whether to send email report at the end
+    test_mode: bool = False  # If True, send email only to admin (not all recipients)
 
     class Config:
         arbitrary_types_allowed = True
@@ -283,6 +284,7 @@ class TenderAIGraph:
         triggered_by_user: str | None = None,
         sources_override: list[dict] | None = None,
         send_email: bool = True,
+        test_mode: bool = False,
     ) -> TenderAIState:
         """Execute the complete pipeline."""
 
@@ -365,8 +367,9 @@ class TenderAIGraph:
         if sources_override:
             state.sources = sources_override
 
-        # Set send_email flag
+        # Set send_email / test_mode flags
         state.send_email = send_email
+        state.test_mode = test_mode
 
         try:
             # Execute pipeline. LangGraph returns a dict-like view of the

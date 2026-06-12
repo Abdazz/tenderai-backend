@@ -36,10 +36,17 @@ def main():
     default=None,
     help="ISO-2 country code (CA, BF, CI, SN…) — overrides --country-id",
 )
-def run_once(triggered_by: str, user: str | None, country_id: int, country_code: str | None):
+@click.option(
+    "--test",
+    "test_mode",
+    is_flag=True,
+    default=False,
+    help="Test mode: send the report only to the admin email (TENDERAI_ADMIN_EMAIL), not all recipients",
+)
+def run_once(triggered_by: str, user: str | None, country_id: int, country_code: str | None, test_mode: bool):
     """Execute the pipeline once and generate a report."""
 
-    click.echo("🚀 Starting TenderAI BF pipeline...")
+    click.echo("🚀 Starting TenderAI BF pipeline..." + (" [MODE TEST]" if test_mode else ""))
 
     try:
         # Resolve country code → country ID when --country-code is provided
@@ -65,6 +72,7 @@ def run_once(triggered_by: str, user: str | None, country_id: int, country_code:
             country_id=country_id,
             triggered_by=triggered_by,
             triggered_by_user=user,
+            test_mode=test_mode,
         )
 
         errors = result.errors
