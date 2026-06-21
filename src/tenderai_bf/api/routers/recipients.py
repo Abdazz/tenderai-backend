@@ -53,11 +53,13 @@ async def get_recipient(recipient_id: int, db: DatabaseSession, user: Authentica
 async def create_recipient(request: RecipientCreate, db: DatabaseSession, user: AuthenticatedUser):
     from ...models import Recipient
 
-    existing = db.query(Recipient).filter(Recipient.email == request.email).first()
-    if existing:
+    query = db.query(Recipient).filter(Recipient.email == request.email)
+    if request.country_id is not None:
+        query = query.filter(Recipient.country_id == request.country_id)
+    if query.first():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Recipient with email '{request.email}' already exists",
+            detail=f"Recipient with email '{request.email}' already exists for this country",
         )
 
     row = Recipient(
