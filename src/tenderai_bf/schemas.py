@@ -259,7 +259,7 @@ class RecipientBase(BaseModel):
 class RecipientCreate(RecipientBase):
     """Schema for creating a new Recipient."""
 
-    pass
+    country_id: int | None = None
 
 
 class RecipientUpdate(BaseModel):
