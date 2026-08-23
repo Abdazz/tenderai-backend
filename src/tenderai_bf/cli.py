@@ -445,7 +445,14 @@ def seed_sources(force: bool):
                 parser_type = source.get("parser", source.get("parser_type", "html"))
                 rate_limit = source.get("rate_limit", "10/m")
                 enabled = source.get("enabled", True)
-                patterns_raw = source.get("patterns")
+                # Fold parser-specific *_settings blocks (ungm_settings, etc.) into
+                # patterns so they actually persist to the DB and are readable at
+                # runtime via source["patterns"][...] — settings.yaml keeps them
+                # as top-level sibling keys for readability.
+                patterns_raw = dict(source.get("patterns") or {})
+                for key, value in source.items():
+                    if key.endswith("_settings"):
+                        patterns_raw[key] = value
                 patterns_json = json.dumps(patterns_raw) if patterns_raw else None
 
                 if not name or not list_url:

@@ -211,10 +211,9 @@ async def fetch_single_listing(
     # UNGM source — uses POST API filtered by country
     if parser_type == "ungm":
         try:
-            country_ids = source.get("ungm_settings", {}).get(
-                "country_ids", [COUNTRY_BURKINA_FASO]
-            )
-            page_size = source.get("ungm_settings", {}).get("page_size", 50)
+            ungm_settings = source.get("patterns", {}).get("ungm_settings", {})
+            country_ids = ungm_settings.get("country_ids", [COUNTRY_BURKINA_FASO])
+            page_size = ungm_settings.get("page_size", 50)
             listings = await fetch_ungm_listings(country_ids, page_size=page_size)
             logger.info(
                 "UNGM listings fetched",
