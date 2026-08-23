@@ -111,6 +111,14 @@ class LLMSettings(BaseSettings):
         default="http://localhost:11434", validation_alias="OLLAMA_BASE_URL"
     )
     ollama_model: str = Field(default="llama3.1", validation_alias="OLLAMA_MODEL")
+    nvidia_api_key: SecretStr = Field(default="", validation_alias="NVIDIA_API_KEY")
+    nvidia_model: str = Field(
+        default="meta/llama-3.3-70b-instruct", validation_alias="NVIDIA_MODEL"
+    )
+    nvidia_base_url: str = Field(
+        default="https://integrate.api.nvidia.com/v1",
+        validation_alias="NVIDIA_BASE_URL",
+    )
     temperature: float = Field(default=0.1, description="LLM temperature")
     max_tokens: int = Field(default=2048, description="Max response tokens")
     timeout: int = Field(default=60, description="LLM request timeout")
@@ -505,6 +513,8 @@ class Settings(BaseSettings):
             print("Warning: Groq API key not set")
         elif v.provider == "openai" and not v.openai_api_key.get_secret_value():
             print("Warning: OpenAI API key not set")
+        elif v.provider == "nvidia" and not v.nvidia_api_key.get_secret_value():
+            print("Warning: NVIDIA API key not set")
         return v
 
     @property

@@ -3118,6 +3118,23 @@ groq = ">=0.4.1,<1"
 langchain-core = ">=0.2.39,<0.3.0"
 
 [[package]]
+name = "langchain-nvidia-ai-endpoints"
+version = "0.1.7"
+description = "An integration package connecting NVIDIA AI Endpoints and LangChain"
+optional = false
+python-versions = "<4.0,>=3.8.1"
+groups = ["main"]
+files = [
+    {file = "langchain_nvidia_ai_endpoints-0.1.7-py3-none-any.whl", hash = "sha256:8a371cfefec44ddf895b4df4491f9fdce9543ce61be19692504b7bb7c2f349cb"},
+    {file = "langchain_nvidia_ai_endpoints-0.1.7.tar.gz", hash = "sha256:a884fc93cd26cba887e852eb9e60af180f155a27f052091eb310d5d631d20079"},
+]
+
+[package.dependencies]
+aiohttp = ">=3.9.1,<4.0.0"
+langchain-core = ">=0.1.27,<0.3"
+pillow = ">=10.0.0,<11.0.0"
+
+[[package]]
 name = "langchain-ollama"
 version = "0.1.3"
 description = "An integration package connecting Ollama and LangChain"
@@ -9594,4 +9611,4 @@ spacy = ["spacy"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.11"
-content-hash = "d189c87cb0ea7b4455a72af234c169e75558319417ff38edbbad379c64063ad2"
+content-hash = "cba5eaeabcf33e8078d410e748ac08a124b8c2ac9b9c024ce29a9b0becf2934c"

@@ -82,6 +82,10 @@ def get_llm_instance(
         elif provider == "ollama":
             return _get_ollama_instance(temperature, max_tokens)
 
+        # Try NVIDIA (NIM / build.nvidia.com) if configured
+        elif provider == "nvidia":
+            return _get_nvidia_instance(temperature, max_tokens)
+
         else:
             logger.error("Unknown LLM provider", provider=provider)
             return None
@@ -152,6 +156,37 @@ def _get_ollama_instance(temperature: float, max_tokens: int) -> Any | None:
         return None
 
 
+def _get_nvidia_instance(temperature: float, max_tokens: int) -> Any | None:
+    """Helper to instantiate an NVIDIA NIM (build.nvidia.com) LLM."""
+    try:
+        if not settings.llm.nvidia_api_key.get_secret_value():
+            logger.error("NVIDIA API key not configured")
+            return None
+
+        from langchain_nvidia_ai_endpoints import ChatNVIDIA
+
+        llm = ChatNVIDIA(
+            api_key=settings.llm.nvidia_api_key.get_secret_value(),
+            model=settings.llm.nvidia_model,
+            base_url=settings.llm.nvidia_base_url,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        logger.debug(
+            "LLM instance created",
+            provider="nvidia",
+            model=settings.llm.nvidia_model,
+        )
+        return llm
+
+    except ImportError:
+        logger.error("langchain-nvidia-ai-endpoints not installed")
+        return None
+    except Exception as e:
+        logger.error("Failed to instantiate NVIDIA LLM", error=str(e))
+        return None
+
+
 def validate_llm_available() -> bool:
     """Check if any LLM provider is properly configured."""
     provider = settings.llm.provider.lower()
@@ -169,5 +204,7 @@ def validate_llm_available() -> bool:
         except ImportError:
             logger.error("langchain-ollama not installed")
             return False
+    elif provider == "nvidia":
+        return bool(settings.llm.nvidia_api_key.get_secret_value())
 
     return False
