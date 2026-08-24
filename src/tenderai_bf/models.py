@@ -373,3 +373,36 @@ class CountrySettings(Base):
         return (
             f"<CountrySettings(country_id={self.country_id}, section='{self.section}')>"
         )
+
+
+class Company(Base):
+    """A tenant company using TenderAI as a service."""
+
+    __tablename__ = "companies"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    slug = Column(String(64), nullable=False, unique=True, index=True)
+    active = Column(Boolean, nullable=False, default=True, index=True)
+
+    # Branding — falls back to defaults in report/email code when null
+    logo_url = Column(String(500), nullable=True)
+    subject_prefix = Column(String(100), nullable=True)
+    signature = Column(String(255), nullable=True)
+
+    created_at = Column(DateTime, nullable=False, default=func.now())
+    updated_at = Column(
+        DateTime, nullable=False, default=func.now(), onupdate=func.now()
+    )
+
+    settings = relationship(
+        "CompanySettings", back_populates="company", cascade="all, delete-orphan"
+    )
+    country_subscriptions = relationship(
+        "CompanyCountrySubscription",
+        back_populates="company",
+        cascade="all, delete-orphan",
+    )
+
+    def __repr__(self) -> str:
+        return f"<Company(slug='{self.slug}', name='{self.name}', active={self.active})>"
