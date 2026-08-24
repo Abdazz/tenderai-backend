@@ -135,3 +135,10 @@ def test_recipient_has_company_id_column(db):
     inspector = inspect(engine)
     cols = {c["name"] for c in inspector.get_columns("recipients")}
     assert "company_id" in cols
+
+
+def test_user_has_company_id_column(db):
+    engine = db.get_bind()
+    inspector = inspect(engine)
+    cols = {c["name"] for c in inspector.get_columns("users")}
+    assert "company_id" in cols

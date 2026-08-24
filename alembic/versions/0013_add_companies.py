@@ -243,10 +243,30 @@ def upgrade() -> None:
             "WHERE company_id IS NULL"
         )
 
+    # 12. users.company_id — backfilled to YULCOM
+    if _table_exists(bind, "users"):
+        if not _column_exists(bind, "users", "company_id"):
+            op.add_column("users", sa.Column("company_id", sa.Integer(), nullable=True))
+            op.create_foreign_key(
+                "fk_users_company_id", "users", "companies", ["company_id"], ["id"]
+            )
+        op.execute(
+            "UPDATE users SET company_id = (SELECT id FROM companies WHERE slug = 'yulcom') "
+            "WHERE company_id IS NULL AND role != 'super_admin'"
+        )
+
+        # 13. Role rename: admin -> company_admin, viewer -> company_viewer (idempotent)
+        op.execute("UPDATE users SET role = 'company_admin' WHERE role = 'admin'")
+        op.execute("UPDATE users SET role = 'company_viewer' WHERE role = 'viewer'")
+
 
 def downgrade() -> None:
     op.drop_constraint("fk_recipients_company_id", "recipients", type_="foreignkey")
     op.drop_column("recipients", "company_id")
+    op.execute("UPDATE users SET role = 'viewer' WHERE role = 'company_viewer'")
+    op.execute("UPDATE users SET role = 'admin' WHERE role = 'company_admin'")
+    op.drop_constraint("fk_users_company_id", "users", type_="foreignkey")
+    op.drop_column("users", "company_id")
     bind = op.get_bind()
     # Drop runs.company_id and runs.run_type (idempotent)
     if _column_exists(bind, "runs", "company_id"):
