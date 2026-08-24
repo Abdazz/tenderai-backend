@@ -35,3 +35,10 @@ def test_company_table_has_expected_columns(db):
         "created_at",
         "updated_at",
     }.issubset(cols)
+
+
+def test_company_country_subscription_table_has_expected_columns(db):
+    engine = db.get_bind()
+    inspector = inspect(engine)
+    cols = {c["name"] for c in inspector.get_columns("company_country_subscriptions")}
+    assert {"company_id", "country_id", "enabled", "created_at"}.issubset(cols)

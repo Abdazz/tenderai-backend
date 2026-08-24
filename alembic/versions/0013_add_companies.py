@@ -60,6 +60,41 @@ def upgrade() -> None:
             "VALUES ('YULCOM Technologies', 'yulcom', true, NOW(), NOW())"
         )
 
+    # 3. Create company_country_subscriptions table (idempotent)
+    if not _table_exists(bind, "company_country_subscriptions"):
+        op.create_table(
+            "company_country_subscriptions",
+            sa.Column("company_id", sa.Integer(), nullable=False),
+            sa.Column("country_id", sa.Integer(), nullable=False),
+            sa.Column("enabled", sa.Boolean(), nullable=False, server_default=sa.text("true")),
+            sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
+            sa.PrimaryKeyConstraint("company_id", "country_id"),
+            sa.ForeignKeyConstraint(
+                ["company_id"], ["companies.id"], name="fk_ccs_company_id"
+            ),
+            sa.ForeignKeyConstraint(
+                ["country_id"], ["countries.id"], name="fk_ccs_country_id"
+            ),
+        )
+
+    # 4. Subscribe YULCOM to every currently-active country (idempotent)
+    op.execute("""
+        INSERT INTO company_country_subscriptions (company_id, country_id, enabled, created_at)
+        SELECT
+            (SELECT id FROM companies WHERE slug = 'yulcom'),
+            c.id,
+            true,
+            NOW()
+        FROM countries c
+        WHERE c.active = true
+        AND NOT EXISTS (
+            SELECT 1 FROM company_country_subscriptions ccs
+            WHERE ccs.company_id = (SELECT id FROM companies WHERE slug = 'yulcom')
+            AND ccs.country_id = c.id
+        )
+    """)
+
 
 def downgrade() -> None:
+    op.drop_table("company_country_subscriptions")
     op.drop_table("companies")

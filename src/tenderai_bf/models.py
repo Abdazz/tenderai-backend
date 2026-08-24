@@ -395,5 +395,31 @@ class Company(Base):
         DateTime, nullable=False, default=func.now(), onupdate=func.now()
     )
 
+    country_subscriptions = relationship(
+        "CompanyCountrySubscription",
+        back_populates="company",
+        cascade="all, delete-orphan",
+    )
+
     def __repr__(self) -> str:
         return f"<Company(slug='{self.slug}', name='{self.name}', active={self.active})>"
+
+
+class CompanyCountrySubscription(Base):
+    """Which countries (from the shared catalog) a company monitors."""
+
+    __tablename__ = "company_country_subscriptions"
+
+    company_id = Column(Integer, ForeignKey("companies.id"), primary_key=True)
+    country_id = Column(Integer, ForeignKey("countries.id"), primary_key=True)
+    enabled = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, nullable=False, default=func.now())
+
+    company = relationship("Company", back_populates="country_subscriptions")
+    country = relationship("Country")
+
+    def __repr__(self) -> str:
+        return (
+            f"<CompanyCountrySubscription(company_id={self.company_id}, "
+            f"country_id={self.country_id}, enabled={self.enabled})>"
+        )
