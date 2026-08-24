@@ -128,3 +128,10 @@ def test_run_has_run_type_and_company_id_columns(db):
     inspector = inspect(engine)
     cols = {c["name"] for c in inspector.get_columns("runs")}
     assert {"run_type", "company_id"}.issubset(cols)
+
+
+def test_recipient_has_company_id_column(db):
+    engine = db.get_bind()
+    inspector = inspect(engine)
+    cols = {c["name"] for c in inspector.get_columns("recipients")}
+    assert "company_id" in cols

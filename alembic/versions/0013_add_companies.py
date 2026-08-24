@@ -231,8 +231,22 @@ def upgrade() -> None:
                 "fk_runs_company_id", "runs", "companies", ["company_id"], ["id"]
             )
 
+    # 11. recipients.company_id — backfilled to YULCOM
+    if _table_exists(bind, "recipients"):
+        if not _column_exists(bind, "recipients", "company_id"):
+            op.add_column("recipients", sa.Column("company_id", sa.Integer(), nullable=True))
+            op.create_foreign_key(
+                "fk_recipients_company_id", "recipients", "companies", ["company_id"], ["id"]
+            )
+        op.execute(
+            "UPDATE recipients SET company_id = (SELECT id FROM companies WHERE slug = 'yulcom') "
+            "WHERE company_id IS NULL"
+        )
+
 
 def downgrade() -> None:
+    op.drop_constraint("fk_recipients_company_id", "recipients", type_="foreignkey")
+    op.drop_column("recipients", "company_id")
     bind = op.get_bind()
     # Drop runs.company_id and runs.run_type (idempotent)
     if _column_exists(bind, "runs", "company_id"):

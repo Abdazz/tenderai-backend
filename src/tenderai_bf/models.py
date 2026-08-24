@@ -271,9 +271,11 @@ class Recipient(Base):
     )  # to, cc, bcc
     enabled = Column(Boolean, nullable=False, default=True, index=True)
     country_id = Column(Integer, ForeignKey("countries.id"), nullable=True, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=True, index=True)
 
     # Relationships
     country = relationship("Country", back_populates="recipients")
+    company = relationship("Company")
 
     # Preferences (stored as JSON)
     preferences = Column(JSON, nullable=True)  # frequency, format, etc.
