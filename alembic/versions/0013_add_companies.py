@@ -94,7 +94,80 @@ def upgrade() -> None:
         )
     """)
 
+    # 5. Create company_settings table (idempotent)
+    if not _table_exists(bind, "company_settings"):
+        op.create_table(
+            "company_settings",
+            sa.Column("company_id", sa.Integer(), nullable=False),
+            sa.Column("section", sa.String(64), nullable=False),
+            sa.Column("data", sa.JSON(), nullable=False),
+            sa.Column(
+                "updated_at",
+                sa.DateTime(),
+                server_default=sa.func.now(),
+                nullable=False,
+            ),
+            sa.Column("updated_by", sa.Text(), nullable=True),
+            sa.PrimaryKeyConstraint("company_id", "section"),
+            sa.ForeignKeyConstraint(
+                ["company_id"], ["companies.id"], name="fk_company_settings_company_id"
+            ),
+        )
+
+    # 6. Seed YULCOM's classification section from AppSettings["classification"],
+    #    consolidating min_relevance_score (today under AppSettings["pipeline"])
+    #    into the same company-level "classification" section (idempotent).
+    cs_count = bind.execute(
+        sa.text(
+            "SELECT COUNT(*) FROM company_settings WHERE company_id = "
+            "(SELECT id FROM companies WHERE slug = 'yulcom') AND section = 'classification'"
+        )
+    ).scalar()
+    if cs_count == 0:
+        classification_row = bind.execute(
+            sa.text("SELECT data FROM app_settings WHERE section = 'classification'")
+        ).fetchone()
+        pipeline_row = bind.execute(
+            sa.text("SELECT data FROM app_settings WHERE section = 'pipeline'")
+        ).fetchone()
+        if classification_row is not None:
+            import json as _json
+
+            merged = dict(classification_row[0])
+            if pipeline_row is not None and "min_relevance_score" in pipeline_row[0]:
+                merged["min_relevance_score"] = pipeline_row[0]["min_relevance_score"]
+            # Plain string substitution, not a bind param: the JSON payload comes
+            # from our own app_settings row, not user input, so this is safe, and
+            # it sidesteps dialect-specific JSON bind-param handling entirely.
+            merged_json = _json.dumps(merged).replace("'", "''")
+            op.execute(
+                "INSERT INTO company_settings (company_id, section, data, updated_at, updated_by) "
+                "VALUES ((SELECT id FROM companies WHERE slug = 'yulcom'), "
+                f"'classification', '{merged_json}'::json, NOW(), 'migration_0013')"
+            )
+
+    # 7. Seed YULCOM's scheduler section from AppSettings["scheduler"] (idempotent)
+    sched_count = bind.execute(
+        sa.text(
+            "SELECT COUNT(*) FROM company_settings WHERE company_id = "
+            "(SELECT id FROM companies WHERE slug = 'yulcom') AND section = 'scheduler'"
+        )
+    ).scalar()
+    if sched_count == 0:
+        op.execute("""
+            INSERT INTO company_settings (company_id, section, data, updated_at, updated_by)
+            SELECT
+                (SELECT id FROM companies WHERE slug = 'yulcom'),
+                'scheduler',
+                data,
+                NOW(),
+                'migration_0013'
+            FROM app_settings
+            WHERE section = 'scheduler'
+        """)
+
 
 def downgrade() -> None:
+    op.drop_table("company_settings")
     op.drop_table("company_country_subscriptions")
     op.drop_table("companies")

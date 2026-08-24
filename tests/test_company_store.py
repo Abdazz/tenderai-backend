@@ -42,3 +42,19 @@ def test_company_country_subscription_table_has_expected_columns(db):
     inspector = inspect(engine)
     cols = {c["name"] for c in inspector.get_columns("company_country_subscriptions")}
     assert {"company_id", "country_id", "enabled", "created_at"}.issubset(cols)
+
+
+def test_company_settings_table_has_expected_columns(db):
+    engine = db.get_bind()
+    inspector = inspect(engine)
+    cols = {c["name"] for c in inspector.get_columns("company_settings")}
+    assert {"company_id", "section", "data", "updated_at", "updated_by"}.issubset(cols)
+
+
+def test_sqlalchemy_mapper_registry_configures_cleanly(db):
+    """Guards against the Task 1 regression: a relationship() referencing a
+    not-yet-existing class breaks configure_mappers() for the whole process,
+    not just the model that declares it."""
+    from sqlalchemy.orm import configure_mappers
+
+    configure_mappers()

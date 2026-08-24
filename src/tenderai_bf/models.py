@@ -400,6 +400,9 @@ class Company(Base):
         back_populates="company",
         cascade="all, delete-orphan",
     )
+    settings = relationship(
+        "CompanySettings", back_populates="company", cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         return f"<Company(slug='{self.slug}', name='{self.name}', active={self.active})>"
@@ -423,3 +426,28 @@ class CompanyCountrySubscription(Base):
             f"<CompanyCountrySubscription(company_id={self.company_id}, "
             f"country_id={self.country_id}, enabled={self.enabled})>"
         )
+
+
+class CompanySettings(Base):
+    """Per-company operational settings, one row per section.
+
+    Sections: classification (relevant_keywords, min_relevance_score, LLM
+    prompts), scheduler (delivery cron_schedule, timezone, run_on_startup),
+    email (subject_prefix/signature overrides). Does NOT include an `llm`
+    section — LLM provider/keys stay global (AppSettings/env).
+    """
+
+    __tablename__ = "company_settings"
+
+    company_id = Column(Integer, ForeignKey("companies.id"), primary_key=True)
+    section = Column(String(64), primary_key=True)
+    data = Column(JSON, nullable=False)
+    updated_at = Column(
+        DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+    updated_by = Column(Text, nullable=True)
+
+    company = relationship("Company", back_populates="settings")
+
+    def __repr__(self) -> str:
+        return f"<CompanySettings(company_id={self.company_id}, section='{self.section}')>"
