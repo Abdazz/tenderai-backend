@@ -38,7 +38,11 @@ def test_company_store_put_and_get_section(db):
     db.add(company)
     db.commit()
     CompanyStore.put_section(
-        db, company.id, "classification", {"min_relevance_score": 0.6}, updated_by="test"
+        db,
+        company.id,
+        "classification",
+        {"min_relevance_score": 0.6},
+        updated_by="test",
     )
     result = CompanyStore.get_section(db, company.id, "classification")
     assert result == {"min_relevance_score": 0.6}
@@ -94,9 +98,17 @@ def test_company_store_seed_from_global_copies_all_sections(db):
     from tenderai_bf.models import AppSettings, Company
 
     db.add(
-        AppSettings(section="classification", data={"min_relevance_score": 0.65}, updated_by="test")
+        AppSettings(
+            section="classification",
+            data={"min_relevance_score": 0.65},
+            updated_by="test",
+        )
     )
-    db.add(AppSettings(section="scheduler", data={"cron_schedule": "0 7 * * *"}, updated_by="test"))
+    db.add(
+        AppSettings(
+            section="scheduler", data={"cron_schedule": "0 7 * * *"}, updated_by="test"
+        )
+    )
     db.commit()
     company = Company(name="Seed", slug="seed-co")
     db.add(company)

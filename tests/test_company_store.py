@@ -2,6 +2,7 @@ import os
 
 import pytest
 from sqlalchemy import create_engine, inspect
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 os.environ.setdefault(
@@ -119,7 +120,7 @@ def test_company_notice_status_unique_per_company_and_notice(db):
         is_relevant=False,
     )
     db.add(dupe)
-    with pytest.raises(Exception):
+    with pytest.raises(IntegrityError):
         db.commit()
 
 

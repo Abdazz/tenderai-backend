@@ -95,7 +95,9 @@ class Run(Base):
     )  # scheduler, manual, api
     triggered_by_user = Column(String(100), nullable=True)
     country_id = Column(Integer, ForeignKey("countries.id"), nullable=True, index=True)
-    run_type = Column(String(20), nullable=False, default="harvest")  # harvest | delivery
+    run_type = Column(
+        String(20), nullable=False, default="harvest"
+    )  # harvest | delivery
     company_id = Column(Integer, ForeignKey("companies.id"), nullable=True, index=True)
 
     # Relationships
@@ -303,7 +305,9 @@ class User(Base):
     username = Column(String(64), nullable=False, unique=True, index=True)
     email = Column(String(255), nullable=False, unique=True, index=True)
     hashed_password = Column(String(255), nullable=False)
-    role = Column(String(15), nullable=False, default="company_viewer")  # super_admin | company_admin | company_viewer
+    role = Column(
+        String(15), nullable=False, default="viewer"
+    )  # super_admin | admin | viewer
     is_active = Column(Boolean, nullable=False, default=True)
     password_reset_required = Column(Boolean, nullable=False, default=True)
     country_id = Column(Integer, ForeignKey("countries.id"), nullable=True, index=True)
@@ -413,7 +417,9 @@ class Company(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<Company(slug='{self.slug}', name='{self.name}', active={self.active})>"
+        return (
+            f"<Company(slug='{self.slug}', name='{self.name}', active={self.active})>"
+        )
 
 
 class CompanyCountrySubscription(Base):
@@ -458,7 +464,9 @@ class CompanySettings(Base):
     company = relationship("Company", back_populates="settings")
 
     def __repr__(self) -> str:
-        return f"<CompanySettings(company_id={self.company_id}, section='{self.section}')>"
+        return (
+            f"<CompanySettings(company_id={self.company_id}, section='{self.section}')>"
+        )
 
 
 class CompanyNoticeStatus(Base):

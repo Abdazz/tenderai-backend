@@ -40,6 +40,14 @@ def _constraint_exists(conn, table_name: str, constraint_name: str) -> bool:
         return False
 
 
+def _index_exists(conn, table_name: str, index_name: str) -> bool:
+    insp = Inspector.from_engine(conn)
+    try:
+        return any(ix["name"] == index_name for ix in insp.get_indexes(table_name))
+    except sa.exc.NoSuchTableError:
+        return False
+
+
 def upgrade() -> None:
     bind = op.get_bind()
 
@@ -50,12 +58,24 @@ def upgrade() -> None:
             sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
             sa.Column("name", sa.String(255), nullable=False),
             sa.Column("slug", sa.String(64), nullable=False),
-            sa.Column("active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
+            sa.Column(
+                "active", sa.Boolean(), nullable=False, server_default=sa.text("true")
+            ),
             sa.Column("logo_url", sa.String(500), nullable=True),
             sa.Column("subject_prefix", sa.String(100), nullable=True),
             sa.Column("signature", sa.String(255), nullable=True),
-            sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
-            sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
+            sa.Column(
+                "created_at",
+                sa.DateTime(),
+                nullable=False,
+                server_default=sa.func.now(),
+            ),
+            sa.Column(
+                "updated_at",
+                sa.DateTime(),
+                nullable=False,
+                server_default=sa.func.now(),
+            ),
             sa.UniqueConstraint("slug", name="uq_companies_slug"),
         )
 
@@ -75,8 +95,15 @@ def upgrade() -> None:
             "company_country_subscriptions",
             sa.Column("company_id", sa.Integer(), nullable=False),
             sa.Column("country_id", sa.Integer(), nullable=False),
-            sa.Column("enabled", sa.Boolean(), nullable=False, server_default=sa.text("true")),
-            sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
+            sa.Column(
+                "enabled", sa.Boolean(), nullable=False, server_default=sa.text("true")
+            ),
+            sa.Column(
+                "created_at",
+                sa.DateTime(),
+                nullable=False,
+                server_default=sa.func.now(),
+            ),
             sa.PrimaryKeyConstraint("company_id", "country_id"),
             sa.ForeignKeyConstraint(
                 ["company_id"], ["companies.id"], name="fk_ccs_company_id"
@@ -87,7 +114,8 @@ def upgrade() -> None:
         )
 
     # 4. Subscribe YULCOM to every currently-active country (idempotent)
-    op.execute("""
+    op.execute(
+        """
         INSERT INTO company_country_subscriptions (company_id, country_id, enabled, created_at)
         SELECT
             (SELECT id FROM companies WHERE slug = 'yulcom'),
@@ -101,7 +129,8 @@ def upgrade() -> None:
             WHERE ccs.company_id = (SELECT id FROM companies WHERE slug = 'yulcom')
             AND ccs.country_id = c.id
         )
-    """)
+    """
+    )
 
     # 5. Create company_settings table (idempotent)
     if not _table_exists(bind, "company_settings"):
@@ -145,14 +174,18 @@ def upgrade() -> None:
             merged = dict(classification_row[0])
             if pipeline_row is not None and "min_relevance_score" in pipeline_row[0]:
                 merged["min_relevance_score"] = pipeline_row[0]["min_relevance_score"]
-            # Plain string substitution, not a bind param: the JSON payload comes
-            # from our own app_settings row, not user input, so this is safe, and
-            # it sidesteps dialect-specific JSON bind-param handling entirely.
-            merged_json = _json.dumps(merged).replace("'", "''")
-            op.execute(
-                "INSERT INTO company_settings (company_id, section, data, updated_at, updated_by) "
-                "VALUES ((SELECT id FROM companies WHERE slug = 'yulcom'), "
-                f"'classification', '{merged_json}'::json, NOW(), 'migration_0013')"
+            # Bind param instead of string interpolation: avoids manual SQL-string
+            # escaping and, unlike op.execute(str) (which implicitly wraps in
+            # sqlalchemy.text() and parses ":word" patterns), sidesteps the hazard
+            # of a literal ":something" in the JSON payload aborting the migration.
+            merged_json = _json.dumps(merged)
+            bind.execute(
+                sa.text(
+                    "INSERT INTO company_settings (company_id, section, data, updated_at, updated_by) "
+                    "VALUES ((SELECT id FROM companies WHERE slug = 'yulcom'), "
+                    "'classification', CAST(:data AS json), NOW(), 'migration_0013')"
+                ),
+                {"data": merged_json},
             )
 
     # 7. Seed YULCOM's scheduler section from AppSettings["scheduler"] (idempotent)
@@ -163,7 +196,8 @@ def upgrade() -> None:
         )
     ).scalar()
     if sched_count == 0:
-        op.execute("""
+        op.execute(
+            """
             INSERT INTO company_settings (company_id, section, data, updated_at, updated_by)
             SELECT
                 (SELECT id FROM companies WHERE slug = 'yulcom'),
@@ -173,7 +207,8 @@ def upgrade() -> None:
                 'migration_0013'
             FROM app_settings
             WHERE section = 'scheduler'
-        """)
+        """
+        )
 
     # 8. Create company_notice_status table (idempotent)
     if not _table_exists(bind, "company_notice_status"):
@@ -182,11 +217,21 @@ def upgrade() -> None:
             sa.Column("id", sa.String(36), primary_key=True),
             sa.Column("company_id", sa.Integer(), nullable=False),
             sa.Column("notice_id", sa.String(36), nullable=False),
-            sa.Column("is_relevant", sa.Boolean(), nullable=False, server_default=sa.text("false")),
+            sa.Column(
+                "is_relevant",
+                sa.Boolean(),
+                nullable=False,
+                server_default=sa.text("false"),
+            ),
             sa.Column("relevance_score", sa.Float(), nullable=True),
             sa.Column("classification_method", sa.String(50), nullable=True),
             sa.Column("delivered_at", sa.DateTime(), nullable=True),
-            sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
+            sa.Column(
+                "created_at",
+                sa.DateTime(),
+                nullable=False,
+                server_default=sa.func.now(),
+            ),
             sa.UniqueConstraint("company_id", "notice_id", name="uq_company_notice"),
             sa.ForeignKeyConstraint(
                 ["company_id"], ["companies.id"], name="fk_cns_company_id"
@@ -198,7 +243,11 @@ def upgrade() -> None:
 
     # 9. Backfill from historical Notice classification, tagged to YULCOM (idempotent)
     if _table_exists(bind, "notices"):
-        op.execute("""
+        # delivered_at is backfilled to created_at so Plan #2's first delivery run
+        # doesn't re-email the entire historical notice archive — this is a
+        # cursor-priming value, not a record of an actual past delivery.
+        op.execute(
+            """
             INSERT INTO company_notice_status
                 (id, company_id, notice_id, is_relevant, relevance_score, classification_method, delivered_at, created_at)
             SELECT
@@ -216,14 +265,17 @@ def upgrade() -> None:
                 WHERE cns.company_id = (SELECT id FROM companies WHERE slug = 'yulcom')
                 AND cns.notice_id = n.id
             )
-        """)
+        """
+        )
 
     # 10. runs.run_type and runs.company_id
     if _table_exists(bind, "runs"):
         if not _column_exists(bind, "runs", "run_type"):
             op.add_column(
                 "runs",
-                sa.Column("run_type", sa.String(20), nullable=False, server_default="harvest"),
+                sa.Column(
+                    "run_type", sa.String(20), nullable=False, server_default="harvest"
+                ),
             )
         if not _column_exists(bind, "runs", "company_id"):
             op.add_column("runs", sa.Column("company_id", sa.Integer(), nullable=True))
@@ -234,9 +286,15 @@ def upgrade() -> None:
     # 11. recipients.company_id — backfilled to YULCOM
     if _table_exists(bind, "recipients"):
         if not _column_exists(bind, "recipients", "company_id"):
-            op.add_column("recipients", sa.Column("company_id", sa.Integer(), nullable=True))
+            op.add_column(
+                "recipients", sa.Column("company_id", sa.Integer(), nullable=True)
+            )
             op.create_foreign_key(
-                "fk_recipients_company_id", "recipients", "companies", ["company_id"], ["id"]
+                "fk_recipients_company_id",
+                "recipients",
+                "companies",
+                ["company_id"],
+                ["id"],
             )
         op.execute(
             "UPDATE recipients SET company_id = (SELECT id FROM companies WHERE slug = 'yulcom') "
@@ -255,19 +313,57 @@ def upgrade() -> None:
             "WHERE company_id IS NULL AND role != 'super_admin'"
         )
 
-        # 13. Role rename: admin -> company_admin, viewer -> company_viewer (idempotent)
-        op.execute("UPDATE users SET role = 'company_admin' WHERE role = 'admin'")
-        op.execute("UPDATE users SET role = 'company_viewer' WHERE role = 'viewer'")
+    # 14. Indexes matching index=True declarations on the ORM models (kept at the
+    # end since they reference columns/tables created earlier in this migration)
+    if not _index_exists(bind, "companies", "ix_companies_active"):
+        op.create_index("ix_companies_active", "companies", ["active"])
+    if not _index_exists(
+        bind, "company_notice_status", "ix_company_notice_status_company_id"
+    ):
+        op.create_index(
+            "ix_company_notice_status_company_id",
+            "company_notice_status",
+            ["company_id"],
+        )
+    if not _index_exists(
+        bind, "company_notice_status", "ix_company_notice_status_notice_id"
+    ):
+        op.create_index(
+            "ix_company_notice_status_notice_id", "company_notice_status", ["notice_id"]
+        )
+    if not _index_exists(bind, "runs", "ix_runs_company_id"):
+        op.create_index("ix_runs_company_id", "runs", ["company_id"])
+    if not _index_exists(bind, "recipients", "ix_recipients_company_id"):
+        op.create_index("ix_recipients_company_id", "recipients", ["company_id"])
+    if not _index_exists(bind, "users", "ix_users_company_id"):
+        op.create_index("ix_users_company_id", "users", ["company_id"])
 
 
 def downgrade() -> None:
-    op.drop_constraint("fk_recipients_company_id", "recipients", type_="foreignkey")
-    op.drop_column("recipients", "company_id")
-    op.execute("UPDATE users SET role = 'viewer' WHERE role = 'company_viewer'")
-    op.execute("UPDATE users SET role = 'admin' WHERE role = 'company_admin'")
-    op.drop_constraint("fk_users_company_id", "users", type_="foreignkey")
-    op.drop_column("users", "company_id")
+    op.drop_index("ix_users_company_id", table_name="users")
+    op.drop_index("ix_recipients_company_id", table_name="recipients")
+    op.drop_index("ix_runs_company_id", table_name="runs")
+    op.drop_index(
+        "ix_company_notice_status_notice_id", table_name="company_notice_status"
+    )
+    op.drop_index(
+        "ix_company_notice_status_company_id", table_name="company_notice_status"
+    )
+    op.drop_index("ix_companies_active", table_name="companies")
+
     bind = op.get_bind()
+    # Drop recipients.company_id (idempotent)
+    if _column_exists(bind, "recipients", "company_id"):
+        if _constraint_exists(bind, "recipients", "fk_recipients_company_id"):
+            op.drop_constraint(
+                "fk_recipients_company_id", "recipients", type_="foreignkey"
+            )
+        op.drop_column("recipients", "company_id")
+    # Drop users.company_id (idempotent)
+    if _column_exists(bind, "users", "company_id"):
+        if _constraint_exists(bind, "users", "fk_users_company_id"):
+            op.drop_constraint("fk_users_company_id", "users", type_="foreignkey")
+        op.drop_column("users", "company_id")
     # Drop runs.company_id and runs.run_type (idempotent)
     if _column_exists(bind, "runs", "company_id"):
         if _constraint_exists(bind, "runs", "fk_runs_company_id"):
