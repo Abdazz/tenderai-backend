@@ -12,6 +12,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -451,3 +452,38 @@ class CompanySettings(Base):
 
     def __repr__(self) -> str:
         return f"<CompanySettings(company_id={self.company_id}, section='{self.section}')>"
+
+
+class CompanyNoticeStatus(Base):
+    """Per-company classification result for a shared Notice.
+
+    A notice with no row here for a given company hasn't been classified/
+    seen by that company yet — this absence is the delivery cursor consumed
+    by the delivery pipeline. Unique on (company_id, notice_id).
+    """
+
+    __tablename__ = "company_notice_status"
+
+    id = Column(String(36), primary_key=True, index=True)  # UUID, caller-supplied
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=False, index=True)
+    notice_id = Column(String(36), ForeignKey("notices.id"), nullable=False, index=True)
+
+    is_relevant = Column(Boolean, nullable=False, default=False)
+    relevance_score = Column(Float, nullable=True)
+    classification_method = Column(String(50), nullable=True)
+
+    delivered_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("company_id", "notice_id", name="uq_company_notice"),
+    )
+
+    company = relationship("Company")
+    notice = relationship("Notice")
+
+    def __repr__(self) -> str:
+        return (
+            f"<CompanyNoticeStatus(company_id={self.company_id}, "
+            f"notice_id='{self.notice_id}', is_relevant={self.is_relevant})>"
+        )

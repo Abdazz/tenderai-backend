@@ -58,3 +58,66 @@ def test_sqlalchemy_mapper_registry_configures_cleanly(db):
     from sqlalchemy.orm import configure_mappers
 
     configure_mappers()
+
+
+def test_company_notice_status_table_has_expected_columns(db):
+    engine = db.get_bind()
+    inspector = inspect(engine)
+    cols = {c["name"] for c in inspector.get_columns("company_notice_status")}
+    assert {
+        "id",
+        "company_id",
+        "notice_id",
+        "is_relevant",
+        "relevance_score",
+        "classification_method",
+        "delivered_at",
+        "created_at",
+    }.issubset(cols)
+
+
+def test_company_notice_status_unique_per_company_and_notice(db):
+    import uuid
+
+    from tenderai_bf.models import Company, CompanyNoticeStatus, Notice, Run, Source
+
+    company = Company(name="Test Co", slug="test-co")
+    db.add(company)
+    source = Source(
+        name="src", base_url="https://x", list_url="https://x/list", parser_type="html"
+    )
+    db.add(source)
+    run = Run(id=str(uuid.uuid4()), status="completed", triggered_by="manual")
+    db.add(run)
+    db.commit()
+
+    notice = Notice(
+        id=str(uuid.uuid4()),
+        source_id=source.id,
+        run_id=run.id,
+        title="Test notice",
+        content_hash="a" * 64,
+        url="https://x/notice/1",
+    )
+    db.add(notice)
+    db.commit()
+
+    status = CompanyNoticeStatus(
+        id=str(uuid.uuid4()),
+        company_id=company.id,
+        notice_id=notice.id,
+        is_relevant=True,
+        relevance_score=0.9,
+    )
+    db.add(status)
+    db.commit()
+
+    dupe = CompanyNoticeStatus(
+        id=str(uuid.uuid4()),
+        company_id=company.id,
+        notice_id=notice.id,
+        is_relevant=False,
+    )
+    db.add(dupe)
+    with pytest.raises(Exception):
+        db.commit()

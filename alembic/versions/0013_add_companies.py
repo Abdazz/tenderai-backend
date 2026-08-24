@@ -166,8 +166,52 @@ def upgrade() -> None:
             WHERE section = 'scheduler'
         """)
 
+    # 8. Create company_notice_status table (idempotent)
+    if not _table_exists(bind, "company_notice_status"):
+        op.create_table(
+            "company_notice_status",
+            sa.Column("id", sa.String(36), primary_key=True),
+            sa.Column("company_id", sa.Integer(), nullable=False),
+            sa.Column("notice_id", sa.String(36), nullable=False),
+            sa.Column("is_relevant", sa.Boolean(), nullable=False, server_default=sa.text("false")),
+            sa.Column("relevance_score", sa.Float(), nullable=True),
+            sa.Column("classification_method", sa.String(50), nullable=True),
+            sa.Column("delivered_at", sa.DateTime(), nullable=True),
+            sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
+            sa.UniqueConstraint("company_id", "notice_id", name="uq_company_notice"),
+            sa.ForeignKeyConstraint(
+                ["company_id"], ["companies.id"], name="fk_cns_company_id"
+            ),
+            sa.ForeignKeyConstraint(
+                ["notice_id"], ["notices.id"], name="fk_cns_notice_id"
+            ),
+        )
+
+    # 9. Backfill from historical Notice classification, tagged to YULCOM (idempotent)
+    if _table_exists(bind, "notices"):
+        op.execute("""
+            INSERT INTO company_notice_status
+                (id, company_id, notice_id, is_relevant, relevance_score, classification_method, delivered_at, created_at)
+            SELECT
+                gen_random_uuid()::text,
+                (SELECT id FROM companies WHERE slug = 'yulcom'),
+                n.id,
+                COALESCE(n.is_relevant, false),
+                n.relevance_score,
+                n.classification_method,
+                n.created_at,
+                n.created_at
+            FROM notices n
+            WHERE NOT EXISTS (
+                SELECT 1 FROM company_notice_status cns
+                WHERE cns.company_id = (SELECT id FROM companies WHERE slug = 'yulcom')
+                AND cns.notice_id = n.id
+            )
+        """)
+
 
 def downgrade() -> None:
+    op.drop_table("company_notice_status")
     op.drop_table("company_settings")
     op.drop_table("company_country_subscriptions")
     op.drop_table("companies")
