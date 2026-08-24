@@ -31,6 +31,15 @@ def _column_exists(conn, table_name: str, column_name: str) -> bool:
         return False
 
 
+def _constraint_exists(conn, table_name: str, constraint_name: str) -> bool:
+    insp = Inspector.from_engine(conn)
+    try:
+        constraints = insp.get_foreign_keys(table_name)
+        return any(c["name"] == constraint_name for c in constraints)
+    except sa.exc.NoSuchTableError:
+        return False
+
+
 def upgrade() -> None:
     bind = op.get_bind()
 
@@ -209,8 +218,29 @@ def upgrade() -> None:
             )
         """)
 
+    # 10. runs.run_type and runs.company_id
+    if _table_exists(bind, "runs"):
+        if not _column_exists(bind, "runs", "run_type"):
+            op.add_column(
+                "runs",
+                sa.Column("run_type", sa.String(20), nullable=False, server_default="harvest"),
+            )
+        if not _column_exists(bind, "runs", "company_id"):
+            op.add_column("runs", sa.Column("company_id", sa.Integer(), nullable=True))
+            op.create_foreign_key(
+                "fk_runs_company_id", "runs", "companies", ["company_id"], ["id"]
+            )
+
 
 def downgrade() -> None:
+    bind = op.get_bind()
+    # Drop runs.company_id and runs.run_type (idempotent)
+    if _column_exists(bind, "runs", "company_id"):
+        if _constraint_exists(bind, "runs", "fk_runs_company_id"):
+            op.drop_constraint("fk_runs_company_id", "runs", type_="foreignkey")
+        op.drop_column("runs", "company_id")
+    if _column_exists(bind, "runs", "run_type"):
+        op.drop_column("runs", "run_type")
     op.drop_table("company_notice_status")
     op.drop_table("company_settings")
     op.drop_table("company_country_subscriptions")

@@ -121,3 +121,10 @@ def test_company_notice_status_unique_per_company_and_notice(db):
     db.add(dupe)
     with pytest.raises(Exception):
         db.commit()
+
+
+def test_run_has_run_type_and_company_id_columns(db):
+    engine = db.get_bind()
+    inspector = inspect(engine)
+    cols = {c["name"] for c in inspector.get_columns("runs")}
+    assert {"run_type", "company_id"}.issubset(cols)

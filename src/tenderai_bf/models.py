@@ -95,10 +95,13 @@ class Run(Base):
     )  # scheduler, manual, api
     triggered_by_user = Column(String(100), nullable=True)
     country_id = Column(Integer, ForeignKey("countries.id"), nullable=True, index=True)
+    run_type = Column(String(20), nullable=False, default="harvest")  # harvest | delivery
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=True, index=True)
 
     # Relationships
     notices = relationship("Notice", back_populates="run")
     country = relationship("Country", back_populates="runs")
+    company = relationship("Company")
 
     def __repr__(self) -> str:
         return f"<Run(id='{self.id}', status='{self.status}', started_at={self.started_at})>"
