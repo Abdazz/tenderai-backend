@@ -93,6 +93,9 @@ tmp/
 # Docker
 docker-compose.override.yml
 
+# Alembic
+alembic.ini.bak
+
 # Test artifacts
 test-output/
 test-reports/
