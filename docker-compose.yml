@@ -1,0 +1,140 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: tenderai-postgres
+    environment:
+      POSTGRES_DB: ${DATABASE_NAME:-tenderai_bf}
+      POSTGRES_USER: ${DATABASE_USER:-tenderai}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-tenderai_pass}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER:-tenderai} -d ${DATABASE_NAME:-tenderai_bf}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - tenderai-network
+
+  minio:
+    image: minio/minio:latest
+    container_name: tenderai-minio
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin123}
+    volumes:
+      - minio-data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - tenderai-network
+
+  createbuckets:
+    image: minio/mc:latest
+    container_name: tenderai-createbuckets
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      until /usr/bin/mc alias set myminio http://minio:9000 ${MINIO_ACCESS_KEY:-minioadmin} ${MINIO_SECRET_KEY:-minioadmin123}; do
+        echo 'Waiting for MinIO...'; sleep 2;
+      done;
+      /usr/bin/mc mb myminio/${MINIO_BUCKET_NAME:-tenderai-bf} --ignore-existing;
+      /usr/bin/mc anonymous set public myminio/${MINIO_BUCKET_NAME:-tenderai-bf}/reports;
+      exit 0;
+      "
+    networks:
+      - tenderai-network
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: tenderai-api
+    env_file: .env
+    environment:
+      - DATABASE_URL=postgresql://${DATABASE_USER:-tenderai}:${DATABASE_PASSWORD:-tenderai_pass}@postgres:5432/${DATABASE_NAME:-tenderai_bf}
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_SECURE=false
+      - HF_HOME=/app/cache/huggingface
+      - TRANSFORMERS_CACHE=/app/cache/huggingface
+      - TORCH_HOME=/app/cache/torch
+      - EASYOCR_MODULE_PATH=/app/cache/easyocr
+      - PASSLIB_SKIP_WRAPPING_BUG_CHECK=1
+    volumes:
+      - ./settings.yaml:/app/settings.yaml:ro
+      - ./logs:/app/logs
+      - api-cache:/app/cache
+      - chroma-data:/app/data/chroma_db
+      - ./src:/app/src
+      - ./alembic:/app/alembic
+      - ./tests:/app/tests
+    command: ["uvicorn", "tenderai_bf.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      createbuckets:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    networks:
+      - tenderai-network
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: tenderai-worker
+    env_file: .env
+    environment:
+      - DATABASE_URL=postgresql://${DATABASE_USER:-tenderai}:${DATABASE_PASSWORD:-tenderai_pass}@postgres:5432/${DATABASE_NAME:-tenderai_bf}
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_SECURE=false
+      - PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+    volumes:
+      - ./settings.yaml:/app/settings.yaml:ro
+      - ./logs:/app/logs
+      - worker-cache:/app/cache
+      - worker-temp:/tmp/ocr
+      - chroma-data:/app/data/chroma_db
+      - ./src:/app/src
+    depends_on:
+      - postgres
+      - minio
+    restart: unless-stopped
+    networks:
+      - tenderai-network
+
+volumes:
+  postgres-data:
+    driver: local
+  minio-data:
+    driver: local
+  api-cache:
+    driver: local
+  worker-cache:
+    driver: local
+  worker-temp:
+    driver: local
+  chroma-data:
+    driver: local
+
+networks:
+  tenderai-network:
+    driver: bridge
