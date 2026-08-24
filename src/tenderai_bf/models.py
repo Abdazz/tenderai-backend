@@ -395,14 +395,5 @@ class Company(Base):
         DateTime, nullable=False, default=func.now(), onupdate=func.now()
     )
 
-    settings = relationship(
-        "CompanySettings", back_populates="company", cascade="all, delete-orphan"
-    )
-    country_subscriptions = relationship(
-        "CompanyCountrySubscription",
-        back_populates="company",
-        cascade="all, delete-orphan",
-    )
-
     def __repr__(self) -> str:
         return f"<Company(slug='{self.slug}', name='{self.name}', active={self.active})>"
