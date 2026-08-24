@@ -12,6 +12,18 @@ import pytest
 os.environ.setdefault("TENDERAI_ENVIRONMENT", "test")
 os.environ.setdefault("TENDERAI_DATABASE_URL", "sqlite:///test.db")
 os.environ.setdefault("TENDERAI_DEBUG", "true")
+# RAGChromaSettings.persist_directory defaults to "/app/data/chroma_db" —
+# a path only valid inside the Docker container (backed by a named volume
+# there). settings.yaml's "${TENDERAI_CHROMA_DIR:-...}" line for this field
+# is dead code (config.py's _load_yaml_config() only ever applies the "ocr"
+# section from the YAML — rag/pipeline/etc. are meant to be DB-seeded and
+# read via country_config at pipeline runtime instead), so the real override
+# is pydantic-settings' own unprefixed-field-name lookup: RAGChromaSettings
+# has no env_prefix, so it reads the bare PERSIST_DIRECTORY env var. Tests
+# run on the bare host, where /app doesn't exist and can't be created
+# (PermissionError at the filesystem root), so override it the same way
+# TENDERAI_DATABASE_URL is overridden to sqlite above.
+os.environ.setdefault("PERSIST_DIRECTORY", "/tmp/tenderai_test_chroma_db")
 os.environ.setdefault(
     "TENDERAI_JWT_SECRET",
     "test-jwt-secret-not-used-for-real-auth-only-pytest-xxxxxxxx",

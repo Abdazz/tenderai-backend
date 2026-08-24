@@ -1,6 +1,6 @@
 """Unit tests for utility functions."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -88,11 +88,11 @@ class TestDateUtils:
         now = get_burkina_faso_now()
 
         # Deadline in 3 days (urgent)
-        urgent_deadline = now.replace(day=now.day + 3)
+        urgent_deadline = now + timedelta(days=3)
         assert is_deadline_urgent(urgent_deadline, urgency_days=7) is True
 
         # Deadline in 10 days (not urgent)
-        normal_deadline = now.replace(day=now.day + 10)
+        normal_deadline = now + timedelta(days=10)
         assert is_deadline_urgent(normal_deadline, urgency_days=7) is False
 
 

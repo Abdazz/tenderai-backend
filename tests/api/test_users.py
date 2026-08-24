@@ -12,7 +12,7 @@ from sqlalchemy.pool import StaticPool
 from tenderai_bf.api.dependencies import get_password_hash
 from tenderai_bf.api.main import app
 from tenderai_bf.db import get_db
-from tenderai_bf.models import Base, User
+from tenderai_bf.models import Base, Country, User
 
 
 @pytest.fixture(scope="function")
@@ -54,7 +54,7 @@ def admin_token(client, db_session):
         username="admin",
         email="admin@test.com",
         hashed_password=get_password_hash("adminpass123"),
-        role="admin",
+        role="super_admin",
         is_active=True,
         password_reset_required=False,
     )
@@ -101,10 +101,20 @@ def test_list_users_forbidden_for_viewer(client, db_session):
 
 
 @patch("tenderai_bf.api.routers.users.send_credentials_email", return_value=True)
-def test_create_user_sends_email(mock_email, client, admin_token):
+def test_create_user_sends_email(mock_email, client, admin_token, db_session):
+    # country_id is required for non-super_admin roles
+    country = Country(name="Burkina Faso", code="BF", locale="fr")
+    db_session.add(country)
+    db_session.commit()
+
     resp = client.post(
         "/api/v1/users",
-        json={"username": "newuser", "email": "new@test.com", "role": "viewer"},
+        json={
+            "username": "newuser",
+            "email": "new@test.com",
+            "role": "viewer",
+            "country_id": country.id,
+        },
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert resp.status_code == 201

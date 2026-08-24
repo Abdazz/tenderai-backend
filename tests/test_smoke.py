@@ -38,21 +38,22 @@ def test_settings_loading():
     assert hasattr(settings, "debug")
 
     # Should have database settings
-    assert hasattr(settings, "database_url")
+    assert hasattr(settings, "database")
+    assert hasattr(settings.database, "url")
 
     # Should have nested settings
     assert hasattr(settings, "email")
-    assert hasattr(settings, "storage")
-    assert hasattr(settings, "pipeline")
+    assert hasattr(settings, "minio")
+    assert hasattr(settings, "processing")
 
 
 def test_logging_setup():
     """Test that logging can be set up."""
 
-    from tenderai_bf.logging import get_logger, setup_logging
+    from tenderai_bf.logging import configure_logging, get_logger
 
     # Setup logging
-    setup_logging()
+    configure_logging()
 
     # Get logger
     logger = get_logger(__name__)
@@ -80,7 +81,7 @@ def test_database_models():
     assert hasattr(models.Notice, "title")
     assert hasattr(models.Notice, "description")
     assert hasattr(models.Notice, "url")
-    assert hasattr(models.Notice, "deadline")
+    assert hasattr(models.Notice, "deadline_at")
 
 
 def test_schemas():
@@ -90,9 +91,9 @@ def test_schemas():
 
     # Check main schemas exist
     assert hasattr(schemas, "NoticeCreate")
-    assert hasattr(schemas, "NoticeResponse")
+    assert hasattr(schemas, "Notice")
     assert hasattr(schemas, "RunCreate")
-    assert hasattr(schemas, "RunResponse")
+    assert hasattr(schemas, "Run")
 
 
 def test_pipeline_graph():
@@ -152,10 +153,10 @@ def test_utility_functions():
 def test_cli_commands():
     """Test that CLI commands are defined."""
 
-    from tenderai_bf.cli import cli, health_check, run_once
+    from tenderai_bf.cli import health_check, main, run_once
 
     # Check CLI is defined
-    assert cli is not None
+    assert main is not None
 
     # Check commands exist
     assert run_once is not None
