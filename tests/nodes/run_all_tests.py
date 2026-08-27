@@ -47,7 +47,7 @@ def run_test(test_file):
 
     try:
         result = subprocess.run(
-            [sys.executable, str(test_path)],
+            [sys.executable, str(test_path)],  # noqa: S603 — internal test runner, fixed local file path, no untrusted input
             capture_output=True,
             text=True,
             timeout=60,  # 60 second timeout

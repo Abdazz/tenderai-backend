@@ -2,12 +2,12 @@
 
 import re
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from ...logging import get_logger, log_classification
 from ...utils.llm_utils import get_llm_instance
 from ...utils.node_logger import clear_node_output, log_node_output
-from .._cfg import cfg
+from .._cfg import cfg, company_cfg
 
 logger = get_logger(__name__)
 
@@ -63,18 +63,20 @@ _SUPPLIER_REGISTRATION_SIGNALS = [
 
 def _normalize_apostrophes(text: str) -> str:
     """Replace typographic/curly apostrophes with the standard ASCII apostrophe."""
-    return text.replace("’", "'").replace("‘", "'").replace("ʼ", "'")
+    return text.replace("’", "'").replace("‘", "'").replace("ʼ", "'")  # noqa: RUF001 — this line's purpose IS normalizing these exact unicode variants
 
 
 def _is_attribution_notice(item: dict) -> bool:
     """Return True if this item concerns attribution results, not an open procurement."""
-    text = _normalize_apostrophes(" ".join(
-        [
-            item.get("title") or "",
-            item.get("tender_object") or "",
-            item.get("description") or "",
-        ]
-    ).lower())
+    text = _normalize_apostrophes(
+        " ".join(
+            [
+                item.get("title") or "",
+                item.get("tender_object") or "",
+                item.get("description") or "",
+            ]
+        ).lower()
+    )
     return any(signal in text for signal in _ATTRIBUTION_SIGNALS)
 
 
@@ -97,9 +99,19 @@ def _parse_deadline(item: dict) -> datetime | None:
         if not raw:
             # Second pass: bare ISO date — skip dates preceded by modification/publication keywords
             # (e.g. "Date de modification: 2026-06-05") to avoid false expiry filtering
-            _EXCLUDE_PREFIXES = ("modif", "publi", "créé", "créat", "posted", "annoncé", "soumis")
+            _EXCLUDE_PREFIXES = (  # noqa: N806 — module-level-style constant, scoped locally by design
+                "modif",
+                "publi",
+                "créé",
+                "créat",
+                "posted",
+                "annoncé",
+                "soumis",
+            )
             for date_match in re.finditer(r"(\d{4}[-/]\d{2}[-/]\d{2})", text):
-                preceding = text[max(0, date_match.start() - 40):date_match.start()].lower()
+                preceding = text[
+                    max(0, date_match.start() - 40) : date_match.start()
+                ].lower()
                 if not any(excl in preceding for excl in _EXCLUDE_PREFIXES):
                     raw = date_match.group(1)
                     break
@@ -111,12 +123,13 @@ def _parse_deadline(item: dict) -> datetime | None:
 
     for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%d-%m-%Y", "%d/%m/%Y"):
         try:
-            return datetime.strptime(raw_str[:10], fmt).replace(tzinfo=timezone.utc)
+            return datetime.strptime(raw_str[:10], fmt).replace(tzinfo=UTC)
         except ValueError:
             continue
 
     # Handle "DD-Mon-YY" and "DD-Mon-YYYY" (e.g. "08-Jun-26", "08-Jun-2026")
     import calendar
+
     month_abbr = {m.lower(): i for i, m in enumerate(calendar.month_abbr) if m}
     m = re.match(r"(\d{1,2})-([A-Za-z]{3})-(\d{2,4})$", raw_str)
     if m:
@@ -124,7 +137,7 @@ def _parse_deadline(item: dict) -> datetime | None:
         if mon in month_abbr:
             year = 2000 + yr if yr < 100 else yr
             try:
-                return datetime(year, month_abbr[mon], day, tzinfo=timezone.utc)
+                return datetime(year, month_abbr[mon], day, tzinfo=UTC)
             except ValueError:
                 pass
 
@@ -136,7 +149,7 @@ def _is_expired(item: dict) -> bool:
     deadline = _parse_deadline(item)
     if deadline is None:
         return False
-    return deadline < datetime.now(tz=timezone.utc)
+    return deadline < datetime.now(tz=UTC)
 
 
 def _is_supplier_registration(item: dict) -> bool:
@@ -169,15 +182,18 @@ def _is_geographic_mismatch(item: dict, country_name: str) -> bool:
 
     # 1. Explicit location field — skip if absent or placeholder
     location = (item.get("location") or "").strip()
-    if location and location.lower() not in ("n/a", "non disponible", "none", "-", ""):
-        if country_lower not in location.lower():
-            logger.debug(
-                "Geographic mismatch: location does not match target country",
-                location=location,
-                target=country_name,
-                item_id=item.get("id"),
-            )
-            return True
+    if (
+        location
+        and location.lower() not in ("n/a", "non disponible", "none", "-", "")
+        and country_lower not in location.lower()
+    ):
+        logger.debug(
+            "Geographic mismatch: location does not match target country",
+            location=location,
+            target=country_name,
+            item_id=item.get("id"),
+        )
+        return True
 
     # 2. UNDP country code in entity ("UNDP-ZWE/ZIMBABWE") or reference ("UNDP-LBR-00899")
     for field_name in ("entity", "reference", "ref_no"):
@@ -187,7 +203,9 @@ def _is_geographic_mismatch(item: dict, country_name: str) -> bool:
         if undp_match:
             iso3 = undp_match.group(1).upper()
             country_in_field = (undp_match.group(2) or "").lower()
-            if country_lower not in country_in_field and not _iso3_matches_country(iso3, country_lower):
+            if country_lower not in country_in_field and not _iso3_matches_country(
+                iso3, country_lower
+            ):
                 logger.debug(
                     "Geographic mismatch: UNDP country code does not match target",
                     field=field_name,
@@ -199,16 +217,17 @@ def _is_geographic_mismatch(item: dict, country_name: str) -> bool:
 
     # 3. Entity field is itself a country name (e.g. entity="Géorgie")
     entity_lower = (item.get("entity") or "").strip().lower()
-    for iso3, fragments in _ISO3_TO_FRAGMENTS.items():
-        if entity_lower in fragments:  # exact match: entity IS a country name
-            if not any(frag in country_lower for frag in fragments):
-                logger.debug(
-                    "Geographic mismatch: entity is a foreign country name",
-                    entity=entity_lower,
-                    target=country_name,
-                    item_id=item.get("id"),
-                )
-                return True
+    for _iso3, fragments in _ISO3_TO_FRAGMENTS.items():
+        if entity_lower in fragments and not any(
+            frag in country_lower for frag in fragments
+        ):  # exact match: entity IS a country name, but not this target's fragments
+            logger.debug(
+                "Geographic mismatch: entity is a foreign country name",
+                entity=entity_lower,
+                target=country_name,
+                item_id=item.get("id"),
+            )
+            return True
 
     return False
 
@@ -222,7 +241,7 @@ def _is_real_open_tender(item: dict) -> bool:
     deadline = _parse_deadline(item)
     if deadline is None:
         return False
-    return deadline >= datetime.now(tz=timezone.utc)
+    return deadline >= datetime.now(tz=UTC)
 
 
 def _llm_verify_is_real_tender(item: dict, llm) -> bool:
@@ -237,7 +256,9 @@ def _llm_verify_is_real_tender(item: dict, llm) -> bool:
     entity = (item.get("entity") or "")[:100]
     reference = (item.get("reference") or item.get("ref_no") or "")[:80]
     description = (item.get("description") or "")[:400]
-    deadline_raw = str(item.get("deadline_at") or item.get("deadline") or "non précisée")
+    deadline_raw = str(
+        item.get("deadline_at") or item.get("deadline") or "non précisée"
+    )
 
     prompt = (
         "Tu analyses un marché public. Réponds UNIQUEMENT par OUI ou NON.\n\n"
@@ -331,7 +352,6 @@ def classify_node(state) -> dict:
         return state
 
     logger.info("Starting classify step", run_id=state.run_id)
-    start_time = time.time()
 
     try:
         # Choose classification method based on configuration
@@ -363,9 +383,9 @@ def classify_with_keywords(state) -> dict:
         # Combine all keywords from different categories
         it_keywords = []
 
-        relevant_keywords = cfg(state, "classification", "relevant_keywords")
+        relevant_keywords = company_cfg(state, "classification", "relevant_keywords")
         if relevant_keywords:
-            for category, keywords in relevant_keywords.items():
+            for _category, keywords in relevant_keywords.items():
                 it_keywords.extend(keywords)
         else:
             # Fallback to default keywords if not in config
@@ -445,49 +465,6 @@ def classify_with_keywords(state) -> dict:
                 )
                 continue
 
-            # Items pre-classified by the extraction LLM — pass through directly.
-            if item.get("classification_embedded"):
-                if item.get("is_relevant") and not item.get("is_results_notice"):
-                    # Quality gate: items with no geographic context kept only if genuinely open
-                    loc = (item.get("location") or "").strip()
-                    has_location = bool(loc and loc.lower() not in ("n/a", "non disponible", "none", "-", ""))
-                    if not has_location and not _is_real_open_tender(item):
-                        item["relevance_score"] = 0.0
-                        item["is_relevant"] = False
-                        item["classification_method"] = "quality_filter"
-                        logger.debug(
-                            "Quality filter: no location + no open deadline, item rejected",
-                            item_id=item.get("id"),
-                            score=item.get("relevance_score"),
-                            run_id=state.run_id,
-                        )
-                    else:
-                        relevant_items.append(item)
-                        logger.debug(
-                            "Pass-through: structured extraction pre-classified item as relevant",
-                            item_id=item.get("id"),
-                            domain=item.get("domain"),
-                            score=item.get("relevance_score"),
-                            run_id=state.run_id,
-                        )
-                continue
-
-            # Check if item already has relevance_score from extraction (LLM-scored items)
-            existing_score = item.get("relevance_score")
-
-            if existing_score is not None and existing_score >= cfg(
-                state, "pipeline", "min_relevance_score"
-            ):
-                # Item already scored by LLM extraction, preserve that score
-                relevant_items.append(item)
-                logger.debug(
-                    "Using existing LLM relevance score",
-                    item_id=item.get("id"),
-                    score=existing_score,
-                    run_id=state.run_id,
-                )
-                continue
-
             # Perform keyword-based classification for items without scores
             # Get all text fields for matching
             title_lower = item.get("title", "").lower()
@@ -518,7 +495,7 @@ def classify_with_keywords(state) -> dict:
             # (LLM-scored items already passed through extraction with 0.7 threshold)
             keyword_threshold = min(
                 0.3,
-                cfg(state, "pipeline", "min_relevance_score"),
+                company_cfg(state, "classification", "min_relevance_score"),
             )
             is_relevant = relevance_score >= keyword_threshold
 
@@ -551,7 +528,7 @@ def classify_with_keywords(state) -> dict:
             "Keyword-based classification completed",
             total_items=len(state.items_parsed),
             relevant_items=len(relevant_items),
-            threshold=cfg(state, "pipeline", "min_relevance_score"),
+            threshold=company_cfg(state, "classification", "min_relevance_score"),
             run_id=state.run_id,
         )
 
@@ -596,8 +573,8 @@ def classify_with_llm(state) -> dict:
 
         # Get keywords for keyword-based fallback
         it_keywords = []
-        relevant_keywords = cfg(state, "classification", "relevant_keywords")
-        for category, keywords in relevant_keywords.items():
+        relevant_keywords = company_cfg(state, "classification", "relevant_keywords")
+        for _category, keywords in relevant_keywords.items():
             it_keywords.extend(keywords)
 
         # Classification prompt — two-gate: (1) is it a procurement notice? (2) is it IT/engineering?
@@ -687,33 +664,6 @@ Répondez UNIQUEMENT par "OUI" ou "NON" suivi d'une explication en une phrase pr
                     deadline=str(_parse_deadline(item)),
                     run_id=state.run_id,
                 )
-                continue
-
-            # Items pre-classified by the extraction LLM — pass through directly.
-            if item.get("classification_embedded"):
-                if item.get("is_relevant") and not item.get("is_results_notice"):
-                    # Quality gate: items with no geographic context — ask LLM if it's a real tender
-                    loc = (item.get("location") or "").strip()
-                    has_location = bool(loc and loc.lower() not in ("n/a", "non disponible", "none", "-", ""))
-                    if not has_location and not _llm_verify_is_real_tender(item, llm):
-                        item["relevance_score"] = 0.0
-                        item["is_relevant"] = False
-                        item["classification_method"] = "quality_filter"
-                        logger.info(
-                            "Quality filter (LLM): no location + LLM says not a real open tender",
-                            item_id=item.get("id"),
-                            title=(item.get("tender_object") or item.get("title") or "")[:80],
-                            run_id=state.run_id,
-                        )
-                    else:
-                        relevant_items.append(item)
-                        logger.debug(
-                            "Pass-through: structured extraction pre-classified item as relevant",
-                            item_id=item.get("id"),
-                            domain=item.get("domain"),
-                            score=item.get("relevance_score"),
-                            run_id=state.run_id,
-                        )
                 continue
 
             llm_error = None
@@ -812,7 +762,9 @@ Répondez UNIQUEMENT par "OUI" ou "NON" suivi d'une explication en une phrase pr
                 if is_relevant and keyword_matches > 0:
                     threshold = 0.3  # LLM OUI + keywords → permissif
                 elif is_relevant:
-                    threshold = 0.7  # LLM OUI seul, sans keyword IT → exiger confirmation
+                    threshold = (
+                        0.7  # LLM OUI seul, sans keyword IT → exiger confirmation
+                    )
                 else:
                     threshold = 0.7  # LLM NON → strict regardless of keyword count
 

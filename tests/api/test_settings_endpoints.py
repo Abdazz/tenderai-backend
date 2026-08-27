@@ -11,8 +11,8 @@ os.environ.setdefault(
 )
 os.environ.setdefault("TENDERAI_ADMIN_PASSWORD", "test-admin-password-not-real")
 
-from tenderai_bf.api.main import app
-from tenderai_bf.db import Base, get_db
+from tenderai_bf.api.main import app  # noqa: E402 — must follow env var setup above
+from tenderai_bf.db import Base, get_db  # noqa: E402 — must follow env var setup above
 
 
 @pytest.fixture
@@ -23,7 +23,7 @@ def test_db():
         poolclass=StaticPool,
     )
     Base.metadata.create_all(engine)
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)  # noqa: N806 — SQLAlchemy idiom for a session factory
     session = SessionLocal()
     yield session, engine
     session.close()

@@ -66,7 +66,7 @@ def extract_quotidien_with_docling(pdf_bytes: bytes) -> dict:
         return {"status": "error", "error": str(e), "tenders": []}
 
 
-def parse_quotidien_text(text: str, markdown: str = None) -> list[dict]:
+def parse_quotidien_text(text: str, markdown: str | None = None) -> list[dict]:
     """
     Parse quotidien text to extract individual tender notices.
 
@@ -111,7 +111,7 @@ def parse_quotidien_text(text: str, markdown: str = None) -> list[dict]:
 
     # Strategy: Split by reference numbers (N°20XX-XXX/...)
     # This is more reliable than entity names
-    ref_pattern = r"N[°o]\s*(\d{4}[-–]\d+[^\n]{0,100})"
+    ref_pattern = r"N[°o]\s*(\d{4}[-–]\d+[^\n]{0,100})"  # noqa: RUF001 — en dash is a real alternative in source reference formats
 
     # Find all reference numbers and their positions
     references = []
@@ -159,9 +159,11 @@ def extract_tender_from_block(block: str, ref_no: str) -> dict:
     # Extract entity (usually in first few lines, ALL CAPS)
     entity = None
     for line in lines[:10]:
-        if line.isupper() and len(line) > 20 and len(line) < 200:
-            # Check it's not a section header
-            if not any(
+        if (
+            line.isupper()
+            and len(line) > 20
+            and len(line) < 200
+            and not any(
                 skip in line
                 for skip in [
                     "AVIS",
@@ -172,9 +174,10 @@ def extract_tender_from_block(block: str, ref_no: str) -> dict:
                     "MODALITES",
                     "BUDGET",
                 ]
-            ):
-                entity = line
-                break
+            )
+        ):  # not a section header
+            entity = line
+            break
 
     # Extract title/object (look for "Acquisition", "Travaux", "Fourniture", etc.)
     title = None

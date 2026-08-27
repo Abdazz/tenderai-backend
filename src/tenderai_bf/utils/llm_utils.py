@@ -49,11 +49,12 @@ def get_llm_instance(
                 return None
 
             try:
-                from langchain_groq import ChatGroq
+                from langchain.chat_models import init_chat_model
 
-                llm = ChatGroq(
+                llm = init_chat_model(
+                    model=settings.llm.groq_model,
+                    model_provider="groq",
                     api_key=settings.llm.groq_api_key.get_secret_value(),
-                    model_name=settings.llm.groq_model,
                     temperature=temperature,
                     max_tokens=max_tokens,
                 )
@@ -102,11 +103,12 @@ def _get_openai_instance(temperature: float, max_tokens: int) -> Any | None:
             logger.error("OpenAI API key not configured")
             return None
 
-        from langchain_openai import ChatOpenAI
+        from langchain.chat_models import init_chat_model
 
-        llm = ChatOpenAI(
+        llm = init_chat_model(
+            model=settings.llm.openai_model,
+            model_provider="openai",
             api_key=settings.llm.openai_api_key.get_secret_value(),
-            model_name=settings.llm.openai_model,
             temperature=temperature,
             max_tokens=max_tokens,
         )
@@ -126,7 +128,7 @@ def _get_openai_instance(temperature: float, max_tokens: int) -> Any | None:
 def _get_ollama_instance(temperature: float, max_tokens: int) -> Any | None:
     """Helper to instantiate Ollama LLM."""
     try:
-        from langchain_ollama import ChatOllama
+        from langchain.chat_models import init_chat_model
 
         # Get Ollama configuration from settings
         ollama_base_url = getattr(
@@ -134,9 +136,10 @@ def _get_ollama_instance(temperature: float, max_tokens: int) -> Any | None:
         )
         ollama_model = getattr(settings.llm, "ollama_model", "llama3.1")
 
-        llm = ChatOllama(
-            base_url=ollama_base_url,
+        llm = init_chat_model(
             model=ollama_model,
+            model_provider="ollama",
+            base_url=ollama_base_url,
             temperature=temperature,
             num_predict=max_tokens,  # Ollama uses num_predict instead of max_tokens
         )
@@ -163,11 +166,12 @@ def _get_nvidia_instance(temperature: float, max_tokens: int) -> Any | None:
             logger.error("NVIDIA API key not configured")
             return None
 
-        from langchain_nvidia_ai_endpoints import ChatNVIDIA
+        from langchain.chat_models import init_chat_model
 
-        llm = ChatNVIDIA(
-            api_key=settings.llm.nvidia_api_key.get_secret_value(),
+        llm = init_chat_model(
             model=settings.llm.nvidia_model,
+            model_provider="nvidia",
+            api_key=settings.llm.nvidia_api_key.get_secret_value(),
             base_url=settings.llm.nvidia_base_url,
             temperature=temperature,
             max_tokens=max_tokens,
@@ -198,7 +202,7 @@ def validate_llm_available() -> bool:
     elif provider == "ollama":
         # Ollama doesn't require API key, just check if langchain_ollama is available
         try:
-            import langchain_ollama
+            import langchain_ollama  # noqa: F401 — import itself is the availability probe
 
             return True
         except ImportError:

@@ -21,7 +21,7 @@ def test_email_configuration() -> bool:
         if not smtp.user or smtp.user == "user@example.com":
             return False
 
-        if not smtp.password or smtp.password == "your-smtp-password":
+        if not smtp.password or smtp.password == "your-smtp-password":  # noqa: S105 — comparing to the documented placeholder default, not a real credential
             return False
 
         # All required settings are present and look configured
@@ -31,7 +31,9 @@ def test_email_configuration() -> bool:
         return False
 
 
-def send_email(to_address: str, subject: str, body: str, html_body: str = None) -> bool:
+def send_email(
+    to_address: str, subject: str, body: str, html_body: str | None = None
+) -> bool:
     """Send an email using the configured SMTP settings.
 
     Args:

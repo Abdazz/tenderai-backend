@@ -1,11 +1,10 @@
 """Extract individual tender notices from a Tavily-extracted listing page.
 
 Strategy: one LLM call that receives the raw page text and returns all tender
-notices it finds, each with embedded domain classification.  This mirrors the
-approach used by parse_pdf_structured for DGCMEF quotidien PDFs.
+notices' structural fields.  This mirrors the approach used by
+parse_pdf_structured for DGCMEF quotidien PDFs.
 
-Classification is embedded in the extraction pass so classify_node skips these
-items (classification_embedded=True).
+Relevance is judged later, per-company, by classify_node in the delivery graph.
 """
 
 import hashlib
@@ -13,7 +12,6 @@ import json
 import re
 import uuid
 from datetime import datetime
-from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -27,7 +25,11 @@ _MAX_INPUT_CHARS = 200_000
 
 
 class TenderItem(BaseModel):
-    """A single tender notice extracted from a listing page."""
+    """A single tender notice's structural fields, extracted from a listing page.
+
+    No relevance judgment — classify_node (delivery graph) is the sole place
+    relevance is decided, per-company.
+    """
 
     title: str = Field(default="", description="Titre / objet de l'appel d'offres")
     entity: str = Field(default="", description="Entité ou organisme émetteur")
@@ -50,25 +52,6 @@ class TenderItem(BaseModel):
             "contrat déjà octroyé — pas un appel ouvert"
         ),
     )
-    is_relevant: bool = Field(
-        default=False,
-        description=(
-            "True uniquement si l'objet concerne les domaines IT de YULCOM : "
-            "services IT, matériel informatique ou conseil/ingénierie IT"
-        ),
-    )
-    domain: Literal[
-        "it_services", "it_hardware", "it_consulting", "hors_perimetre"
-    ] = Field(
-        default="hors_perimetre",
-        description="Domaine IT ou hors_perimetre",
-    )
-    relevance_score: int = Field(
-        default=1,
-        ge=1,
-        le=5,
-        description="Score 1-5 : 5=cœur de métier YULCOM, 3=pertinent, 1=hors périmètre",
-    )
 
 
 class TenderItemList(BaseModel):
@@ -88,22 +71,10 @@ URL_DE_BASE : {source_url}
 Ta mission :
 1. Identifier TOUS les appels d'offres listés dans ce texte (même partiellement).
 2. Pour chaque appel d'offres, extraire les informations disponibles.
-3. Classifier chaque appel selon sa pertinence pour YULCOM Technologies.
-
-DOMAINES IT YULCOM (is_relevant = true) :
-- it_services : développement logiciel, systèmes d'information, ERP, CRM, SIG, \
-cybersécurité, cloud, hébergement, infogérance, réseau, fibre optique, wifi, \
-vidéoconférence, intelligence artificielle
-- it_hardware : ordinateurs, serveurs, imprimantes, scanners, photocopieurs, \
-routeurs, switches, modems, écrans, onduleurs, accessoires informatiques
-- it_consulting : études informatiques, audits de sécurité, assistance technique IT, \
-schémas directeurs, formation IT, déploiement/intégration de systèmes
 
 RÈGLES :
 - is_results_notice = true pour contrats déjà octroyés, résultats d'appels d'offres, \
 PV de dépouillement
-- is_relevant = false pour : BTP, génie civil, agriculture, santé, véhicules, \
-carburant, fournitures générales, gardiennage, nettoyage
 - Si la page ne contient aucun appel d'offres identifiable, retourne une liste vide.
 - N'invente pas d'informations absentes du texte.
 - Pour tender_url : le texte peut contenir des liens au format [Titre](/chemin/vers/fiche). \
@@ -121,38 +92,20 @@ Retourne UNIQUEMENT du JSON valide (pas de markdown, pas d'explication) :
       "deadline": null,
       "description": "Description courte",
       "tender_url": "/chemin/vers/fiche-ou-null",
-      "is_results_notice": false,
-      "is_relevant": false,
-      "domain": "hors_perimetre",
-      "relevance_score": 1
+      "is_results_notice": false
     }}
   ]
 }}\
 """
 
 
-_VALID_DOMAINS = {"it_services", "it_hardware", "it_consulting", "hors_perimetre"}
-
-
 def _normalize_tender_dict(raw: dict) -> TenderItem | None:
-    """Clamp/normalize LLM output before Pydantic validation.
+    """Validate/convert a raw LLM output dict into a TenderItem.
 
-    The LLM occasionally returns relevance_score > 5 or domain values outside
-    the allowed set.  Rather than discarding the whole batch, we normalize
-    per-item so valid items are preserved.
+    Rather than discarding the whole batch on one malformed item, we
+    validate per-item so valid items are preserved.
     """
     try:
-        # Clamp relevance_score to 1-5
-        score = raw.get("relevance_score", 1)
-        try:
-            raw["relevance_score"] = max(1, min(5, int(score)))
-        except (TypeError, ValueError):
-            raw["relevance_score"] = 1
-
-        # Map unknown domain values to hors_perimetre
-        if raw.get("domain") not in _VALID_DOMAINS:
-            raw["domain"] = "hors_perimetre"
-
         return TenderItem(**raw)
     except Exception as e:
         logger.debug("Skipping malformed tender item", error=str(e), raw=str(raw)[:200])
@@ -199,7 +152,9 @@ def _extract_tenders_from_page(
                     tenders.append(item)
             return tenders
         except Exception as e:
-            logger.error("LLM extraction failed (Groq)", source=source_name, error=str(e))
+            logger.error(
+                "LLM extraction failed (Groq)", source=source_name, error=str(e)
+            )
             return []
     else:
         try:
@@ -207,7 +162,9 @@ def _extract_tenders_from_page(
             result = structured_llm.invoke(prompt)
             return result.tenders
         except Exception as e:
-            logger.error("Structured LLM extraction failed", source=source_name, error=str(e))
+            logger.error(
+                "Structured LLM extraction failed", source=source_name, error=str(e)
+            )
             return []
 
 
@@ -220,14 +177,15 @@ def parse_tavily_listing(
 ) -> list[dict]:
     """Parse the text content of a Tavily-extracted listing page into individual notices.
 
-    One LLM call extracts all visible tenders from the page and embeds domain
-    classification.  Returns items with classification_embedded=True so
-    classify_node passes them through without re-classifying.
+    One LLM call extracts all visible tenders' structural fields from the page.
+    Relevance is judged later, per-company, by classify_node in the delivery graph.
 
     Falls back to an empty list if the LLM finds nothing or fails.
     """
     if not page_content or not page_content.strip():
-        logger.warning("Empty page content for tavily listing", source=source_name, run_id=run_id)
+        logger.warning(
+            "Empty page content for tavily listing", source=source_name, run_id=run_id
+        )
         return []
 
     logger.info(
@@ -238,7 +196,9 @@ def parse_tavily_listing(
     )
 
     llm_provider = (llm_cfg or {}).get("provider", "groq")
-    tenders = _extract_tenders_from_page(page_content, source_name, source_url, llm_provider)
+    tenders = _extract_tenders_from_page(
+        page_content, source_name, source_url, llm_provider
+    )
 
     logger.info(
         f"LLM returned {len(tenders)} notices from listing page",
@@ -248,13 +208,12 @@ def parse_tavily_listing(
 
     # Pre-compute base origin from source_url for resolving relative paths
     from urllib.parse import urlparse
+
     _parsed_base = urlparse(source_url)
     _base_origin = f"{_parsed_base.scheme}://{_parsed_base.netloc}"
 
     results = []
     for i, tender in enumerate(tenders):
-        is_actionable = tender.is_relevant and not tender.is_results_notice
-
         # Resolve tender URL: make relative paths absolute, fall back to source listing URL
         raw_url = tender.tender_url
         if raw_url:
@@ -262,6 +221,7 @@ def parse_tavily_listing(
                 raw_url = _base_origin + raw_url
             elif not raw_url.startswith("http"):
                 from urllib.parse import urljoin
+
                 raw_url = urljoin(source_url, raw_url)
         item_url = raw_url or source_url
 
@@ -284,14 +244,7 @@ def parse_tavily_listing(
             "deadline": tender.deadline,
             "deadline_at": tender.deadline,
             "description": tender.description,
-            "category": tender.domain,
-            # Embedded classification — classify_node passes these through
-            "classification_embedded": True,
-            "is_relevant": is_actionable,
             "is_results_notice": tender.is_results_notice,
-            "domain": tender.domain,
-            "relevance_score": tender.relevance_score / 5.0,
-            "classification_method": "llm_tavily_listing_extraction",
         }
         results.append(item)
 
@@ -300,18 +253,13 @@ def parse_tavily_listing(
             source=source_name,
             title=(tender.title or "")[:80],
             entity=(tender.entity or "")[:50],
-            is_relevant=tender.is_relevant,
-            domain=tender.domain,
-            score=tender.relevance_score,
             run_id=run_id,
         )
 
-    relevant_count = sum(1 for r in results if r["is_relevant"])
     logger.info(
         "Tavily listing extraction complete",
         source=source_name,
         total=len(results),
-        relevant=relevant_count,
         run_id=run_id,
     )
     return results

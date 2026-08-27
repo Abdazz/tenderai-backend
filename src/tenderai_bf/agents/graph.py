@@ -6,19 +6,15 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from langgraph.graph import END, StateGraph
+from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, Field
 
-from ..config import settings
 from ..country_store import CountryStore
 from ..db import get_db_context
 from ..logging import get_logger, log_run_complete, log_run_error, log_run_start
 from ..models import Country as CountryModel, Run
 from ..schemas import RunStatistics
-from .nodes.classify import classify_node
-from .nodes.compose_report import compose_report_node
 from .nodes.deduplicate import deduplicate_node
-from .nodes.email_report import email_report_node
 from .nodes.extract_item_links import extract_item_links_node
 from .nodes.fetch_items import fetch_items_node
 from .nodes.fetch_listings import fetch_listings_node
@@ -26,7 +22,7 @@ from .nodes.fetch_listings import fetch_listings_node
 # Import node functions
 from .nodes.load_sources import load_sources_node
 from .nodes.parse_extract import parse_extract_node
-from .nodes.summarize import summarize_node
+from .nodes.persist_notices import persist_notices_node
 
 logger = get_logger(__name__)
 
@@ -43,6 +39,11 @@ class TenderAIState(BaseModel):
     country_name: str = ""
     country_locale: str = "fr"
     country_config: dict[str, Any] = Field(default_factory=dict)
+
+    # Company context — populated by DeliveryGraph.run() before graph execution;
+    # unused (defaults) for harvest-graph runs.
+    company_id: int = 0
+    company_config: dict[str, Any] = Field(default_factory=dict)
 
     # Pipeline data
     sources: list[dict[str, Any]] = Field(default_factory=list)
@@ -117,7 +118,7 @@ class TenderAIState(BaseModel):
                 setattr(self.stats, key, value)
 
 
-from ._cfg import cfg  # noqa: E402 — re-export for callers that import from graph
+from ._cfg import cfg  # noqa: E402, F401 — re-export for callers that import from graph
 
 
 def _state_get(state: Any, key: str, default: Any = None) -> Any:
@@ -180,40 +181,13 @@ def error_handler(state: TenderAIState) -> TenderAIState:
     return state
 
 
-class _AppWrapper:
-    """Thin wrapper around CompiledStateGraph that allows attribute overrides.
-
-    LangGraph's CompiledStateGraph is a Pydantic v1 model and refuses
-    arbitrary attribute assignment.  Wrapping it here lets tests replace
-    `invoke` with a mock without touching the compiled graph object.
-    """
-
-    def __init__(self, compiled_graph: Any) -> None:
-        object.__setattr__(self, "_compiled", compiled_graph)
-        object.__setattr__(self, "_overrides", {})
-
-    def __setattr__(self, name: str, value: Any) -> None:
-        self._overrides[name] = value
-
-    def __getattr__(self, name: str) -> Any:
-        overrides = object.__getattribute__(self, "_overrides")
-        if name in overrides:
-            return overrides[name]
-        return getattr(object.__getattribute__(self, "_compiled"), name)
-
-    def invoke(self, *args: Any, **kwargs: Any) -> Any:
-        overrides = object.__getattribute__(self, "_overrides")
-        fn = overrides.get("invoke", object.__getattribute__(self, "_compiled").invoke)
-        return fn(*args, **kwargs)
-
-
 class TenderAIGraph:
     """LangGraph pipeline for TenderAI BF."""
 
     def __init__(self):
         """Initialize the pipeline graph."""
         self.graph = self._build_graph()
-        self.app = _AppWrapper(self.graph.compile())
+        self.app = self.graph.compile()
         logger.info("TenderAI pipeline graph initialized")
 
     def _build_graph(self) -> StateGraph:
@@ -234,15 +208,12 @@ class TenderAIGraph:
         workflow.add_node("extract_item_links", extract_item_links_node)
         workflow.add_node("fetch_items", fetch_items_node)
         workflow.add_node("parse_extract", parse_extract_node)
-        workflow.add_node("classify", classify_node)
         workflow.add_node("deduplicate", deduplicate_node)
-        workflow.add_node("summarize", summarize_node)
-        workflow.add_node("compose_report", compose_report_node)
-        workflow.add_node("email_report", email_report_node)
+        workflow.add_node("persist_notices", persist_notices_node)
         workflow.add_node("error_handler", error_handler)
 
         # Set entry point
-        workflow.set_entry_point("load_sources")
+        workflow.add_edge(START, "load_sources")
 
         # Sequence of steps that must short-circuit on error.
         sequential_edges = [
@@ -250,11 +221,7 @@ class TenderAIGraph:
             ("fetch_listings", "extract_item_links"),
             ("extract_item_links", "fetch_items"),
             ("fetch_items", "parse_extract"),
-            ("parse_extract", "classify"),
-            ("classify", "deduplicate"),
-            ("deduplicate", "summarize"),
-            ("summarize", "compose_report"),
-            ("compose_report", "email_report"),
+            ("parse_extract", "deduplicate"),
         ]
         for src, dst in sequential_edges:
             workflow.add_conditional_edges(
@@ -263,12 +230,14 @@ class TenderAIGraph:
                 {"continue": dst, "error_handler": "error_handler"},
             )
 
-        # email_report is the last data-producing node. By this point we want
-        # the run to terminate normally even if email delivery emitted a
-        # non-fatal warning (see email_report_node), so we only divert to the
-        # error_handler when an actual fatal error was recorded.
+        # persist_notices is the last data-producing node.
         workflow.add_conditional_edges(
-            "email_report",
+            "deduplicate",
+            _route_after_step,
+            {"continue": "persist_notices", "error_handler": "error_handler"},
+        )
+        workflow.add_conditional_edges(
+            "persist_notices",
             _route_after_step,
             {"continue": END, "error_handler": "error_handler"},
         )
@@ -357,6 +326,7 @@ class TenderAIGraph:
                     triggered_by=triggered_by,
                     triggered_by_user=triggered_by_user,
                     country_id=country_id,
+                    run_type="harvest",
                 )
                 session.add(run)
                 session.commit()

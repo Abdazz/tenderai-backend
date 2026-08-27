@@ -1,6 +1,6 @@
 """FastAPI dependencies and utilities."""
 
-from typing import Annotated, Optional
+from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
@@ -85,7 +85,9 @@ async def require_admin(current_user: Annotated[dict, Depends(require_auth)]) ->
     return current_user
 
 
-async def require_super_admin(current_user: Annotated[dict, Depends(require_auth)]) -> dict:
+async def require_super_admin(
+    current_user: Annotated[dict, Depends(require_auth)],
+) -> dict:
     """Require super_admin role. Raises 403 if not super_admin."""
     if current_user.get("role") != "super_admin":
         raise HTTPException(
@@ -125,7 +127,7 @@ def get_password_hash(password: str) -> str:
 
 # Type aliases for dependencies
 DatabaseSession = Annotated[Session, Depends(get_db)]
-CurrentUser = Annotated[Optional[dict], Depends(get_current_user)]
+CurrentUser = Annotated[dict | None, Depends(get_current_user)]
 AuthenticatedUser = Annotated[dict, Depends(require_auth)]
 AdminUser = Annotated[dict, Depends(require_admin)]
 SuperAdminUser = Annotated[dict, Depends(require_super_admin)]

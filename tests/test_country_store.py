@@ -9,7 +9,7 @@ os.environ.setdefault(
 )
 os.environ.setdefault("TENDERAI_ADMIN_PASSWORD", "test-admin-password-not-real")
 
-from tenderai_bf.db import Base
+from tenderai_bf.db import Base  # noqa: E402 — must follow env var setup above
 
 
 @pytest.fixture
@@ -21,7 +21,6 @@ def db():
 
 
 def test_country_table_has_expected_columns(db):
-
     engine = db.get_bind()
     inspector = inspect(engine)
     cols = {c["name"] for c in inspector.get_columns("countries")}
@@ -37,7 +36,6 @@ def test_country_table_has_expected_columns(db):
 
 
 def test_country_settings_table_has_expected_columns(db):
-
     engine = db.get_bind()
     inspector = inspect(engine)
     cols = {c["name"] for c in inspector.get_columns("country_settings")}

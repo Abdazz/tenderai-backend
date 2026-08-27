@@ -57,11 +57,15 @@ async def create_user(
     request: UserCreateRequest, current_user: SuperAdminUser, db: DatabaseSession
 ):
     if request.role not in VALID_ROLES:
-        raise HTTPException(status_code=400, detail=f"role must be one of: {', '.join(VALID_ROLES)}")
+        raise HTTPException(
+            status_code=400, detail=f"role must be one of: {', '.join(VALID_ROLES)}"
+        )
 
     # Non-super_admin users must have a country
     if request.role != "super_admin" and not request.country_id:
-        raise HTTPException(status_code=400, detail="country_id is required for admin and viewer roles")
+        raise HTTPException(
+            status_code=400, detail="country_id is required for admin and viewer roles"
+        )
 
     # Validate country exists
     if request.country_id:
@@ -97,7 +101,9 @@ async def create_user(
         frontend_url=FRONTEND_URL,
         is_reset=False,
     )
-    logger.info("User created", username=user.username, created_by=current_user["username"])
+    logger.info(
+        "User created", username=user.username, created_by=current_user["username"]
+    )
     return UserOut.model_validate(user)
 
 
@@ -113,11 +119,15 @@ async def update_user(
         raise HTTPException(status_code=404, detail="User not found")
 
     if user.username == current_user["username"] and request.is_active is False:
-        raise HTTPException(status_code=400, detail="You cannot deactivate your own account")
+        raise HTTPException(
+            status_code=400, detail="You cannot deactivate your own account"
+        )
 
     if request.role is not None:
         if request.role not in VALID_ROLES:
-            raise HTTPException(status_code=400, detail=f"role must be one of: {', '.join(VALID_ROLES)}")
+            raise HTTPException(
+                status_code=400, detail=f"role must be one of: {', '.join(VALID_ROLES)}"
+            )
         user.role = request.role
 
     if request.country_id is not None:
@@ -141,14 +151,18 @@ async def delete_user(user_id: str, current_user: SuperAdminUser, db: DatabaseSe
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     if user.username == current_user["username"]:
-        raise HTTPException(status_code=400, detail="You cannot delete your own account")
+        raise HTTPException(
+            status_code=400, detail="You cannot delete your own account"
+        )
     db.delete(user)
     db.commit()
     logger.info("User deleted", user_id=user_id, deleted_by=current_user["username"])
 
 
 @router.post("/{user_id}/reset-password", response_model=UserOut)
-async def reset_password(user_id: str, current_user: SuperAdminUser, db: DatabaseSession):
+async def reset_password(
+    user_id: str, current_user: SuperAdminUser, db: DatabaseSession
+):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")

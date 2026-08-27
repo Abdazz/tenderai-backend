@@ -7,7 +7,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 os.environ.setdefault("TENDERAI_ENVIRONMENT", "test")
 os.environ.setdefault("TENDERAI_DATABASE_URL", "sqlite:///test.db")
-os.environ.setdefault("TENDERAI_JWT_SECRET", "test-jwt-secret-not-used-for-real-auth-only-pytest-xxxxxxxx")
+os.environ.setdefault(
+    "TENDERAI_JWT_SECRET", "test-jwt-secret-not-used-for-real-auth-only-pytest-xxxxxxxx"
+)
 os.environ.setdefault("TENDERAI_ADMIN_PASSWORD", "test-admin-password-not-real")
 
 sys.path.insert(0, "src")
@@ -169,7 +171,11 @@ def test_tavily_empty_results():
     """Empty results list → status=success but listings=[]."""
     mock_response = MagicMock()
     mock_response.status_code = 200
-    mock_response.json.return_value = {"query": "...", "results": [], "response_time": 0.5}
+    mock_response.json.return_value = {
+        "query": "...",
+        "results": [],
+        "response_time": 0.5,
+    }
     mock_response.raise_for_status = MagicMock()
 
     with patch("tenderai_bf.agents.nodes.fetch_tavily.settings") as mock_settings:

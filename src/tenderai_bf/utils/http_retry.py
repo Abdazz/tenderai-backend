@@ -33,12 +33,10 @@ _RETRYABLE_STATUS = {429, 500, 502, 503, 504}
 def _is_retryable(exc: BaseException) -> bool:
     if isinstance(
         exc,
-        (
-            httpx.TimeoutException,
-            httpx.ConnectError,
-            httpx.ReadError,
-            httpx.RemoteProtocolError,
-        ),
+        httpx.TimeoutException
+        | httpx.ConnectError
+        | httpx.ReadError
+        | httpx.RemoteProtocolError,
     ):
         return True
     if isinstance(exc, httpx.HTTPStatusError):

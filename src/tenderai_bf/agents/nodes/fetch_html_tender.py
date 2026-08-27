@@ -87,7 +87,9 @@ async def fetch_html_tender(source: dict, run_id: str) -> dict:
     }
 
 
-def _extract_cards(html: str, page_url: str, patterns: dict, source_name: str) -> list[dict]:
+def _extract_cards(
+    html: str, page_url: str, patterns: dict, source_name: str
+) -> list[dict]:
     """Extraire les blocs tender d'une page HTML selon les patterns configurés."""
     p = HTMLParser(html)
 
@@ -120,7 +122,11 @@ def _extract_cards(html: str, page_url: str, patterns: dict, source_name: str) -
         else:
             d_node = card.css_first(deadline_sel)
             if d_node:
-                deadline = d_node.attributes.get(deadline_attr, "") if deadline_attr else _txt(d_node)
+                deadline = (
+                    d_node.attributes.get(deadline_attr, "")
+                    if deadline_attr
+                    else _txt(d_node)
+                )
 
         # --- URL / PDF ---
         item_url = page_url
@@ -135,25 +141,28 @@ def _extract_cards(html: str, page_url: str, patterns: dict, source_name: str) -
         ref_match = re.search(r"\b([A-Z]{2,}\d{4,}[-\d/]*)\b", title)
         reference = ref_match.group(1) if ref_match else ""
 
-        items.append({
-            "url": item_url,
-            "title": title,
-            "tender_object": title,
-            "reference": reference,
-            "ref_no": reference,
-            "entity": fixed_entity,
-            "location": fixed_location,
-            "deadline": deadline,
-            "description": title,
-            "category": "Autre",
-            "type": "appel_offres",
-            "source": source_name,
-            "parser_type": "html-tender",
-        })
+        items.append(
+            {
+                "url": item_url,
+                "title": title,
+                "tender_object": title,
+                "reference": reference,
+                "ref_no": reference,
+                "entity": fixed_entity,
+                "location": fixed_location,
+                "deadline": deadline,
+                "description": title,
+                "category": "Autre",
+                "type": "appel_offres",
+                "source": source_name,
+                "parser_type": "html-tender",
+            }
+        )
 
     return items
 
 
 def _now() -> str:
     from datetime import datetime
+
     return datetime.utcnow().isoformat()

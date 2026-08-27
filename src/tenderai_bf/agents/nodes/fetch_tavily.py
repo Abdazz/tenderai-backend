@@ -38,13 +38,19 @@ async def fetch_tavily_search(source: dict, run_id: str) -> dict:
     api_key = settings.tavily.api_key.get_secret_value()
 
     if not api_key:
-        logger.warning("TAVILY_API_KEY not set — skipping", source=source_name, run_id=run_id)
+        logger.warning(
+            "TAVILY_API_KEY not set — skipping", source=source_name, run_id=run_id
+        )
         return _error_result(source, "tavily_search", "TAVILY_API_KEY not set")
 
     patterns = source.get("patterns", {})
     queries = patterns.get("queries", [])
     if not queries:
-        logger.warning("No queries configured for tavily_search source", source=source_name, run_id=run_id)
+        logger.warning(
+            "No queries configured for tavily_search source",
+            source=source_name,
+            run_id=run_id,
+        )
         return {
             "source": source,
             "content": json.dumps([]),
@@ -90,8 +96,14 @@ async def fetch_tavily_search(source: dict, run_id: str) -> dict:
                     url = item.get("url", "")
                     if not url or url in seen_urls:
                         continue
-                    if exclude_url_patterns and any(pat in url for pat in exclude_url_patterns):
-                        logger.debug("Tavily result excluded by URL pattern", url=url, run_id=run_id)
+                    if exclude_url_patterns and any(
+                        pat in url for pat in exclude_url_patterns
+                    ):
+                        logger.debug(
+                            "Tavily result excluded by URL pattern",
+                            url=url,
+                            run_id=run_id,
+                        )
                         continue
                     seen_urls.add(url)
                     all_results.append(item)
@@ -105,13 +117,25 @@ async def fetch_tavily_search(source: dict, run_id: str) -> dict:
 
     except httpx.HTTPStatusError as e:
         error_msg = f"HTTP {e.response.status_code}"
-        logger.error("Tavily search HTTP error", source=source_name, error=error_msg, run_id=run_id)
+        logger.error(
+            "Tavily search HTTP error",
+            source=source_name,
+            error=error_msg,
+            run_id=run_id,
+        )
         return _error_result(source, "tavily_search", error_msg)
     except Exception as e:
-        logger.error("Tavily search failed", source=source_name, error=str(e), run_id=run_id)
+        logger.error(
+            "Tavily search failed", source=source_name, error=str(e), run_id=run_id
+        )
         return _error_result(source, "tavily_search", str(e))
 
-    logger.info("Tavily search completed", source=source_name, total=len(all_results), run_id=run_id)
+    logger.info(
+        "Tavily search completed",
+        source=source_name,
+        total=len(all_results),
+        run_id=run_id,
+    )
 
     normalized = [
         {
@@ -154,7 +178,9 @@ async def fetch_tavily_extract(source: dict, run_id: str) -> dict:
     api_key = settings.tavily.api_key.get_secret_value()
 
     if not api_key:
-        logger.warning("TAVILY_API_KEY not set — skipping", source=source_name, run_id=run_id)
+        logger.warning(
+            "TAVILY_API_KEY not set — skipping", source=source_name, run_id=run_id
+        )
         return _error_result(source, "tavily_extract", "TAVILY_API_KEY not set")
 
     patterns = source.get("patterns", {})
@@ -177,7 +203,9 @@ async def fetch_tavily_extract(source: dict, run_id: str) -> dict:
                     url = base_url
                 else:
                     # page_start is the param value for page 2; page 3 = page_start+1, etc.
-                    url = _build_page_url(base_url, page_param, page_start + page_idx - 1)
+                    url = _build_page_url(
+                        base_url, page_param, page_start + page_idx - 1
+                    )
 
                 payload = {
                     "api_key": api_key,
@@ -220,12 +248,14 @@ async def fetch_tavily_extract(source: dict, run_id: str) -> dict:
                     break
 
                 for r in results:
-                    all_normalized.append({
-                        "url": r.get("url", url),
-                        "content": r.get("raw_content", ""),
-                        "title": source_name,
-                        "score": None,
-                    })
+                    all_normalized.append(
+                        {
+                            "url": r.get("url", url),
+                            "content": r.get("raw_content", ""),
+                            "title": source_name,
+                            "score": None,
+                        }
+                    )
 
                 logger.info(
                     "Tavily extract page fetched",
@@ -236,7 +266,9 @@ async def fetch_tavily_extract(source: dict, run_id: str) -> dict:
                 )
 
     except Exception as e:
-        logger.error("Tavily extract failed", source=source_name, error=str(e), run_id=run_id)
+        logger.error(
+            "Tavily extract failed", source=source_name, error=str(e), run_id=run_id
+        )
         return _error_result(source, "tavily_extract", str(e))
 
     logger.info(

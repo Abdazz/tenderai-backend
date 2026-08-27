@@ -1,5 +1,6 @@
 """Database connection and session management."""
 
+import time
 from collections.abc import Generator
 from contextlib import contextmanager
 
@@ -96,7 +97,7 @@ def __getattr__(name):
 @contextmanager
 def get_db_context() -> Generator[Session, None, None]:
     """Get a database session with automatic cleanup (for context manager usage)."""
-    SessionLocal = get_session_factory()
+    SessionLocal = get_session_factory()  # noqa: N806 — SQLAlchemy idiom for a session factory
     session = SessionLocal()
 
     try:
@@ -112,7 +113,7 @@ def get_db_context() -> Generator[Session, None, None]:
 
 def get_db() -> Generator[Session, None, None]:
     """Get a database session for FastAPI dependency injection."""
-    SessionLocal = get_session_factory()
+    SessionLocal = get_session_factory()  # noqa: N806 — SQLAlchemy idiom for a session factory
     session = SessionLocal()
 
     try:
@@ -150,7 +151,6 @@ def drop_database():
     """Drop all database tables. Use with caution!"""
     if settings.is_production:
         raise RuntimeError("Cannot drop database in production environment")
-
 
     engine = get_engine()
     Base.metadata.drop_all(bind=engine)
@@ -191,9 +191,6 @@ def get_database_info() -> dict:
         logger.error("Failed to get database info", error=str(e))
         return {"error": str(e)}
 
-
-# Import time for query timing
-import time
 
 # Register all ORM models with Base.metadata so that create_all() works
 # correctly even when individual model modules haven't been imported yet.

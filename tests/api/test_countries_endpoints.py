@@ -83,8 +83,11 @@ def _get_token(client):
         )
         if resp.status_code == 200:
             return resp.json().get("access_token", "fake-token")
-    except Exception:
-        pass
+    except Exception as e:
+        # Login is a best-effort convenience for these tests — any failure
+        # (network, JSON decode, missing route) just falls back to a fake
+        # token, which is sufficient for tests asserting 401/403 behavior.
+        print(f"_get_token: login attempt failed, using fake token ({e})")
     return "fake-token"
 
 

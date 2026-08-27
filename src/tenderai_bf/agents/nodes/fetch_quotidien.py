@@ -35,7 +35,7 @@ async def fetch_dgcmef_quotidien(source: dict, run_id: str) -> dict:
         async with httpx.AsyncClient(
             timeout=60.0,
             follow_redirects=True,
-            verify=False,  # Disable SSL verification for expired certificates
+            verify=False,  # noqa: S501 — DGCMEF site has an expired cert, verified trade-off (see comment above)
             headers={"User-Agent": settings.fetch.user_agent},
         ) as client:
             response = await fetch_with_retry(
@@ -152,10 +152,11 @@ async def download_quotidien_pdf(pdf_url: str, source_name: str, run_id: str) ->
     )
 
     try:
+        # Download the PDF with SSL verification disabled for expired certificates
         async with httpx.AsyncClient(
             timeout=120.0,
             follow_redirects=True,
-            verify=False,  # Disable SSL verification for expired certificates
+            verify=False,  # noqa: S501 — DGCMEF site has an expired cert, verified trade-off (see comment above)
             headers={"User-Agent": settings.fetch.user_agent},
         ) as client:
             response = await fetch_with_retry(

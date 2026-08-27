@@ -19,7 +19,9 @@ __email__ = "dev@yulcom.com"
 __license__ = "Proprietary"
 
 # Re-export commonly used components
-from .config import settings
-from .db import get_db, get_engine
+from .config import settings  # noqa: E402
+from .db import get_db, get_engine  # noqa: E402
+
+# Both imports above must run after the bcrypt/passlib compat shim.
 
 __all__ = ["settings", "get_db", "get_engine"]

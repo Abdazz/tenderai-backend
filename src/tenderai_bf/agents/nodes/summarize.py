@@ -13,7 +13,7 @@ logger = get_logger(__name__)
 def generate_summary_with_llm(item: dict, state=None) -> str:
     """Generate LLM-based tender summary in French."""
     try:
-        from langchain.prompts import PromptTemplate
+        from langchain_core.prompts import PromptTemplate
 
         # Get LLM instance
         llm = get_llm_instance(temperature=0.3, max_tokens=300)
@@ -33,7 +33,11 @@ def generate_summary_with_llm(item: dict, state=None) -> str:
         )
 
         # Get summarization prompts — from country_config (DB-first)
-        _summ = state.country_config.get("prompts", {}).get("summarization", {}) if state else {}
+        _summ = (
+            state.country_config.get("prompts", {}).get("summarization", {})
+            if state
+            else {}
+        )
         summarization_prompts = _summ if isinstance(_summ, dict) else {}
         system_prompt = summarization_prompts.get("system", "")
         user_template = summarization_prompts.get("user_template", "")

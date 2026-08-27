@@ -91,7 +91,9 @@ class VectorStore:
         # Generate IDs if not provided
         if ids is None:
             ids = [
-                hashlib.md5(f"{source_name}_{doc}_{i}".encode()).hexdigest()
+                hashlib.md5(
+                    f"{source_name}_{doc}_{i}".encode(), usedforsecurity=False
+                ).hexdigest()
                 for i, doc in enumerate(documents)
             ]
 

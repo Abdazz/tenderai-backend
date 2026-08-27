@@ -59,7 +59,7 @@ class EmailTestRequest(BaseModel):
 def _authenticate_user(db: Session, username: str, password: str) -> User | None:
     """Look up active user in DB and verify password. Returns User or None."""
     user = (
-        db.query(User).filter(User.username == username, User.is_active == True).first()
+        db.query(User).filter(User.username == username, User.is_active == True).first()  # noqa: E712 — SQLAlchemy column comparison, not a Python bool check
     )
     if not user:
         return None
@@ -80,7 +80,7 @@ def _build_token(user: User) -> LoginResponse:
     )
     return LoginResponse(
         access_token=token,
-        token_type="bearer",
+        token_type="bearer",  # noqa: S106 — OAuth2 token type constant, not a credential
         expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         role=user.role,
         password_reset_required=user.password_reset_required,
@@ -184,7 +184,7 @@ async def test_email(request: EmailTestRequest, user: AuthenticatedUser):
         logger.error("Failed to send test email", error=str(e))
         raise HTTPException(
             status_code=500, detail=f"Failed to send test email: {e!s}"
-        )
+        ) from e
 
 
 @router.get("/logs")
@@ -216,7 +216,9 @@ async def clear_cache(user: AuthenticatedUser):
         }
     except Exception as e:
         logger.error("Failed to clear caches", error=str(e))
-        raise HTTPException(status_code=500, detail=f"Failed to clear caches: {e!s}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to clear caches: {e!s}"
+        ) from e
 
 
 @router.get("/settings")
@@ -282,7 +284,7 @@ async def update_section_settings(
     try:
         validated = schema_cls(**payload)
     except Exception as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
     SettingsStore.put_section(
         db, section, validated.model_dump(), updated_by=user["username"]

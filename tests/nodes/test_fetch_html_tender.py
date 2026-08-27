@@ -7,7 +7,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 os.environ.setdefault("TENDERAI_ENVIRONMENT", "test")
 os.environ.setdefault("TENDERAI_DATABASE_URL", "sqlite:///test.db")
-os.environ.setdefault("TENDERAI_JWT_SECRET", "test-jwt-secret-not-used-for-real-auth-only-pytest-xxxxxxxx")
+os.environ.setdefault(
+    "TENDERAI_JWT_SECRET", "test-jwt-secret-not-used-for-real-auth-only-pytest-xxxxxxxx"
+)
 os.environ.setdefault("TENDERAI_ADMIN_PASSWORD", "test-admin-password-not-real")
 sys.path.insert(0, "src")
 
@@ -108,7 +110,10 @@ def test_uemoa_extracts_two_items():
     mock_client.__aexit__ = AsyncMock(return_value=False)
     mock_client.get = AsyncMock(return_value=mock_resp)
 
-    with patch("tenderai_bf.agents.nodes.fetch_html_tender.httpx.AsyncClient", return_value=mock_client):
+    with patch(
+        "tenderai_bf.agents.nodes.fetch_html_tender.httpx.AsyncClient",
+        return_value=mock_client,
+    ):
         result = _run(fetch_html_tender(SOURCE_UEMOA, "run-test"))
 
     assert result["status"] == "success"
@@ -132,7 +137,10 @@ def test_enabel_extracts_reference_and_deadline():
     mock_client.__aexit__ = AsyncMock(return_value=False)
     mock_client.get = AsyncMock(return_value=mock_resp)
 
-    with patch("tenderai_bf.agents.nodes.fetch_html_tender.httpx.AsyncClient", return_value=mock_client):
+    with patch(
+        "tenderai_bf.agents.nodes.fetch_html_tender.httpx.AsyncClient",
+        return_value=mock_client,
+    ):
         result = _run(fetch_html_tender(SOURCE_ENABEL, "run-test"))
 
     assert result["status"] == "success"
@@ -153,7 +161,10 @@ def test_ssl_verify_false_passed_to_client():
     mock_client.__aexit__ = AsyncMock(return_value=False)
     mock_client.get = AsyncMock(return_value=mock_resp)
 
-    with patch("tenderai_bf.agents.nodes.fetch_html_tender.httpx.AsyncClient", return_value=mock_client) as mock_cls:
+    with patch(
+        "tenderai_bf.agents.nodes.fetch_html_tender.httpx.AsyncClient",
+        return_value=mock_client,
+    ) as mock_cls:
         _run(fetch_html_tender(SOURCE_UEMOA, "run-test"))
         call_kwargs = mock_cls.call_args
         assert call_kwargs.kwargs.get("verify") is False
@@ -169,7 +180,10 @@ def test_empty_page_returns_failed():
     mock_client.__aexit__ = AsyncMock(return_value=False)
     mock_client.get = AsyncMock(return_value=mock_resp)
 
-    with patch("tenderai_bf.agents.nodes.fetch_html_tender.httpx.AsyncClient", return_value=mock_client):
+    with patch(
+        "tenderai_bf.agents.nodes.fetch_html_tender.httpx.AsyncClient",
+        return_value=mock_client,
+    ):
         result = _run(fetch_html_tender(SOURCE_UEMOA, "run-test"))
 
     assert result["status"] == "failed"
@@ -202,13 +216,20 @@ def test_pagination_fetches_multiple_pages():
     mock_client.__aexit__ = AsyncMock(return_value=False)
     mock_client.get = AsyncMock(return_value=mock_resp)
 
-    with patch("tenderai_bf.agents.nodes.fetch_html_tender.httpx.AsyncClient", return_value=mock_client):
+    with patch(
+        "tenderai_bf.agents.nodes.fetch_html_tender.httpx.AsyncClient",
+        return_value=mock_client,
+    ):
         result = _run(fetch_html_tender(source, "run-test"))
 
     # Should have fetched 2 pages
     assert mock_client.get.call_count == 2
     called_urls = [str(call.args[0]) for call in mock_client.get.call_args_list]
-    assert any("is_status=0" in u and "page" not in u for u in called_urls), "page 1 URL should be the base URL"
-    assert any("page/2" in u for u in called_urls), "page 2 URL should use pagination_url template"
+    assert any(
+        "is_status=0" in u and "page" not in u for u in called_urls
+    ), "page 1 URL should be the base URL"
+    assert any(
+        "page/2" in u for u in called_urls
+    ), "page 2 URL should use pagination_url template"
     # Both pages return the same HTML so 2 listings total
     assert len(result["listings"]) == 2

@@ -20,9 +20,20 @@ async def _fetch_playwright_detail_items(urls: list[str], run_id: str) -> list[d
     try:
         from playwright.async_api import async_playwright
     except ImportError:
-        logger.error("Playwright not installed; cannot fetch detail pages", run_id=run_id)
-        return [{"url": u, "content": None, "status": "failed", "error": "playwright not installed",
-                 "fetched_at": datetime.utcnow().isoformat(), "parser_type": "html"} for u in urls]
+        logger.error(
+            "Playwright not installed; cannot fetch detail pages", run_id=run_id
+        )
+        return [
+            {
+                "url": u,
+                "content": None,
+                "status": "failed",
+                "error": "playwright not installed",
+                "fetched_at": datetime.utcnow().isoformat(),
+                "parser_type": "html",
+            }
+            for u in urls
+        ]
 
     semaphore = asyncio.Semaphore(5)  # max 5 concurrent pages
 
@@ -32,7 +43,9 @@ async def _fetch_playwright_detail_items(urls: list[str], run_id: str) -> list[d
             try:
                 await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
                 await page.wait_for_timeout(1500)
-                content = await page.content()  # full HTML so parse_extract can use CSS selectors
+                content = (
+                    await page.content()
+                )  # full HTML so parse_extract can use CSS selectors
                 return {
                     "url": url,
                     "content": content,
@@ -41,7 +54,12 @@ async def _fetch_playwright_detail_items(urls: list[str], run_id: str) -> list[d
                     "parser_type": "html",
                 }
             except Exception as e:
-                logger.warning("Playwright detail fetch failed", url=url, error=str(e), run_id=run_id)
+                logger.warning(
+                    "Playwright detail fetch failed",
+                    url=url,
+                    error=str(e),
+                    run_id=run_id,
+                )
                 return {
                     "url": url,
                     "content": None,
@@ -73,9 +91,16 @@ async def _fetch_playwright_detail_items(urls: list[str], run_id: str) -> list[d
         await browser.close()
 
     return [
-        r if not isinstance(r, Exception)
-        else {"url": urls[i], "content": None, "status": "failed", "error": str(r),
-              "fetched_at": datetime.utcnow().isoformat(), "parser_type": "html"}
+        r
+        if not isinstance(r, Exception)
+        else {
+            "url": urls[i],
+            "content": None,
+            "status": "failed",
+            "error": str(r),
+            "fetched_at": datetime.utcnow().isoformat(),
+            "parser_type": "html",
+        }
         for i, r in enumerate(results)
     ]
 
@@ -237,7 +262,12 @@ async def _fetch_tavily_pdf(client: httpx.AsyncClient, link: dict, run_id: str) 
     try:
         response = await client.get(url)
         response.raise_for_status()
-        logger.info("Tavily PDF downloaded", url=url, size_bytes=len(response.content), run_id=run_id)
+        logger.info(
+            "Tavily PDF downloaded",
+            url=url,
+            size_bytes=len(response.content),
+            run_id=run_id,
+        )
         return {
             "url": url,
             "content": response.content,  # bytes — routed to PDF text extraction
@@ -250,7 +280,12 @@ async def _fetch_tavily_pdf(client: httpx.AsyncClient, link: dict, run_id: str) 
             "score": link.get("score"),
         }
     except Exception as e:
-        logger.warning("Tavily PDF download failed, using snippet", url=url, error=str(e), run_id=run_id)
+        logger.warning(
+            "Tavily PDF download failed, using snippet",
+            url=url,
+            error=str(e),
+            run_id=run_id,
+        )
         # Fall back to snippet so the item isn't lost entirely
         return {
             "url": url,
@@ -307,11 +342,17 @@ def fetch_items_node(state) -> dict:
                 joffres_items.append(link)
             elif isinstance(link, dict) and link.get("source") == "ungm":
                 ungm_items.append(link)
-            elif isinstance(link, dict) and link.get("parser_type") in ("html-tender", "crawl4ai"):
+            elif isinstance(link, dict) and link.get("parser_type") in (
+                "html-tender",
+                "crawl4ai",
+            ):
                 html_tender_items.append(link)
             elif isinstance(link, dict) and link.get("source") == "ledevoir":
                 ledevoir_items.append(link)
-            elif isinstance(link, dict) and link.get("source") in ("tavily", "playwright"):
+            elif isinstance(link, dict) and link.get("source") in (
+                "tavily",
+                "playwright",
+            ):
                 tavily_items.append(link)
             elif isinstance(link, dict) and link.get("source") == "playwright_detail":
                 playwright_detail_urls.append(link.get("url"))
@@ -320,21 +361,25 @@ def fetch_items_node(state) -> dict:
                 url = link if isinstance(link, str) else link.get("url")
                 regular_urls.append(url)
 
-        # Le Devoir items — OCR already done at fetch stage, pass through with embedded classification
+        # Le Devoir items — OCR already done at fetch stage, structural fields only
         for link in ledevoir_items:
-            items.append({
-                "url": link.get("url", "https://www.ledevoir.com/services-et-annonces/avis-publics"),
-                "content": link.get("description", link.get("content", "")),
-                "status": "success",
-                "fetched_at": datetime.utcnow().isoformat(),
-                "parser_type": "ledevoir",
-                "source": "ledevoir",
-                "title": link.get("title", ""),
-                "entity": link.get("entity", ""),
-                "reference": link.get("reference", ""),
-                "deadline": link.get("deadline"),
-                "is_relevant": link.get("is_relevant", False),
-            })
+            items.append(
+                {
+                    "url": link.get(
+                        "url",
+                        "https://www.ledevoir.com/services-et-annonces/avis-publics",
+                    ),
+                    "content": link.get("description", link.get("content", "")),
+                    "status": "success",
+                    "fetched_at": datetime.utcnow().isoformat(),
+                    "parser_type": "ledevoir",
+                    "source": "ledevoir",
+                    "title": link.get("title", ""),
+                    "entity": link.get("entity", ""),
+                    "reference": link.get("reference", ""),
+                    "deadline": link.get("deadline"),
+                }
+            )
         if ledevoir_items:
             logger.info(
                 "Le Devoir notices passed through",
@@ -356,6 +401,7 @@ def fetch_items_node(state) -> dict:
                     "type": "quotidien_pdf",
                     "title": link.get("title", "Quotidien"),
                     "filename": link.get("filename", "quotidien.pdf"),
+                    "source_name": link.get("source_name", "Unknown"),
                 }
             )
             logger.info(
@@ -387,15 +433,17 @@ def fetch_items_node(state) -> dict:
 
         # html-tender and crawl4ai — data already extracted, no detail fetch needed
         for link in html_tender_items:
-            items.append({
-                "url": link.get("url", ""),
-                "content": link.get("description", ""),
-                "status": "success",
-                "fetched_at": datetime.utcnow().isoformat(),
-                "parser_type": link.get("parser_type", "html-tender"),
-                "source": link.get("source", ""),
-                "details": link,
-            })
+            items.append(
+                {
+                    "url": link.get("url", ""),
+                    "content": link.get("description", ""),
+                    "status": "success",
+                    "fetched_at": datetime.utcnow().isoformat(),
+                    "parser_type": link.get("parser_type", "html-tender"),
+                    "source": link.get("source", ""),
+                    "details": link,
+                }
+            )
         if html_tender_items:
             logger.info(
                 "html-tender/crawl4ai items passed through (no detail fetch needed)",
@@ -449,30 +497,43 @@ def fetch_items_node(state) -> dict:
 
                 for result in pdf_results:
                     if isinstance(result, Exception):
-                        logger.error("Error fetching Tavily PDF", error=str(result), run_id=state.run_id)
+                        logger.error(
+                            "Error fetching Tavily PDF",
+                            error=str(result),
+                            run_id=state.run_id,
+                        )
                     else:
                         items.append(result)
 
                 logger.info(
                     "Tavily PDFs downloaded",
                     count=len(tavily_pdf_items),
-                    successful=len([r for r in pdf_results if not isinstance(r, Exception)]),
+                    successful=len(
+                        [r for r in pdf_results if not isinstance(r, Exception)]
+                    ),
                     run_id=state.run_id,
                 )
             except Exception as e:
-                logger.error("Failed to fetch Tavily PDFs", error=str(e), run_id=state.run_id, exc_info=True)
+                logger.error(
+                    "Failed to fetch Tavily PDFs",
+                    error=str(e),
+                    run_id=state.run_id,
+                    exc_info=True,
+                )
                 # Fall back to snippet for failed PDFs
                 for link in tavily_pdf_items:
-                    items.append({
-                        "url": link.get("url", ""),
-                        "content": link.get("content", ""),
-                        "status": "success",
-                        "fetched_at": datetime.utcnow().isoformat(),
-                        "parser_type": link.get("parser_type", "tavily_search"),
-                        "source": "tavily",
-                        "title": link.get("title", ""),
-                        "score": link.get("score"),
-                    })
+                    items.append(
+                        {
+                            "url": link.get("url", ""),
+                            "content": link.get("content", ""),
+                            "status": "success",
+                            "fetched_at": datetime.utcnow().isoformat(),
+                            "parser_type": link.get("parser_type", "tavily_search"),
+                            "source": "tavily",
+                            "title": link.get("title", ""),
+                            "score": link.get("score"),
+                        }
+                    )
 
         if tavily_items:
             logger.info(

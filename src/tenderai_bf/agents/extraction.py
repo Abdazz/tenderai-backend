@@ -41,11 +41,13 @@ def extract_tenders_structured(
 
         # For Groq, skip tool_calling and go straight to JSON fallback
         # Groq wraps parameters in nested objects causing validation failures.
-        # NVIDIA (ChatNVIDIA via langchain-nvidia-ai-endpoints==0.1.7, pinned for
-        # langchain-core compatibility) doesn't implement bind_tools/function-calling
-        # at all — with_structured_output() binds without error but every .invoke()
-        # raises NotImplementedError, which retries deterministically and silently
-        # degrades every chunk to zero extracted tenders instead of falling back.
+        # NVIDIA (ChatNVIDIA via langchain-nvidia-ai-endpoints) was historically
+        # unreliable for bind_tools/function-calling — with_structured_output()
+        # binds without error but every .invoke() could raise NotImplementedError,
+        # which retries deterministically and silently degrades every chunk to
+        # zero extracted tenders instead of falling back. Kept on the JSON
+        # fallback path defensively; re-evaluate if this special-case is still
+        # needed now that the package has been upgraded.
         if llm_provider.lower() in ("groq", "nvidia"):
             logger.info(
                 "Using JSON fallback mode (tool_calling unreliable/unsupported for this provider)",
@@ -212,7 +214,11 @@ def _is_hallucinated(tender: dict) -> bool:
     if any(s in url for s in _HALLUCINATION_SENTINELS["source_url"]):
         return True
     # Reject entries where all identifying fields are None/empty
-    identifying = [tender.get("entity"), tender.get("reference"), tender.get("tender_object")]
+    identifying = [
+        tender.get("entity"),
+        tender.get("reference"),
+        tender.get("tender_object"),
+    ]
     if all(not v or v in ("Inconnu", "None") for v in identifying):
         return True
     return False
@@ -311,8 +317,7 @@ RETOURNEZ UNIQUEMENT DU JSON VALIDE. Si aucun appel d'offres réel n'est présen
             # Filter hallucinated / placeholder tenders before Pydantic validation
             original_count = len(result_json.get("tenders", []))
             result_json["tenders"] = [
-                t for t in result_json.get("tenders", [])
-                if not _is_hallucinated(t)
+                t for t in result_json.get("tenders", []) if not _is_hallucinated(t)
             ]
             filtered = original_count - len(result_json["tenders"])
             if filtered:

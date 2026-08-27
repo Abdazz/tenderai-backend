@@ -246,7 +246,7 @@ class RecipientBase(BaseModel):
     preferences: dict[str, Any] | None = None
 
     @validator("email")
-    def validate_email(cls, v):
+    def validate_email(cls, v):  # noqa: N805 — Pydantic validator, first arg is `cls` by framework convention
         """Validate email format."""
         import re
 

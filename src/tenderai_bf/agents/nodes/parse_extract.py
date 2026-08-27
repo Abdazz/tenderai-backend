@@ -51,7 +51,7 @@ def split_quotidien_into_tenders(text: str) -> list[dict]:
 
     # Strategy: Split by reference numbers (N°20XX-XXX/...)
     # This is more reliable than entity names
-    ref_pattern = r"N[°o]\s*(\d{4}[-–]\d+[^\\n]{0,100})"
+    ref_pattern = r"N[°o]\s*(\d{4}[-–]\d+[^\\n]{0,100})"  # noqa: RUF001 — en dash is a real alternative in source reference formats
 
     # Find all reference numbers and their positions
     references = []
@@ -207,7 +207,7 @@ def parse_quotidien_pdf_fallback(
             logger.info(f"Found AVIS section at position {avis_start}", run_id=run_id)
 
         # Split by reference numbers (N°20XX-XXX/...)
-        ref_pattern = r"N[°o]\s*(\d{4}[-–]\d+[^\n]{0,100})"
+        ref_pattern = r"N[°o]\s*(\d{4}[-–]\d+[^\n]{0,100})"  # noqa: RUF001 — en dash is a real alternative in source reference formats
 
         references = []
         for match in re.finditer(ref_pattern, avis_section):
@@ -322,7 +322,7 @@ def extract_tender_info(section_text: str, index: int) -> dict:
         info["title"] = lines[0][:200] if lines else "Appel d'offres"
 
     # Extract reference number (N°YYYY-XXX/...)
-    ref_pattern = r"N[°o]\s*(\d{4}[-–]\d+[^\s]*)"
+    ref_pattern = r"N[°o]\s*(\d{4}[-–]\d+[^\s]*)"  # noqa: RUF001 — en dash is a real alternative in source reference formats
     ref_match = re.search(ref_pattern, section_text)
     if ref_match:
         info["ref_no"] = ref_match.group(1).strip()
@@ -414,7 +414,7 @@ def parse_html_item(
                 "title": details.get("title", title),
                 "ref_no": details.get(
                     "reference",
-                    f"REF-{hashlib.md5(url.encode()).hexdigest()[:8].upper()}",
+                    f"REF-{hashlib.md5(url.encode(), usedforsecurity=False).hexdigest()[:8].upper()}",
                 ),
                 "entity": details.get("entity", "Unknown"),
                 "category": details.get("category", "Services"),
@@ -492,18 +492,36 @@ def parse_html_item(
             # Skip very short DLs (e.g. "Date de modification: 2026-…") and navigation DLs
             if len(dl_text) > 80 and any(
                 kw in dl_text.lower()
-                for kw in ["type", "région", "durée", "méthode", "organisation", "objet", "description", "scope", "category"]
+                for kw in [
+                    "type",
+                    "région",
+                    "durée",
+                    "méthode",
+                    "organisation",
+                    "objet",
+                    "description",
+                    "scope",
+                    "category",
+                ]
             ):
                 description_parts.append(dl_text[:600])
 
         if not description_parts:
-            content_root = parser.css_first("main, #main, #content, [role='main'], article") or parser
+            content_root = (
+                parser.css_first("main, #main, #content, [role='main'], article")
+                or parser
+            )
             for elem in content_root.css("p, .description, .content")[:5]:
                 text = elem.text(strip=True)
                 # Skip navigation boilerplate patterns
                 if len(text) > 30 and not any(
                     nav in text.lower()
-                    for nav in ["aller au contenu", "passer à", "sélection de la langue", "rechercher dans"]
+                    for nav in [
+                        "aller au contenu",
+                        "passer à",
+                        "sélection de la langue",
+                        "rechercher dans",
+                    ]
                 ):
                     description_parts.append(text)
 
@@ -515,7 +533,7 @@ def parse_html_item(
             "id": str(uuid.uuid4()),
             "url": url,
             "title": title,
-            "ref_no": f"REF-{hashlib.md5(url.encode()).hexdigest()[:8].upper()}",
+            "ref_no": f"REF-{hashlib.md5(url.encode(), usedforsecurity=False).hexdigest()[:8].upper()}",
             "entity": entity,
             "category": "Services",
             "description": description,
@@ -597,9 +615,8 @@ def parse_extract_node(state) -> dict:
                     # Continue with other items
                     continue
 
-            # Handle Le Devoir notices — OCR + classification already done at fetch stage
+            # Handle Le Devoir notices — structural fields only (OCR'd at fetch stage)
             elif parser_type == "ledevoir":
-                is_relevant = item.get("is_relevant", False)
                 parsed_items.append(
                     {
                         "id": str(uuid.uuid4()),
@@ -612,14 +629,8 @@ def parse_extract_node(state) -> dict:
                         "ref_no": item.get("reference", ""),
                         "description": item.get("content", ""),
                         "deadline_at": item.get("deadline"),
-                        "category": "it_services" if is_relevant else "hors_perimetre",
                         "source": "ledevoir",
                         "source_type": "ledevoir",
-                        # Embedded classification — classify_node passes through
-                        "classification_embedded": True,
-                        "is_relevant": is_relevant,
-                        "relevance_score": 0.8 if is_relevant else 0.1,
-                        "classification_method": "groq_vision_ocr",
                     }
                 )
                 continue
@@ -658,7 +669,8 @@ def parse_extract_node(state) -> dict:
                         "url": item["url"],
                         "content_hash": content_hash,
                         "title": details.get("title", ""),
-                        "tender_object": details.get("tender_object") or details.get("title", ""),
+                        "tender_object": details.get("tender_object")
+                        or details.get("title", ""),
                         "reference": details.get("reference", ""),
                         "ref_no": details.get("ref_no", details.get("reference", "")),
                         "entity": details.get("entity", ""),
@@ -677,13 +689,22 @@ def parse_extract_node(state) -> dict:
             elif parser_type == "tavily_pdf":
                 pdf_bytes = item.get("content")
                 if not isinstance(pdf_bytes, bytes):
-                    logger.warning("tavily_pdf item has no bytes content", url=item["url"], run_id=state.run_id)
+                    logger.warning(
+                        "tavily_pdf item has no bytes content",
+                        url=item["url"],
+                        run_id=state.run_id,
+                    )
                     continue
 
                 try:
                     full_text = extract_pdf_text_from_bytes(pdf_bytes)
                 except Exception as e:
-                    logger.error("Failed to extract text from Tavily PDF", url=item["url"], error=str(e), run_id=state.run_id)
+                    logger.error(
+                        "Failed to extract text from Tavily PDF",
+                        url=item["url"],
+                        error=str(e),
+                        run_id=state.run_id,
+                    )
                     continue
 
                 # Extract deadline from text using common procurement patterns
@@ -701,7 +722,10 @@ def parse_extract_node(state) -> dict:
                         break
 
                 # Extract reference number
-                ref_match = re.search(r"(?:Num[eé]ro\s+de\s+la\s+demande|[Rr][eé]f[eé]rence|[Ss]olicitation\s+[Nn]o\.?)\s*[:\-]?\s*([A-Z0-9/_\-]{4,30})", full_text)
+                ref_match = re.search(
+                    r"(?:Num[eé]ro\s+de\s+la\s+demande|[Rr][eé]f[eé]rence|[Ss]olicitation\s+[Nn]o\.?)\s*[:\-]?\s*([A-Z0-9/_\-]{4,30})",
+                    full_text,
+                )
                 reference = ref_match.group(1).strip() if ref_match else ""
 
                 parsed_items.append(
@@ -740,7 +764,9 @@ def parse_extract_node(state) -> dict:
                 if isinstance(content_text, bytes):
                     content_text = content_text.decode("utf-8", errors="replace")
 
-                source_name = item.get("title") or item.get("source_name") or "Tavily source"
+                source_name = (
+                    item.get("title") or item.get("source_name") or "Tavily source"
+                )
                 listing_items = parse_tavily_listing(
                     page_content=content_text,
                     source_url=item["url"],
@@ -806,6 +832,7 @@ def parse_extract_node(state) -> dict:
                         quotidien_title=item.get(
                             "title", "Quotidien des Marchés Publics"
                         ),
+                        source_name=item.get("source_name", "Unknown"),
                         run_id=state.run_id,
                         llm_cfg=state.country_config.get("llm", {}),
                     )

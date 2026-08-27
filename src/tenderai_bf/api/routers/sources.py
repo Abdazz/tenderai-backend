@@ -32,7 +32,7 @@ async def list_sources(
     query = db.query(Source)
 
     if enabled_only:
-        query = query.filter(Source.enabled == True)
+        query = query.filter(Source.enabled == True)  # noqa: E712 — SQLAlchemy column comparison, not a Python bool check
 
     if country_id is not None:
         query = query.filter(Source.country_id == country_id)
@@ -210,4 +210,4 @@ async def test_source(source_id: int, db: DatabaseSession):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Source test failed: {e!s}",
-        )
+        ) from e

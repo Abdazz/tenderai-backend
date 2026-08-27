@@ -15,9 +15,26 @@ def cfg(state: Any, section: str, key: str) -> Any:
     """
     try:
         return state.country_config[section][key]
-    except (KeyError, AttributeError):
+    except (KeyError, AttributeError) as e:
         country_id = getattr(state, "country_id", "?")
         raise RuntimeError(
             f"Missing DB config: country_id={country_id} "
             f"section='{section}' key='{key}' — run seed first"
-        )
+        ) from e
+
+
+def company_cfg(state: Any, section: str, key: str) -> Any:
+    """Read state.company_config[section][key]. Raises RuntimeError if absent.
+
+    Use this in delivery-graph nodes instead of cfg() for company-scoped
+    operational config (classification, scheduler, email overrides).
+    Fail-hard: a missing key means the DB was not seeded — surface it immediately.
+    """
+    try:
+        return state.company_config[section][key]
+    except (KeyError, AttributeError) as e:
+        company_id = getattr(state, "company_id", "?")
+        raise RuntimeError(
+            f"Missing DB config: company_id={company_id} "
+            f"section='{section}' key='{key}' — run seed first"
+        ) from e

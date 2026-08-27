@@ -234,15 +234,21 @@ sources:
     mock_engine = MagicMock()
     mock_engine.connect.return_value = mock_conn
 
-    with patch("tenderai_bf.cli.Path") as mock_path_cls, \
-         patch("tenderai_bf.cli.get_engine", return_value=mock_engine):
+    with patch("tenderai_bf.cli.Path") as mock_path_cls, patch(
+        "tenderai_bf.cli.get_engine", return_value=mock_engine
+    ):
         mock_path_cls.return_value = yaml_file
         from click.testing import CliRunner
+
         from tenderai_bf.cli import main
+
         runner = CliRunner()
         result = runner.invoke(main, ["seed-sources"])
+        assert result.exit_code == 0, result.output
 
-    insert_params = [p for p in captured_inserts if "card_selector" in str(p.get("patterns", ""))]
+    insert_params = [
+        p for p in captured_inserts if "card_selector" in str(p.get("patterns", ""))
+    ]
     assert len(insert_params) == 1, "patterns should be persisted in INSERT"
     patterns = insert_params[0]["patterns"]
     if isinstance(patterns, str):

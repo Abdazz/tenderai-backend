@@ -17,13 +17,13 @@ class SMTPClient:
 
     def __init__(
         self,
-        host: str = None,
-        port: int = None,
-        username: str = None,
-        password: str = None,
-        use_tls: bool = None,
-        use_ssl: bool = None,
-        timeout: int = None,
+        host: str | None = None,
+        port: int | None = None,
+        username: str | None = None,
+        password: str | None = None,
+        use_tls: bool | None = None,
+        use_ssl: bool | None = None,
+        timeout: int | None = None,
     ):
         """Initialize SMTP client with configuration."""
 
@@ -312,11 +312,16 @@ def _build_notices_table_html(notices: list) -> str:
 
                 if isinstance(deadline, str) and "T" in deadline:
                     deadline = _dt.fromisoformat(deadline).strftime("%d/%m/%Y")
-            except Exception:
-                pass
+            except (ValueError, TypeError) as e:
+                logger.debug(
+                    "Failed to reformat deadline date, using raw value",
+                    deadline=deadline,
+                    error=str(e),
+                )
 
         import html as _html
         from urllib.parse import urlparse as _urlparse
+
         raw_url = notice.get("source_url") or notice.get("url") or ""
         _scheme = _urlparse(raw_url).scheme.lower() if raw_url else ""
         if raw_url and _scheme in ("http", "https"):
@@ -391,8 +396,12 @@ def _build_notices_table_text(notices: list) -> str:
 
                 if isinstance(deadline, str) and "T" in deadline:
                     deadline = _dt.fromisoformat(deadline).strftime("%d/%m/%Y")
-            except Exception:
-                pass
+            except (ValueError, TypeError) as e:
+                logger.debug(
+                    "Failed to reformat deadline date, using raw value",
+                    deadline=deadline,
+                    error=str(e),
+                )
 
         url = notice.get("source_url") or notice.get("url") or "—"
 
@@ -613,7 +622,7 @@ Pour vous désabonner ou modifier vos préférences, contactez l'administrateur.
     </div>
 </body>
 </html>
-"""
+"""  # noqa: RUF001 — intentional em dash/emoji in display text
 
     return text_body, html_body
 
@@ -647,7 +656,7 @@ def send_report_email(
             if settings.environment == "development"
             else settings.email.subject_prefix
         )
-        subject = f"{subject_prefix} [{country_name}] – {timestamp_str}"
+        subject = f"{subject_prefix} [{country_name}] – {timestamp_str}"  # noqa: RUF001 — intentional em dash in display text
 
         # Generate email body
         text_body, html_body = _generate_report_email_body(
@@ -656,8 +665,13 @@ def send_report_email(
 
         # Prepare attachment — filename uses country name when available
         import re as _re
+
         _country_slug = _re.sub(r"[^a-zA-Z0-9]+", "_", country_name or "").strip("_")
-        _filename_base = f"TenderAI_{_country_slug}" if _country_slug else settings.app_name.replace(" ", "_")
+        _filename_base = (
+            f"TenderAI_{_country_slug}"
+            if _country_slug
+            else settings.app_name.replace(" ", "_")
+        )
         attachments = [
             {
                 "filename": f"{_filename_base}_{timestamp_str}.docx",

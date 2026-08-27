@@ -151,7 +151,7 @@ async def download_report(run_id: str, db: DatabaseSession):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to download report: {e!s}",
-        )
+        ) from e
 
 
 @router.get("/{run_id}/preview")
@@ -300,4 +300,4 @@ async def regenerate_report(run_id: str, db: DatabaseSession):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to regenerate report: {e!s}",
-        )
+        ) from e

@@ -123,14 +123,16 @@ async def readiness_probe():
     # Check database
     try:
         checks["database"] = check_database_health()
-    except:
+    except Exception as e:
+        logger.debug("Database readiness check failed", error=str(e))
         checks["database"] = False
 
     # Check storage
     try:
         storage_client = get_storage_client()
         checks["storage"] = storage_client.health_check()
-    except:
+    except Exception as e:
+        logger.debug("Storage readiness check failed", error=str(e))
         checks["storage"] = False
 
     ready = all(checks.values())
@@ -166,8 +168,8 @@ async def metrics():
         )
         metrics_output.append("# TYPE tenderai_db_pool_size gauge")
         metrics_output.append(f'tenderai_db_pool_size {db_info.get("pool_size", 0)}')
-    except:
-        pass
+    except Exception as e:
+        logger.debug("Failed to collect DB pool metrics", error=str(e))
 
     # Health status
     try:
@@ -175,7 +177,7 @@ async def metrics():
         metrics_output.append("# HELP tenderai_db_health Database health status")
         metrics_output.append("# TYPE tenderai_db_health gauge")
         metrics_output.append(f"tenderai_db_health {db_healthy}")
-    except:
-        pass
+    except Exception as e:
+        logger.debug("Failed to collect DB health metric", error=str(e))
 
     return "\n".join(metrics_output) + "\n"

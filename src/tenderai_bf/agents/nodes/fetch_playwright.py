@@ -92,7 +92,8 @@ async def fetch_playwright(source: dict, run_id: str) -> dict:
 
             if scroll:
                 # Scroll incrementally to trigger lazy loading
-                await page.evaluate("""async () => {
+                await page.evaluate(
+                    """async () => {
                     await new Promise(resolve => {
                         let totalHeight = 0;
                         const distance = 400;
@@ -105,7 +106,8 @@ async def fetch_playwright(source: dict, run_id: str) -> dict:
                             }
                         }, 150);
                     });
-                }""")
+                }"""
+                )
 
             if extra_wait > 0:
                 await page.wait_for_timeout(extra_wait)
@@ -117,7 +119,7 @@ async def fetch_playwright(source: dict, run_id: str) -> dict:
                 # so each detail page is fetched and parsed separately by
                 # fetch_items / parse_extract (no LLM needed for listing page).
                 import json
-                from urllib.parse import urlparse as _urlparse, urljoin as _urljoin
+                from urllib.parse import urljoin as _urljoin, urlparse as _urlparse
 
                 _parsed = _urlparse(url)
                 _base_origin = f"{_parsed.scheme}://{_parsed.netloc}"
@@ -156,12 +158,21 @@ async def fetch_playwright(source: dict, run_id: str) -> dict:
                     for page_num in range(2, max_pages + 1):
                         next_url = pagination_url_template.format(page_num=page_num)
                         await page.goto(
-                            next_url, wait_until="domcontentloaded", timeout=wait_timeout
+                            next_url,
+                            wait_until="domcontentloaded",
+                            timeout=wait_timeout,
                         )
                         try:
-                            await page.wait_for_selector(wait_selector, timeout=wait_timeout)
-                        except Exception:
-                            pass
+                            await page.wait_for_selector(
+                                wait_selector, timeout=wait_timeout
+                            )
+                        except Exception as e:
+                            logger.debug(
+                                "Selector wait timed out, continuing anyway",
+                                selector=wait_selector,
+                                page_num=page_num,
+                                error=str(e),
+                            )
                         if extra_wait > 0:
                             await page.wait_for_timeout(extra_wait)
 
@@ -201,7 +212,9 @@ async def fetch_playwright(source: dict, run_id: str) -> dict:
                             elif not next_href.startswith("http"):
                                 next_href = _urljoin(url, next_href)
                             await page.goto(
-                                next_href, wait_until="domcontentloaded", timeout=wait_timeout
+                                next_href,
+                                wait_until="domcontentloaded",
+                                timeout=wait_timeout,
                             )
                         else:
                             await next_elem.click()
@@ -210,9 +223,16 @@ async def fetch_playwright(source: dict, run_id: str) -> dict:
                             )
 
                         try:
-                            await page.wait_for_selector(wait_selector, timeout=wait_timeout)
-                        except Exception:
-                            pass
+                            await page.wait_for_selector(
+                                wait_selector, timeout=wait_timeout
+                            )
+                        except Exception as e:
+                            logger.debug(
+                                "Selector wait timed out, continuing anyway",
+                                selector=wait_selector,
+                                page_num=page_num,
+                                error=str(e),
+                            )
 
                         if extra_wait > 0:
                             await page.wait_for_timeout(extra_wait)

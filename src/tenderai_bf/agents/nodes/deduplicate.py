@@ -12,13 +12,15 @@ from .._cfg import cfg
 logger = get_logger(__name__)
 
 
-def check_duplicate_with_llm(item1: dict, item2: dict, state=None) -> tuple[bool, float, str]:
+def check_duplicate_with_llm(
+    item1: dict, item2: dict, state=None
+) -> tuple[bool, float, str]:
     """
     Use LLM to determine if two tenders are duplicates.
     Returns: (is_duplicate, confidence, reasoning)
     """
     try:
-        from langchain.prompts import PromptTemplate
+        from langchain_core.prompts import PromptTemplate
 
         # Get LLM instance
         llm = get_llm_instance(temperature=0.0, max_tokens=100)
@@ -38,7 +40,9 @@ def check_duplicate_with_llm(item1: dict, item2: dict, state=None) -> tuple[bool
         )
 
         # Prompts are sourced from country_config when state is available.
-        dedup_prompts = (state.country_config.get("prompts", {}) if state else {}).get("deduplication", {})
+        dedup_prompts = (state.country_config.get("prompts", {}) if state else {}).get(
+            "deduplication", {}
+        )
         system_prompt = dedup_prompts.get("system", "")
         user_template = dedup_prompts.get("user_template", "")
 
@@ -120,7 +124,7 @@ def deduplicate_node(state) -> dict:
     start_time = time.time()
 
     try:
-        if not state.relevant_items:
+        if not state.items_parsed:
             state.unique_items = []
             return state
 
@@ -131,9 +135,11 @@ def deduplicate_node(state) -> dict:
         seen_hashes = set()
         similar_items = []
 
-        threshold = cfg(state, "pipeline", "deduplication_threshold") * 100  # Convert to percentage
+        threshold = (
+            cfg(state, "pipeline", "deduplication_threshold") * 100
+        )  # Convert to percentage
 
-        for item in state.relevant_items:
+        for item in state.items_parsed:
             content_hash = item.get("content_hash")
             # Use tender_object if available, otherwise fall back to title
             item_text = item.get("tender_object", item.get("title", ""))
@@ -306,7 +312,7 @@ def deduplicate_node(state) -> dict:
         logger.info(
             "Deduplicate completed",
             method=method,
-            relevant_items=len(state.relevant_items),
+            items_parsed=len(state.items_parsed),
             unique_items=len(unique_items),
             duplicates_removed=len(similar_items),
             run_id=state.run_id,

@@ -2,7 +2,8 @@
 
 Strategy: extract the full PDF text with pdfminer, locate the open-tender
 section (best-effort, multiple fallback markers), then send it in ONE LLM call.
-The LLM extracts all notices simultaneously with embedded domain classification.
+The LLM extracts all notices' structural fields simultaneously — no relevance
+judgment (that happens later, per-company, in the delivery graph's classify step).
 
 This eliminates regex-based block splitting entirely — the approach is robust
 to day-to-day formatting changes in the Quotidien publication.
@@ -17,7 +18,6 @@ import json
 import re
 import uuid
 from datetime import datetime
-from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -47,7 +47,11 @@ _MAX_INPUT_CHARS = 385_000
 
 
 class TenderBlock(BaseModel):
-    """Extraction + classification result for a single quotidien notice."""
+    """Structural extraction result for a single quotidien notice.
+
+    No relevance judgment — classify_node (delivery graph) is the sole place
+    relevance is decided, per-company.
+    """
 
     entity: str = Field(default="Inconnu", description="Entité émettrice de l'avis")
     reference: str = Field(
@@ -76,25 +80,6 @@ class TenderBlock(BaseModel):
             "prorogation, rectificatif ou annulation — pas un appel actif ouvert"
         ),
     )
-    is_relevant: bool = Field(
-        default=False,
-        description=(
-            "True si pertinent pour YULCOM (IT services, matériel informatique, conseil IT). "
-            "False pour tout le reste."
-        ),
-    )
-    domain: Literal[
-        "it_services", "it_hardware", "it_consulting", "hors_perimetre"
-    ] = Field(
-        default="hors_perimetre",
-        description="Domaine : it_services, it_hardware, it_consulting, ou hors_perimetre",
-    )
-    relevance_score: int = Field(
-        default=1,
-        ge=1,
-        le=5,
-        description="Score de pertinence 1-5 : 5=cœur de métier YULCOM, 3=pertinent, 1=hors périmètre",
-    )
 
 
 class TenderList(BaseModel):
@@ -113,24 +98,11 @@ dans ce texte du Quotidien des Marchés Publics (DGCMEF). Ne manque aucun avis.
 TEXTE DU DOCUMENT :
 {document_text}
 
-Pour chaque avis trouvé, remplis les champs et détermine la pertinence pour YULCOM Technologies.
+Pour chaque avis trouvé, remplis les champs structurels ci-dessous.
 
-DOMAINES IT de YULCOM (is_relevant = true uniquement pour ces domaines) :
-- it_services : développement logiciel, systèmes d'information, ERP, CRM, SIG, cybersécurité, \
-cloud, hébergement, infogérance, réseau, fibre optique, wifi, vidéoconférence, intelligence artificielle
-- it_hardware : ordinateurs, serveurs, imprimantes, scanners, photocopieurs, routeurs, switches, \
-modems, écrans, onduleurs, accessoires informatiques
-- it_consulting : études informatiques, audits de sécurité, assistance technique IT, \
-schémas directeurs, formation informatique, déploiement/intégration de systèmes
-
-RÈGLES DE CLASSIFICATION :
+RÈGLE :
 - is_results_notice = true pour : PV de dépouillement, résultats d'attribution, annulations, \
 prorogations, rectificatifs (tout ce qui n'est pas un appel actif ouvert)
-- is_relevant = false pour : BTP, génie civil, travaux, agriculture, santé, mobilier, \
-véhicules, carburant, fournitures générales, inscriptions de fournisseurs/prestataires
-- relevance_score 1-5 : 5=cœur de métier (ex: développement SIG), 4=très pertinent (ex: serveurs), \
-3=pertinent (ex: imprimantes), 2=tangentiel, 1=hors périmètre
-- domain = "hors_perimetre" si is_relevant = false
 
 Retournez UNIQUEMENT du JSON valide (pas de markdown, pas d'explication) :
 {{
@@ -143,10 +115,7 @@ Retournez UNIQUEMENT du JSON valide (pas de markdown, pas d'explication) :
       "description": "Description courte (200 mots max)",
       "budget": null,
       "location": null,
-      "is_results_notice": false,
-      "is_relevant": false,
-      "domain": "hors_perimetre",
-      "relevance_score": 1
+      "is_results_notice": false
     }}
   ]
 }}\
@@ -221,16 +190,14 @@ def parse_quotidien_structured(
     source_url: str,
     quotidien_title: str,
     run_id: str,
+    source_name: str = "Unknown",
     llm_cfg: dict | None = None,
 ) -> list[dict]:
     """Parse quotidien PDF with a single LLM call that extracts all notices at once.
 
     1. Extract full PDF text (pdfminer — fast, no OCR overhead for text PDFs)
     2. Locate the open-tender section (multiple fallback markers; sends full doc if none match)
-    3. One LLM call → TenderList with all notices, each with embedded classification
-    4. Convert to pipeline dict format with classification_embedded=True
-
-    Items returned have classification_embedded=True so classify_node skips them.
+    3. One LLM call → TenderList with all notices' structural fields
 
     Args:
         llm_cfg: LLM configuration dict (from state.country_config["llm"]).
@@ -265,8 +232,6 @@ def parse_quotidien_structured(
 
     results = []
     for i, tender in enumerate(tenders):
-        is_actionable = tender.is_relevant and not tender.is_results_notice
-
         item = {
             "id": str(uuid.uuid4()),
             "url": source_url,
@@ -274,6 +239,7 @@ def parse_quotidien_structured(
                 f"{tender.reference}:{tender.tender_object}".encode()
             ).hexdigest(),
             "source_type": "quotidien_pdf",
+            "source_name": source_name,
             "quotidien_title": quotidien_title,
             "published_at": datetime.utcnow().isoformat(),
             "location": tender.location or "Burkina Faso",
@@ -287,15 +253,7 @@ def parse_quotidien_structured(
             "deadline_at": tender.deadline,
             "description": tender.description,
             "budget": tender.budget,
-            "category": tender.domain,
-            # Embedded classification — classify_node passes these through unchanged
-            "classification_embedded": True,
-            "is_relevant": is_actionable,
             "is_results_notice": tender.is_results_notice,
-            "domain": tender.domain,
-            # Normalize 1-5 to 0.0-1.0 for downstream score compatibility
-            "relevance_score": tender.relevance_score / 5.0,
-            "classification_method": "llm_single_pass_extraction",
         }
         results.append(item)
 
@@ -303,18 +261,12 @@ def parse_quotidien_structured(
             f"Notice {i + 1}/{len(tenders)}",
             ref=tender.reference,
             entity=(tender.entity or "")[:50],
-            is_relevant=tender.is_relevant,
             is_results_notice=tender.is_results_notice,
-            domain=tender.domain,
-            score=tender.relevance_score,
         )
 
-    relevant_count = sum(1 for r in results if r["is_relevant"])
     logger.info(
         "Quotidien extraction complete",
         total_notices=len(results),
-        relevant=relevant_count,
-        results_notices=len(results) - relevant_count,
         run_id=run_id,
     )
     return results

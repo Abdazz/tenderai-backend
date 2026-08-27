@@ -29,7 +29,7 @@ def db_engine():
 
 @pytest.fixture(scope="function")
 def db_session(db_engine):
-    Session = sessionmaker(bind=db_engine)
+    Session = sessionmaker(bind=db_engine)  # noqa: N806 — SQLAlchemy idiom for a session factory
     session = Session()
     yield session
     session.close()

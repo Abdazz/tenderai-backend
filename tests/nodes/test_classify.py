@@ -36,29 +36,45 @@ sample_items = [
 
 
 _MOCK_COUNTRY_CONFIG = {
-    "pipeline": {
-        "use_llm_classification": False,
-        "min_relevance_score": 0.3,
-        "deduplication_method": "hash_only",
-        "deduplication_threshold": 0.85,
-        "max_items_per_run": 100,
-        "pdf_timeout": 30,
-        "max_file_size_mb": 10,
+    "llm": {
+        "provider": "groq",
+        "groq_model": "llama-3.3-70b-versatile",
+        "openai_model": "gpt-4o",
+        "ollama_model": "llama3",
+        "ollama_base_url": "",
+        "temperature": 0.1,
+        "max_tokens": 2000,
+        "timeout": 60,
     },
+}
+
+_MOCK_COMPANY_CONFIG = {
     "classification": {
+        "min_relevance_score": 0.3,
         "relevant_keywords": {
             "it_services": [
-                "informatique", "logiciel", "réseau", "serveur", "ordinateur",
-                "internet", "site web", "application", "base de données",
-                "cybersécurité", "cloud", "données", "numérique", "digital",
-                "ERP", "CRM", "SIG", "GIS", "télécommunication", "fibre optique",
+                "informatique",
+                "logiciel",
+                "réseau",
+                "serveur",
+                "ordinateur",
+                "internet",
+                "site web",
+                "application",
+                "base de données",
+                "cybersécurité",
+                "cloud",
+                "données",
+                "numérique",
+                "digital",
+                "ERP",
+                "CRM",
+                "SIG",
+                "GIS",
+                "télécommunication",
+                "fibre optique",
             ],
-        }
-    },
-    "llm": {
-        "provider": "groq", "groq_model": "llama-3.3-70b-versatile",
-        "openai_model": "gpt-4o", "ollama_model": "llama3", "ollama_base_url": "",
-        "temperature": 0.1, "max_tokens": 2000, "timeout": 60,
+        },
     },
 }
 
@@ -78,6 +94,8 @@ def test_keyword_classification():
             self.run_id = "test_keywords"
             self.country_id = 0
             self.country_config = _MOCK_COUNTRY_CONFIG
+            self.company_id = 0
+            self.company_config = _MOCK_COMPANY_CONFIG
 
         def update_stats(self, **kwargs):
             print(f"\n📊 Stats updated: {kwargs}")
@@ -121,6 +139,8 @@ def test_llm_classification():
             self.run_id = "test_llm"
             self.country_id = 0
             self.country_config = _MOCK_COUNTRY_CONFIG
+            self.company_id = 0
+            self.company_config = _MOCK_COMPANY_CONFIG
 
         def update_stats(self, **kwargs):
             print(f"\n📊 Stats updated: {kwargs}")
@@ -159,52 +179,66 @@ if __name__ == "__main__":
 
 
 # ---------------------------------------------------------------------------
-# DB-first cfg() tests — use TenderAIState, not MockState
+# DB-first company_cfg() tests — use TenderAIState, not MockState
 # ---------------------------------------------------------------------------
 
-import os
+import os  # noqa: E402 — grouped with the env var setup it configures below, not with the file's top-of-file imports
 
 os.environ.setdefault("TENDERAI_ENVIRONMENT", "test")
 os.environ.setdefault("TENDERAI_DATABASE_URL", "sqlite:///test.db")
-os.environ.setdefault("TENDERAI_JWT_SECRET", "test-jwt-secret-not-used-for-real-auth-only-pytest-xxxxxxxx")
+os.environ.setdefault(
+    "TENDERAI_JWT_SECRET", "test-jwt-secret-not-used-for-real-auth-only-pytest-xxxxxxxx"
+)
 os.environ.setdefault("TENDERAI_ADMIN_PASSWORD", "test-admin-password-not-real")
 
 from tenderai_bf.agents.graph import TenderAIState  # noqa: E402
 
-COUNTRY_CONFIG_CLASSIFY = {
-    "pipeline": {
-        "use_llm_classification": False,
-        "min_relevance_score": 0.3,
-        "deduplication_method": "hash_only",
-        "deduplication_threshold": 0.85,
-        "max_items_per_run": 100,
-        "pdf_timeout": 30,
-        "max_file_size_mb": 10,
-    },
+COMPANY_CONFIG_CLASSIFY = {
     "classification": {
+        "min_relevance_score": 0.3,
         "relevant_keywords": {
             "it_services": ["informatique", "logiciel", "serveur", "réseau"],
-        }
+        },
     },
+}
+
+COUNTRY_CONFIG_CLASSIFY = {
     "llm": {
-        "provider": "groq", "groq_model": "llama-3.3-70b-versatile",
-        "openai_model": "gpt-4o", "ollama_model": "llama3", "ollama_base_url": "",
-        "temperature": 0.1, "max_tokens": 2000, "timeout": 60,
+        "provider": "groq",
+        "groq_model": "llama-3.3-70b-versatile",
+        "openai_model": "gpt-4o",
+        "ollama_model": "llama3",
+        "ollama_base_url": "",
+        "temperature": 0.1,
+        "max_tokens": 2000,
+        "timeout": 60,
     },
 }
 
 
-def test_classify_with_keywords_uses_country_config():
+def test_classify_with_keywords_uses_company_config():
     state = TenderAIState(
         country_id=1,
         country_config=COUNTRY_CONFIG_CLASSIFY,
+        company_id=1,
+        company_config=COMPANY_CONFIG_CLASSIFY,
         items_parsed=[
-            {"id": "t1", "title": "Acquisition de serveurs et réseau",
-             "description": "Fourniture de serveurs", "category": "IT",
-             "entity": "Ministère", "keywords": []},
-            {"id": "t2", "title": "Construction de routes rurales",
-             "description": "Travaux BTP", "category": "BTP",
-             "entity": "Mairie", "keywords": []},
+            {
+                "id": "t1",
+                "title": "Acquisition de serveurs et réseau",
+                "description": "Fourniture de serveurs",
+                "category": "IT",
+                "entity": "Ministère",
+                "keywords": [],
+            },
+            {
+                "id": "t2",
+                "title": "Construction de routes rurales",
+                "description": "Travaux BTP",
+                "category": "BTP",
+                "entity": "Mairie",
+                "keywords": [],
+            },
         ],
     )
     result = classify_with_keywords(state)
@@ -213,13 +247,54 @@ def test_classify_with_keywords_uses_country_config():
     assert "t2" not in relevant_ids
 
 
-def test_classify_fails_hard_if_config_missing():
+def test_classify_fails_hard_if_company_config_missing():
     import pytest
+
     state = TenderAIState(
         country_id=1,
-        country_config={},
-        items_parsed=[{"id": "t1", "title": "test", "description": "x",
-                       "category": "IT", "entity": "X", "keywords": []}],
+        country_config=COUNTRY_CONFIG_CLASSIFY,
+        company_id=1,
+        company_config={},
+        items_parsed=[
+            {
+                "id": "t1",
+                "title": "test",
+                "description": "x",
+                "category": "IT",
+                "entity": "X",
+                "keywords": [],
+            }
+        ],
     )
-    with pytest.raises(RuntimeError, match="Missing DB config"):
+    with pytest.raises(RuntimeError, match="Missing DB config: company_id=1"):
         classify_with_keywords(state)
+
+
+def test_classify_no_longer_reads_classification_embedded():
+    """Neutralization: an item with classification_embedded=True must go
+    through the normal keyword path, not bypass it."""
+    state = TenderAIState(
+        country_id=1,
+        country_config=COUNTRY_CONFIG_CLASSIFY,
+        company_id=1,
+        company_config=COMPANY_CONFIG_CLASSIFY,
+        items_parsed=[
+            {
+                "id": "t3",
+                "title": "Construction de routes rurales",
+                "description": "Travaux BTP, aucun rapport avec les technologies",
+                "category": "BTP",
+                "entity": "Mairie",
+                "keywords": [],
+                # Pre-neutralization, this field would have made classify_node
+                # pass the item through as relevant unconditionally. It must
+                # now be ignored entirely.
+                "classification_embedded": True,
+                "is_relevant": True,
+                "relevance_score": 0.9,
+            },
+        ],
+    )
+    result = classify_with_keywords(state)
+    relevant_ids = [i["id"] for i in result.relevant_items]
+    assert "t3" not in relevant_ids

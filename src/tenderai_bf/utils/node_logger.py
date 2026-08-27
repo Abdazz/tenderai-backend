@@ -1,5 +1,6 @@
 """Utility for logging node results to JSON files."""
 
+import contextlib
 import json
 from datetime import datetime
 from pathlib import Path
@@ -15,10 +16,8 @@ _app_logs = Path("/app/logs/nodes")
 NODE_LOGS_DIR: Path = _app_logs if _app_logs.parents[1].exists() else Path("logs/nodes")
 
 # Ensure directory exists (best-effort; silently skip if not writable)
-try:
+with contextlib.suppress(PermissionError):
     NODE_LOGS_DIR.mkdir(parents=True, exist_ok=True)
-except PermissionError:
-    pass
 
 
 def clear_node_output(node_name: str) -> None:
@@ -43,7 +42,7 @@ def clear_node_output(node_name: str) -> None:
 
 
 def log_node_output(
-    node_name: str, data: Any, run_id: str = None, append: bool = False
+    node_name: str, data: Any, run_id: str | None = None, append: bool = False
 ) -> None:
     """Log node output to a JSON file.
 
@@ -101,7 +100,9 @@ def log_node_output(
         )
 
 
-def log_node_stats(node_name: str, stats: dict[str, Any], run_id: str = None) -> None:
+def log_node_stats(
+    node_name: str, stats: dict[str, Any], run_id: str | None = None
+) -> None:
     """Log node statistics/metrics.
 
     Args:

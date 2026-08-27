@@ -16,6 +16,8 @@ try:
 except ImportError:
     DOCLING_AVAILABLE = False
 
+import contextlib
+
 from ..logging import get_logger
 
 logger = get_logger(__name__)
@@ -164,10 +166,8 @@ class PDFProcessor:
             return self.extract_text(tmp_path, method=method)
         finally:
             # Clean up temporary file
-            try:
+            with contextlib.suppress(OSError):
                 os.unlink(tmp_path)
-            except OSError:
-                pass
 
     def get_pdf_info(self, pdf_path: str) -> dict[str, any]:
         """Get PDF metadata and basic info.
@@ -311,7 +311,10 @@ def is_pdf_file(file_path: str) -> bool:
         with open(file_path, "rb") as f:
             header = f.read(4)
             return header == b"%PDF"
-    except:
+    except OSError as e:
+        logger.debug(
+            "Failed to read file header for PDF check", path=file_path, error=str(e)
+        )
         return False
 
 

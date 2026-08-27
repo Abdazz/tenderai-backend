@@ -45,7 +45,6 @@ def test_run_sets_country_id_on_state():
         graph = TenderAIGraph()
 
         captured_state = {}
-        original_invoke = graph.app.invoke
 
         def mock_invoke(state, *a, **kw):
             captured_state["country_id"] = state.country_id
@@ -59,6 +58,18 @@ def test_run_sets_country_id_on_state():
         assert captured_state["country_id"] == 1
         assert captured_state["country_name"] == "Burkina Faso"
         assert captured_state["country_config"] == mock_config
+
+
+def test_harvest_graph_has_no_classify_or_email_nodes():
+    from tenderai_bf.agents.graph import TenderAIGraph
+
+    graph = TenderAIGraph()
+    node_names = set(graph.graph.nodes.keys())
+    assert "persist_notices" in node_names
+    assert "classify" not in node_names
+    assert "summarize" not in node_names
+    assert "compose_report" not in node_names
+    assert "email_report" not in node_names
 
 
 def test_load_sources_filters_by_country_id():
@@ -90,9 +101,7 @@ def test_load_sources_filters_by_country_id():
     mock_first.last_error_at = None
     mock_first.last_error_message = None
 
-    with patch(
-        "tenderai_bf.agents.nodes.load_sources.get_db_context"
-    ) as mock_ctx:
+    with patch("tenderai_bf.agents.nodes.load_sources.get_db_context") as mock_ctx:
         mock_ctx.return_value.__enter__ = lambda s: mock_session
         mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
 
@@ -105,15 +114,18 @@ def test_load_sources_filters_by_country_id():
         assert mock_query.filter.called
 
 
-def test_classify_uses_country_keywords():
-    """classify_with_keywords must use state.country_config['classification']['relevant_keywords']."""
+def test_classify_uses_company_keywords():
+    """classify_with_keywords must use state.company_config['classification']['relevant_keywords']."""
     from tenderai_bf.agents.graph import TenderAIState
     from tenderai_bf.agents.nodes.classify import classify_with_keywords
 
-    state = TenderAIState(country_id=1)
-    state.country_config = {
-        "classification": {"relevant_keywords": {"it": ["informatique", "logiciel"]}},
-        "pipeline": {"min_relevance_score": 0.5, "use_llm_classification": False},
+    state = TenderAIState(country_id=1, company_id=1)
+    state.country_config = {"pipeline": {"use_llm_classification": False}}
+    state.company_config = {
+        "classification": {
+            "relevant_keywords": {"it": ["informatique", "logiciel"]},
+            "min_relevance_score": 0.5,
+        },
     }
     state.items_parsed = [
         {
@@ -128,15 +140,18 @@ def test_classify_uses_country_keywords():
     assert len(relevant) == 1
 
 
-def test_classify_uses_country_min_relevance_score():
-    """Classify must use state.country_config['pipeline']['min_relevance_score']."""
+def test_classify_uses_company_min_relevance_score():
+    """Classify must use state.company_config['classification']['min_relevance_score']."""
     from tenderai_bf.agents.graph import TenderAIState
     from tenderai_bf.agents.nodes.classify import classify_with_keywords
 
-    state = TenderAIState(country_id=1)
-    state.country_config = {
-        "classification": {"relevant_keywords": {"all": ["xyz_never_matches"]}},
-        "pipeline": {"min_relevance_score": 0.99, "use_llm_classification": False},
+    state = TenderAIState(country_id=1, company_id=1)
+    state.country_config = {"pipeline": {"use_llm_classification": False}}
+    state.company_config = {
+        "classification": {
+            "relevant_keywords": {"all": ["xyz_never_matches"]},
+            "min_relevance_score": 0.99,
+        },
     }
     state.items_parsed = [
         {
@@ -201,9 +216,7 @@ def test_email_report_uses_country_to_address():
     state.report_bytes = b"fake pdf"
     state.report_url = "http://minio/report.docx"
 
-    with patch(
-        "tenderai_bf.agents.nodes.email_report.send_report_email"
-    ) as mock_send:
+    with patch("tenderai_bf.agents.nodes.email_report.send_report_email") as mock_send:
         mock_send.return_value = True
 
         email_report_node(state)

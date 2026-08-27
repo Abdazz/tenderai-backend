@@ -10,7 +10,7 @@ from tenderai_bf.models import Base, User
 def db_session():
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
+    Session = sessionmaker(bind=engine)  # noqa: N806 — SQLAlchemy idiom for a session factory
     session = Session()
     yield session
     session.close()

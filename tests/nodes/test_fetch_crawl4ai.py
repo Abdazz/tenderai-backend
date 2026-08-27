@@ -8,7 +8,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 os.environ.setdefault("TENDERAI_ENVIRONMENT", "test")
 os.environ.setdefault("TENDERAI_DATABASE_URL", "sqlite:///test.db")
-os.environ.setdefault("TENDERAI_JWT_SECRET", "test-jwt-secret-not-used-for-real-auth-only-pytest-xxxxxxxx")
+os.environ.setdefault(
+    "TENDERAI_JWT_SECRET", "test-jwt-secret-not-used-for-real-auth-only-pytest-xxxxxxxx"
+)
 os.environ.setdefault("TENDERAI_ADMIN_PASSWORD", "test-admin-password-not-real")
 sys.path.insert(0, "src")
 
@@ -42,7 +44,9 @@ def _run(coro):
 
 def _make_crawler_mock(extracted_content):
     mock_result = MagicMock()
-    mock_result.extracted_content = json.dumps(extracted_content) if extracted_content is not None else None
+    mock_result.extracted_content = (
+        json.dumps(extracted_content) if extracted_content is not None else None
+    )
 
     mock_crawler = AsyncMock()
     mock_crawler.__aenter__ = AsyncMock(return_value=mock_crawler)
@@ -55,11 +59,20 @@ def test_crawl4ai_extracts_listings():
     """crawl4ai fetcher retourne listings avec champs standards."""
     mock_crawler = _make_crawler_mock(EXTRACTED_ITEMS)
 
-    with patch("tenderai_bf.agents.nodes.fetch_crawl4ai._CRAWL4AI_AVAILABLE", True), \
-         patch("tenderai_bf.agents.nodes.fetch_crawl4ai.AsyncWebCrawler", return_value=mock_crawler), \
-         patch("tenderai_bf.agents.nodes.fetch_crawl4ai.LLMExtractionStrategy"), \
-         patch("tenderai_bf.agents.nodes.fetch_crawl4ai._get_llm_config", return_value=("groq/llama-3.3-70b-versatile", "test-key")):
-        result = _run(__import__("tenderai_bf.agents.nodes.fetch_crawl4ai", fromlist=["fetch_crawl4ai"]).fetch_crawl4ai(SOURCE, "run-test"))
+    with patch(
+        "tenderai_bf.agents.nodes.fetch_crawl4ai._CRAWL4AI_AVAILABLE", True
+    ), patch(
+        "tenderai_bf.agents.nodes.fetch_crawl4ai.AsyncWebCrawler",
+        return_value=mock_crawler,
+    ), patch("tenderai_bf.agents.nodes.fetch_crawl4ai.LLMExtractionStrategy"), patch(
+        "tenderai_bf.agents.nodes.fetch_crawl4ai._get_llm_config",
+        return_value=("groq/llama-3.3-70b-versatile", "test-key"),
+    ):
+        result = _run(
+            __import__(
+                "tenderai_bf.agents.nodes.fetch_crawl4ai", fromlist=["fetch_crawl4ai"]
+            ).fetch_crawl4ai(SOURCE, "run-test")
+        )
 
     assert result["status"] == "success"
     assert result["parser_type"] == "crawl4ai"
@@ -74,6 +87,7 @@ def test_crawl4ai_extracts_listings():
 def test_crawl4ai_not_installed_returns_failed():
     """Si crawl4ai n'est pas installé → status failed avec message clair."""
     import tenderai_bf.agents.nodes.fetch_crawl4ai as mod
+
     original = mod._CRAWL4AI_AVAILABLE
     try:
         mod._CRAWL4AI_AVAILABLE = False
@@ -88,9 +102,17 @@ def test_crawl4ai_empty_extraction_returns_failed():
     """extracted_content vide → status failed."""
     mock_crawler = _make_crawler_mock(None)
 
-    with patch("tenderai_bf.agents.nodes.fetch_crawl4ai.AsyncWebCrawler", return_value=mock_crawler), \
-         patch("tenderai_bf.agents.nodes.fetch_crawl4ai.LLMExtractionStrategy"), \
-         patch("tenderai_bf.agents.nodes.fetch_crawl4ai._get_llm_config", return_value=("groq/llama-3.3-70b-versatile", "test-key")):
-        result = _run(__import__("tenderai_bf.agents.nodes.fetch_crawl4ai", fromlist=["fetch_crawl4ai"]).fetch_crawl4ai(SOURCE, "run-test"))
+    with patch(
+        "tenderai_bf.agents.nodes.fetch_crawl4ai.AsyncWebCrawler",
+        return_value=mock_crawler,
+    ), patch("tenderai_bf.agents.nodes.fetch_crawl4ai.LLMExtractionStrategy"), patch(
+        "tenderai_bf.agents.nodes.fetch_crawl4ai._get_llm_config",
+        return_value=("groq/llama-3.3-70b-versatile", "test-key"),
+    ):
+        result = _run(
+            __import__(
+                "tenderai_bf.agents.nodes.fetch_crawl4ai", fromlist=["fetch_crawl4ai"]
+            ).fetch_crawl4ai(SOURCE, "run-test")
+        )
 
     assert result["status"] == "failed"

@@ -43,26 +43,41 @@ def main():
     default=False,
     help="Test mode: send the report only to the admin email (TENDERAI_ADMIN_EMAIL), not all recipients",
 )
-def run_once(triggered_by: str, user: str | None, country_id: int, country_code: str | None, test_mode: bool):
+def run_once(
+    triggered_by: str,
+    user: str | None,
+    country_id: int,
+    country_code: str | None,
+    test_mode: bool,
+):
     """Execute the pipeline once and generate a report."""
 
-    click.echo("🚀 Starting TenderAI BF pipeline..." + (" [MODE TEST]" if test_mode else ""))
+    click.echo(
+        "🚀 Starting TenderAI BF pipeline..." + (" [MODE TEST]" if test_mode else "")
+    )
 
     try:
         # Resolve country code → country ID when --country-code is provided
         if country_code:
             from sqlalchemy import text as _text
+
             _engine = get_engine()
             with _engine.connect() as _conn:
                 _row = _conn.execute(
-                    _text("SELECT id, name FROM countries WHERE UPPER(code) = UPPER(:code)"),
+                    _text(
+                        "SELECT id, name FROM countries WHERE UPPER(code) = UPPER(:code)"
+                    ),
                     {"code": country_code},
                 ).fetchone()
             if not _row:
-                click.echo(f"❌ Unknown country code '{country_code}'. Check the countries table.")
+                click.echo(
+                    f"❌ Unknown country code '{country_code}'. Check the countries table."
+                )
                 sys.exit(1)
             country_id = _row[0]
-            click.echo(f"   Country: {_row[1]} (code={country_code.upper()}, id={country_id})")
+            click.echo(
+                f"   Country: {_row[1]} (code={country_code.upper()}, id={country_id})"
+            )
 
         # Get pipeline
         pipeline = get_pipeline()
@@ -371,7 +386,7 @@ def create_admin(
             if row:
                 if not force:
                     click.echo(
-                        f"ℹ️  User '{username}' already exists. Use --force to overwrite the password."
+                        f"ℹ️  User '{username}' already exists. Use --force to overwrite the password."  # noqa: RUF001 — intentional emoji in display text
                     )
                     return
                 conn.execute(
@@ -418,9 +433,8 @@ def seed_sources(force: bool):
 
     from urllib.parse import urlparse
 
-    from sqlalchemy import text
-
     import yaml
+    from sqlalchemy import text
 
     yaml_path = Path("settings.yaml")
     if not yaml_path.exists():

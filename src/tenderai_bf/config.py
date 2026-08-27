@@ -88,7 +88,7 @@ class EmailSettings(BaseSettings):
     from_name: str = Field(default="TenderAI BF")
     to_address: str = Field(default="tender-watch@yulcom.com")
     reply_to: str | None = Field(default="support@yulcom.com")
-    subject_prefix: str = Field(default="RFP Watch – Burkina Faso")
+    subject_prefix: str = Field(default="RFP Watch – Burkina Faso")  # noqa: RUF001 — intentional em dash in display text
     signature: str = Field(default="YULCOM Technologies")
     logo_url: str | None = Field(default=None, validation_alias="EMAIL_LOGO_URL")
 
@@ -447,7 +447,7 @@ class Settings(BaseSettings):
         password must be set via TENDERAI_JWT_SECRET / TENDERAI_ADMIN_PASSWORD.
         """
         # Trivial/known-bad values that must never be accepted, even outside production.
-        TRIVIAL_PASSWORDS = {
+        TRIVIAL_PASSWORDS = {  # noqa: N806 — module-level-style constant, scoped locally by design
             "admin",
             "admin123",
             "password",
@@ -458,7 +458,7 @@ class Settings(BaseSettings):
             "123456",
             "qwerty",
         }
-        TRIVIAL_JWT_SECRETS = {
+        TRIVIAL_JWT_SECRETS = {  # noqa: N806 — module-level-style constant, scoped locally by design
             "change-this-secret-key-in-production-use-openssl-rand-hex-32",
             "secret",
             "changeme",

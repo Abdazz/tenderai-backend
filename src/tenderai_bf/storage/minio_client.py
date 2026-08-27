@@ -37,11 +37,11 @@ class MinIOClient:
 
     def __init__(
         self,
-        endpoint: str = None,
-        access_key: str = None,
-        secret_key: str = None,
-        bucket_name: str = None,
-        secure: bool = None,
+        endpoint: str | None = None,
+        access_key: str | None = None,
+        secret_key: str | None = None,
+        bucket_name: str | None = None,
+        secure: bool | None = None,
     ):
         """Initialize MinIO client with configuration."""
 
@@ -356,7 +356,12 @@ class MinIOClient:
 
         # Build filename: TenderAI_<Country>_YYYY-MM-DD-HH-MM.docx
         import re
-        country_slug = re.sub(r"[^a-zA-Z0-9]+", "_", country_name or "").strip("_") if country_name else ""
+
+        country_slug = (
+            re.sub(r"[^a-zA-Z0-9]+", "_", country_name or "").strip("_")
+            if country_name
+            else ""
+        )
         name_parts = ["TenderAI"]
         if country_slug:
             name_parts.append(country_slug)
@@ -446,9 +451,10 @@ class MinIOClient:
 
             deleted_count = 0
             for obj in objects:
-                if obj["last_modified"] < cutoff_date:
-                    if self.delete_object(obj["key"]):
-                        deleted_count += 1
+                if obj["last_modified"] < cutoff_date and self.delete_object(
+                    obj["key"]
+                ):
+                    deleted_count += 1
 
             logger.info(
                 "Cleanup completed",

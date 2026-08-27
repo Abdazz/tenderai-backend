@@ -338,6 +338,7 @@ def extract_item_links_node(state) -> dict:
                         links = []
                 elif parser_type in ("html-tender", "crawl4ai"):
                     import json as _json
+
                     try:
                         listings = (
                             _json.loads(content)
@@ -373,17 +374,22 @@ def extract_item_links_node(state) -> dict:
                 elif parser_type == "playwright_links":
                     # Playwright ran in link-extraction mode: content is a JSON list of URL strings
                     import json as _json
+
                     try:
                         url_list = (
-                            _json.loads(content) if isinstance(content, str)
+                            _json.loads(content)
+                            if isinstance(content, str)
                             else item.get("listings", [])
                         )
-                        _use_pw_detail = bool(patterns.get("fetch_detail_with_playwright", False))
+                        _use_pw_detail = bool(
+                            patterns.get("fetch_detail_with_playwright", False)
+                        )
                         if _use_pw_detail:
                             # Wrap as dicts so fetch_items routes them through Playwright
                             links = [
                                 {"url": u, "source": "playwright_detail"}
-                                for u in url_list if isinstance(u, str)
+                                for u in url_list
+                                if isinstance(u, str)
                             ]
                         else:
                             links = [u for u in url_list if isinstance(u, str)]
@@ -416,7 +422,8 @@ def extract_item_links_node(state) -> dict:
                         for page_item in page_items:
                             page_text = (
                                 page_item.get("content", "")
-                                if isinstance(page_item, dict) else ""
+                                if isinstance(page_item, dict)
+                                else ""
                             )
                             for m in _re.finditer(link_regex, page_text):
                                 href = m.group(1) if m.lastindex else m.group(0)
@@ -449,10 +456,16 @@ def extract_item_links_node(state) -> dict:
                         )
                         for result in results:
                             # Keep "playwright" source distinct from "tavily" for logging
-                            result["source"] = "playwright" if parser_type == "playwright" else "tavily"
+                            result["source"] = (
+                                "playwright"
+                                if parser_type == "playwright"
+                                else "tavily"
+                            )
                             result["parser_type"] = parser_type
                         links = results
-                        label = "Playwright" if parser_type == "playwright" else "Tavily"
+                        label = (
+                            "Playwright" if parser_type == "playwright" else "Tavily"
+                        )
                         logger.info(
                             f"{label}: {len(results)} results extracted",
                             source_name=source_name,
@@ -497,26 +510,14 @@ def extract_item_links_node(state) -> dict:
                             # Add the joffres listing dict as-is for fetch_items to process
                             valid_links.append(link)
                             seen_urls.add(url)
-                    # Handle UNGM listings (dict with source='ungm')
-                    elif isinstance(link, dict) and link.get("source") == "ungm":
-                        url = link.get("url")
-                        if url and url not in seen_urls:
-                            valid_links.append(link)
-                            seen_urls.add(url)
-                    # Handle Tavily search results (dict with source='tavily')
-                    elif isinstance(link, dict) and link.get("source") == "tavily":
-                        url = link.get("url")
-                        if url and url not in seen_urls:
-                            valid_links.append(link)
-                            seen_urls.add(url)
-                    # Handle Playwright results (dict with source='playwright')
-                    elif isinstance(link, dict) and link.get("source") == "playwright":
-                        url = link.get("url")
-                        if url and url not in seen_urls:
-                            valid_links.append(link)
-                            seen_urls.add(url)
-                    # Handle Playwright detail pages (detail pages that need browser fetch)
-                    elif isinstance(link, dict) and link.get("source") == "playwright_detail":
+                    # Handle UNGM / Tavily / Playwright listing + detail
+                    # results (identical handling)
+                    elif isinstance(link, dict) and link.get("source") in (
+                        "ungm",
+                        "tavily",
+                        "playwright",
+                        "playwright_detail",
+                    ):
                         url = link.get("url")
                         if url and url not in seen_urls:
                             valid_links.append(link)
@@ -529,7 +530,10 @@ def extract_item_links_node(state) -> dict:
                             valid_links.append(link)
                             seen_urls.add(notice_key)
                     # Handle html-tender / crawl4ai structured listings — pass through as-is
-                    elif isinstance(link, dict) and link.get("parser_type") in ("html-tender", "crawl4ai"):
+                    elif isinstance(link, dict) and link.get("parser_type") in (
+                        "html-tender",
+                        "crawl4ai",
+                    ):
                         url = link.get("url") or link.get("link", "")
                         key = url if url else f"html-tender-{len(seen_urls)}"
                         if key not in seen_urls:
@@ -555,10 +559,13 @@ def extract_item_links_node(state) -> dict:
                     elif isinstance(link, str):
                         # Basic URL validation
                         parsed = urlparse(link)
-                        if parsed.scheme in ("http", "https") and parsed.netloc:
-                            if link not in seen_urls:
-                                valid_links.append(link)
-                                seen_urls.add(link)
+                        if (
+                            parsed.scheme in ("http", "https")
+                            and parsed.netloc
+                            and link not in seen_urls
+                        ):
+                            valid_links.append(link)
+                            seen_urls.add(link)
 
                 # Add to global list
                 all_links.extend(valid_links)

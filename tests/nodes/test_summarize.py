@@ -13,8 +13,8 @@ sample_tender = {
     "entity": "Centre Hospitalier Universitaire Yalgado Ouédraogo",
     "reference": "AO-2025/001/CHU-YO/DAF",
     "description": """
-    Le Centre Hospitalier Universitaire Yalgado Ouédraogo lance un appel d'offres 
-    pour l'acquisition de fournitures médicales et équipements hospitaliers destinés 
+    Le Centre Hospitalier Universitaire Yalgado Ouédraogo lance un appel d'offres
+    pour l'acquisition de fournitures médicales et équipements hospitaliers destinés
     aux services de chirurgie, maternité et pédiatrie.
 
     Lot 1: Équipements de bloc opératoire (tables chirurgicales, éclairages, instruments)

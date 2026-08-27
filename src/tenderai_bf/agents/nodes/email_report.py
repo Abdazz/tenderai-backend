@@ -113,7 +113,8 @@ def email_report_node(state) -> dict:
             notices=getattr(state, "unique_items", None)
             or getattr(state, "relevant_items", None)
             or [],
-            country_name=getattr(state, "country_name", "Burkina Faso") or "Burkina Faso",
+            country_name=getattr(state, "country_name", "Burkina Faso")
+            or "Burkina Faso",
         )
         if not success:
             delivery_error = "send_report_email returned False (SMTP rejected delivery)"

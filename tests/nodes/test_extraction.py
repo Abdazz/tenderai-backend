@@ -144,3 +144,42 @@ def test_parse_extract_tavily_extract_item():
     item = result.items_parsed[0]
     assert item["source"] == "tavily"
     assert item["url"] == "https://gov.example.com/tenders"
+
+
+def test_parse_quotidien_structured_no_relevance_fields():
+    """Structural extraction only — no relevance judgment embedded."""
+    from tenderai_bf.agents.nodes.parse_pdf_structured import TenderBlock
+
+    # TenderBlock itself must no longer accept is_relevant/domain/relevance_score
+    block_fields = TenderBlock.model_fields.keys()
+    assert "is_relevant" not in block_fields
+    assert "domain" not in block_fields
+    assert "relevance_score" not in block_fields
+    assert "is_results_notice" in block_fields  # kept — structural signal
+
+
+def test_parse_quotidien_structured_carries_source_name():
+    import inspect
+
+    from tenderai_bf.agents.nodes.parse_pdf_structured import (
+        parse_quotidien_structured,
+    )
+
+    params = inspect.signature(parse_quotidien_structured).parameters
+    assert "source_name" in params
+
+
+def test_parse_tavily_listing_no_relevance_fields():
+    from tenderai_bf.agents.nodes.parse_tavily_listing import TenderItem
+
+    item_fields = TenderItem.model_fields.keys()
+    assert "is_relevant" not in item_fields
+    assert "domain" not in item_fields
+    assert "relevance_score" not in item_fields
+    assert "is_results_notice" in item_fields  # kept — structural signal
+
+
+def test_ledevoir_ocr_prompt_has_no_relevance_field():
+    from tenderai_bf.agents.nodes.fetch_ledevoir import _OCR_PROMPT
+
+    assert "is_relevant" not in _OCR_PROMPT

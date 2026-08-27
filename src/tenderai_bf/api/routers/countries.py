@@ -4,10 +4,13 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 
 from ...country_store import MUTABLE_SECTIONS, CountryStore
+from ...logging import get_logger
 from ...models import Country
 from ..dependencies import AuthenticatedUser, DatabaseSession, SuperAdminUser
 from ..schemas.countries import CountryCreate, CountryRead, CountryUpdate
 from ..schemas.settings import SECTION_SCHEMAS
+
+logger = get_logger(__name__)
 
 router = APIRouter()
 
@@ -34,12 +37,12 @@ async def create_country(
         db.flush()
         db.commit()
         db.refresh(country)
-    except IntegrityError:
+    except IntegrityError as e:
         db.rollback()
         raise HTTPException(
             status.HTTP_409_CONFLICT,
             detail=f"Country with code '{body.code.upper()}' already exists",
-        )
+        ) from e
     CountryStore.seed_from_global(db, country.id)
     return country
 
@@ -112,25 +115,35 @@ async def update_section(
         )
     # Only admin or super_admin may write settings
     if user.get("role") not in ("super_admin", "admin"):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Admin role required to update settings")
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, detail="Admin role required to update settings"
+        )
     # Non-super_admin can only update their own country's settings
     if user.get("role") != "super_admin" and user.get("country_id") != country_id:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Access denied for this country")
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, detail="Access denied for this country"
+        )
     country = _get_country_or_404(country_id, db)
     schema_cls = SECTION_SCHEMAS.get(section)
     if schema_cls:
         try:
             schema_cls(**body)
         except Exception as e:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)
+            ) from e
     CountryStore.put_section(db, country_id, section, body, updated_by=user["username"])
     if section == "scheduler":
         from ...scheduler.schedule import reschedule_country_job
 
         try:
             reschedule_country_job(country_id, country.code, body)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(
+                "Failed to reschedule country job after settings update",
+                country_id=country_id,
+                error=str(e),
+            )
     return body
 
 
@@ -143,10 +156,14 @@ async def trigger_run(
 ):
     # Only admin or super_admin may trigger pipeline runs
     if user.get("role") not in ("super_admin", "admin"):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Admin role required to trigger runs")
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, detail="Admin role required to trigger runs"
+        )
     # Non-super_admin can only trigger runs for their own country
     if user.get("role") != "super_admin" and user.get("country_id") != country_id:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Access denied for this country")
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, detail="Access denied for this country"
+        )
     _get_country_or_404(country_id, db)
     from ...agents import get_pipeline
 

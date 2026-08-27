@@ -80,8 +80,10 @@ def parse_quotidien_with_docling(
 
             try:
                 os.unlink(tmp_path)
-            except:
-                pass
+            except OSError as e:
+                logger.debug(
+                    "Failed to clean up temp file", path=tmp_path, error=str(e)
+                )
 
     except Exception as e:
         logger.error("Docling parsing failed", error=str(e), title=quotidien_title)
@@ -197,7 +199,7 @@ def extract_tender_info(text: str, entity_name: str) -> dict:
     }
 
     # Extract reference number
-    ref_match = re.search(r"N[°o]\s*(\d{4}[-–]\d+[^\n]{0,100})", text)
+    ref_match = re.search(r"N[°o]\s*(\d{4}[-–]\d+[^\n]{0,100})", text)  # noqa: RUF001 — en dash is a real alternative in source reference formats
     if ref_match:
         info["ref_no"] = ref_match.group(0).strip()
 
@@ -241,7 +243,11 @@ def extract_tender_info(text: str, entity_name: str) -> dict:
                         "deadline_at"
                     ] = f"{year}-{month.zfill(2)}-{day.zfill(2)}T23:59:59"
                     break
-            except:
-                pass
+            except (ValueError, IndexError) as e:
+                logger.debug(
+                    "Failed to parse deadline date, skipping",
+                    date_str=date_str,
+                    error=str(e),
+                )
 
     return info
