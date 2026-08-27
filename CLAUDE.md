@@ -17,7 +17,12 @@ make test                  # pytest tests/ -v
 
 ## Architecture
 
-Voir le pipeline LangGraph dans `src/tenderai_bf/agents/graph.py` : `load_sources → fetch_listings → extract_item_links → fetch_items → parse_extract → classify → deduplicate → summarize → compose_report → email_report`.
+Le pipeline LangGraph est scindé en deux graphes qui partagent un même `TenderAIState` (défini dans `agents/graph.py`) :
+
+- **Graphe harvest** (`TenderAIGraph`, `agents/graph.py`, par pays) : `load_sources → fetch_listings → extract_item_links → fetch_items → parse_extract → deduplicate → persist_notices`. Persiste uniquement des `Notice` structurelles, sans jugement de pertinence.
+- **Graphe delivery** (`DeliveryGraph`, `agents/delivery_graph.py`, par entreprise, itère les pays auxquels elle est abonnée) : `select_new_notices → classify → summarize → compose_report → email_report → mark_delivered`. `select_new_notices` lit les `Notice` sans ligne `CompanyNoticeStatus` pour cette entreprise — cette absence est le curseur de livraison. `classify` est le seul endroit où la pertinence est décidée, par entreprise, et écrit la ligne `CompanyNoticeStatus` qui devient ce curseur.
+
+`get_pipeline()` (harvest) et `get_delivery_pipeline()` (delivery) sont deux singletons thread-safe indépendants.
 
 ## Config locale
 
