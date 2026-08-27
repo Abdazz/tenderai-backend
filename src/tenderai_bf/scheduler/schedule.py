@@ -174,7 +174,9 @@ def scheduled_company_delivery_run(company_id: int) -> None:
     for sub in subscriptions:
         try:
             result = pipeline.run(
-                company_id=company_id, country_id=sub.country_id, triggered_by="scheduler"
+                company_id=company_id,
+                country_id=sub.country_id,
+                triggered_by="scheduler",
             )
             if result.error_occurred:
                 logger.error(
@@ -293,7 +295,8 @@ def start_scheduler() -> None:
 
         if not enabled:
             logger.info(
-                "Company delivery scheduler disabled, skipping", company_slug=company.slug
+                "Company delivery scheduler disabled, skipping",
+                company_slug=company.slug,
             )
             continue
 

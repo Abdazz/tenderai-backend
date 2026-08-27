@@ -27,7 +27,9 @@ def _notice_to_classify_dict(notice: Notice) -> dict:
         "reference": notice.ref_no,
         "entity": notice.entity,
         "category": notice.category,
-        "published_at": notice.published_at.isoformat() if notice.published_at else None,
+        "published_at": notice.published_at.isoformat()
+        if notice.published_at
+        else None,
         "deadline_at": notice.deadline_at.isoformat() if notice.deadline_at else None,
         "deadline": notice.deadline_at.isoformat() if notice.deadline_at else None,
         "location": notice.location,

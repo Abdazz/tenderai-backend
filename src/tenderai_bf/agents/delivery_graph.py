@@ -114,10 +114,14 @@ class DeliveryGraph:
                 state.country_id = country_id
                 state.country_name = _country.name
                 state.country_locale = _country.locale
-                state.country_config = CountryStore.get_all_with_fallback(_db, country_id)
+                state.country_config = CountryStore.get_all_with_fallback(
+                    _db, country_id
+                )
 
                 state.company_id = company_id
-                state.company_config = CompanyStore.get_all_with_fallback(_db, company_id)
+                state.company_config = CompanyStore.get_all_with_fallback(
+                    _db, company_id
+                )
         except Exception as _e:
             state.add_error("delivery", f"Failed to load country/company config: {_e}")
             state.error_occurred = True

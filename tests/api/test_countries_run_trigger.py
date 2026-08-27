@@ -2,19 +2,22 @@ import os
 import uuid
 from unittest.mock import MagicMock, patch
 
-os.environ.setdefault("TENDERAI_JWT_SECRET", "test-jwt-secret-not-used-for-real-auth-only-pytest-xxxxxxxx")
+os.environ.setdefault(
+    "TENDERAI_JWT_SECRET", "test-jwt-secret-not-used-for-real-auth-only-pytest-xxxxxxxx"
+)
 os.environ.setdefault("TENDERAI_ADMIN_PASSWORD", "test-admin-password-not-real")
 
-import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
+# Imports below must follow the env var setup above (config validates on import).
+import pytest  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+from sqlalchemy import create_engine  # noqa: E402
+from sqlalchemy.orm import sessionmaker  # noqa: E402
+from sqlalchemy.pool import StaticPool  # noqa: E402
 
-from tenderai_bf.api.dependencies import get_password_hash
-from tenderai_bf.api.main import app
-from tenderai_bf.db import get_db
-from tenderai_bf.models import Base, Company, Country, User
+from tenderai_bf.api.dependencies import get_password_hash  # noqa: E402
+from tenderai_bf.api.main import app  # noqa: E402
+from tenderai_bf.db import get_db  # noqa: E402
+from tenderai_bf.models import Base, Company, Country, User  # noqa: E402
 
 
 @pytest.fixture(scope="function")
@@ -31,7 +34,7 @@ def db_engine():
 
 @pytest.fixture(scope="function")
 def db_session(db_engine):
-    Session = sessionmaker(bind=db_engine)
+    Session = sessionmaker(bind=db_engine)  # noqa: N806 — SQLAlchemy idiom for a session factory
     session = Session()
     yield session
     session.close()

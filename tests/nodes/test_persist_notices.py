@@ -1,7 +1,9 @@
 import hashlib
 import os
 
-os.environ.setdefault("TENDERAI_JWT_SECRET", "test-jwt-secret-not-used-for-real-auth-only-pytest-xxxxxxxx")
+os.environ.setdefault(
+    "TENDERAI_JWT_SECRET", "test-jwt-secret-not-used-for-real-auth-only-pytest-xxxxxxxx"
+)
 os.environ.setdefault("TENDERAI_ADMIN_PASSWORD", "test-admin-password-not-real")
 
 # Imports below must follow the env var setup above (config validates on import).
@@ -22,9 +24,15 @@ def db_session(monkeypatch):
     session = Session(engine)
 
     country = Country(id=1, name="Burkina Faso", code="BF", locale="fr", active=True)
-    source_a = Source(id=10, name="DGCMEF Burkina Faso", base_url="https://dgcmef.gov.bf",
-                       list_url="https://dgcmef.gov.bf/list", parser_type="html",
-                       enabled=True, country_id=1)
+    source_a = Source(
+        id=10,
+        name="DGCMEF Burkina Faso",
+        base_url="https://dgcmef.gov.bf",
+        list_url="https://dgcmef.gov.bf/list",
+        parser_type="html",
+        enabled=True,
+        country_id=1,
+    )
     run = Run(id="run-1", status="running", triggered_by="test", country_id=1)
     session.add_all([country, source_a, run])
     session.commit()
@@ -33,8 +41,10 @@ def db_session(monkeypatch):
         class _Ctx:
             def __enter__(self):
                 return session
+
             def __exit__(self, *a):
                 pass
+
         return _Ctx()
 
     monkeypatch.setattr(
@@ -81,9 +91,17 @@ def test_persist_notices_resolves_by_source_tag_substring(db_session):
     # Second source so tier 3's single-source-per-country fallback can't apply —
     # this test must genuinely exercise tier 2 (substring match on the "source"
     # tag), not fall through to tier 3.
-    db_session.add(Source(id=11, name="UNGM", base_url="https://ungm.org",
-                           list_url="https://ungm.org/list", parser_type="html",
-                           enabled=True, country_id=1))
+    db_session.add(
+        Source(
+            id=11,
+            name="UNGM",
+            base_url="https://ungm.org",
+            list_url="https://ungm.org/list",
+            parser_type="html",
+            enabled=True,
+            country_id=1,
+        )
+    )
     db_session.commit()
 
     state = TenderAIState(
@@ -118,9 +136,18 @@ def test_persist_notices_resolves_by_source_tag_substring(db_session):
 def test_persist_notices_skips_unresolvable_source_with_warning(db_session):
     # Add a second source so the single-source fallback no longer applies.
     from tenderai_bf.models import Source
-    db_session.add(Source(id=11, name="UNGM", base_url="https://ungm.org",
-                           list_url="https://ungm.org/list", parser_type="html",
-                           enabled=True, country_id=1))
+
+    db_session.add(
+        Source(
+            id=11,
+            name="UNGM",
+            base_url="https://ungm.org",
+            list_url="https://ungm.org/list",
+            parser_type="html",
+            enabled=True,
+            country_id=1,
+        )
+    )
     db_session.commit()
 
     state = TenderAIState(

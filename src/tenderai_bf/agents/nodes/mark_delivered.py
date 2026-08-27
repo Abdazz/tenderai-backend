@@ -60,7 +60,10 @@ def mark_delivered_node(state) -> dict:
 
     except Exception as e:
         logger.error(
-            "Mark delivered step failed", error=str(e), run_id=state.run_id, exc_info=True
+            "Mark delivered step failed",
+            error=str(e),
+            run_id=state.run_id,
+            exc_info=True,
         )
         state.add_error("mark_delivered", str(e))
         return state

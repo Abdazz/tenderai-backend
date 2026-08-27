@@ -2,17 +2,29 @@ import hashlib
 import os
 import uuid
 
-os.environ.setdefault("TENDERAI_JWT_SECRET", "test-jwt-secret-not-used-for-real-auth-only-pytest-xxxxxxxx")
+os.environ.setdefault(
+    "TENDERAI_JWT_SECRET", "test-jwt-secret-not-used-for-real-auth-only-pytest-xxxxxxxx"
+)
 os.environ.setdefault("TENDERAI_ADMIN_PASSWORD", "test-admin-password-not-real")
 
-import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session
+# Imports below must follow the env var setup above (config validates on import).
+import pytest  # noqa: E402
+from sqlalchemy import create_engine  # noqa: E402
+from sqlalchemy.orm import Session  # noqa: E402
 
-from tenderai_bf.agents.graph import TenderAIState
-from tenderai_bf.agents.nodes.select_new_notices import select_new_notices_node
-from tenderai_bf.db import Base
-from tenderai_bf.models import Company, CompanyNoticeStatus, Country, Notice, Run, Source
+from tenderai_bf.agents.graph import TenderAIState  # noqa: E402
+from tenderai_bf.agents.nodes.select_new_notices import (  # noqa: E402
+    select_new_notices_node,
+)
+from tenderai_bf.db import Base  # noqa: E402
+from tenderai_bf.models import (  # noqa: E402
+    Company,
+    CompanyNoticeStatus,
+    Country,
+    Notice,
+    Run,
+    Source,
+)
 
 
 @pytest.fixture
@@ -21,39 +33,70 @@ def db_session(monkeypatch):
     Base.metadata.create_all(engine)
     session = Session(engine)
 
-    session.add_all([
-        Country(id=1, name="Burkina Faso", code="BF", locale="fr", active=True),
-        Source(id=10, name="DGCMEF Burkina Faso", base_url="https://x", list_url="https://x/l",
-               parser_type="html", enabled=True, country_id=1),
-        Company(id=1, name="YULCOM Technologies", slug="yulcom", active=True),
-        Run(id="run-1", status="completed", triggered_by="test", country_id=1, run_type="harvest"),
-    ])
+    session.add_all(
+        [
+            Country(id=1, name="Burkina Faso", code="BF", locale="fr", active=True),
+            Source(
+                id=10,
+                name="DGCMEF Burkina Faso",
+                base_url="https://x",
+                list_url="https://x/l",
+                parser_type="html",
+                enabled=True,
+                country_id=1,
+            ),
+            Company(id=1, name="YULCOM Technologies", slug="yulcom", active=True),
+            Run(
+                id="run-1",
+                status="completed",
+                triggered_by="test",
+                country_id=1,
+                run_type="harvest",
+            ),
+        ]
+    )
     session.commit()
 
     notice_seen = Notice(
-        id="notice-seen", source_id=10, run_id="run-1", title="Already classified",
-        content_hash=hashlib.sha256(b"seen").hexdigest(), url="https://x/1",
+        id="notice-seen",
+        source_id=10,
+        run_id="run-1",
+        title="Already classified",
+        content_hash=hashlib.sha256(b"seen").hexdigest(),
+        url="https://x/1",
     )
     notice_new = Notice(
-        id="notice-new", source_id=10, run_id="run-1", title="Not yet classified",
-        content_hash=hashlib.sha256(b"new").hexdigest(), url="https://x/2",
+        id="notice-new",
+        source_id=10,
+        run_id="run-1",
+        title="Not yet classified",
+        content_hash=hashlib.sha256(b"new").hexdigest(),
+        url="https://x/2",
     )
     session.add_all([notice_seen, notice_new])
-    session.add(CompanyNoticeStatus(
-        id=str(uuid.uuid4()), company_id=1, notice_id="notice-seen", is_relevant=True,
-    ))
+    session.add(
+        CompanyNoticeStatus(
+            id=str(uuid.uuid4()),
+            company_id=1,
+            notice_id="notice-seen",
+            is_relevant=True,
+        )
+    )
     session.commit()
 
     def _fake_get_db_context():
         class _Ctx:
             def __enter__(self):
                 return session
+
             def __exit__(self, *a):
                 pass
+
         return _Ctx()
 
     monkeypatch.setattr(
-        "tenderai_bf.agents.nodes.select_new_notices.get_db_context", _fake_get_db_context
+        "tenderai_bf.agents.nodes.select_new_notices.get_db_context",
+        _fake_get_db_context,
     )
     yield session
     session.close()

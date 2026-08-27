@@ -1,18 +1,21 @@
 import os
 
-os.environ.setdefault("TENDERAI_JWT_SECRET", "test-jwt-secret-not-used-for-real-auth-only-pytest-xxxxxxxx")
+os.environ.setdefault(
+    "TENDERAI_JWT_SECRET", "test-jwt-secret-not-used-for-real-auth-only-pytest-xxxxxxxx"
+)
 os.environ.setdefault("TENDERAI_ADMIN_PASSWORD", "test-admin-password-not-real")
 
-from unittest.mock import MagicMock, patch
+# Imports below must follow the env var setup above (config validates on import).
+from unittest.mock import patch  # noqa: E402
 
-import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session
+import pytest  # noqa: E402
+from sqlalchemy import create_engine  # noqa: E402
+from sqlalchemy.orm import Session  # noqa: E402
 
-from tenderai_bf.agents.graph import TenderAIState
-from tenderai_bf.agents.nodes.email_report import email_report_node
-from tenderai_bf.db import Base
-from tenderai_bf.models import Recipient
+from tenderai_bf.agents.graph import TenderAIState  # noqa: E402
+from tenderai_bf.agents.nodes.email_report import email_report_node  # noqa: E402
+from tenderai_bf.db import Base  # noqa: E402
+from tenderai_bf.models import Recipient  # noqa: E402
 
 
 @pytest.fixture
@@ -20,18 +23,34 @@ def db_session(monkeypatch):
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     session = Session(engine)
-    session.add_all([
-        Recipient(id=1, email="yulcom@example.com", country_id=1, company_id=1, enabled=True),
-        Recipient(id=2, email="other-company@example.com", country_id=1, company_id=2, enabled=True),
-    ])
+    session.add_all(
+        [
+            Recipient(
+                id=1,
+                email="yulcom@example.com",
+                country_id=1,
+                company_id=1,
+                enabled=True,
+            ),
+            Recipient(
+                id=2,
+                email="other-company@example.com",
+                country_id=1,
+                company_id=2,
+                enabled=True,
+            ),
+        ]
+    )
     session.commit()
 
     def _fake_get_db_context():
         class _Ctx:
             def __enter__(self):
                 return session
+
             def __exit__(self, *a):
                 pass
+
         return _Ctx()
 
     monkeypatch.setattr(

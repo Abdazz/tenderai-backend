@@ -119,7 +119,10 @@ def persist_notices_node(state) -> dict:
 
     except Exception as e:
         logger.error(
-            "Persist notices step failed", error=str(e), run_id=state.run_id, exc_info=True
+            "Persist notices step failed",
+            error=str(e),
+            run_id=state.run_id,
+            exc_info=True,
         )
         state.add_error("persist_notices", str(e))
         return state
