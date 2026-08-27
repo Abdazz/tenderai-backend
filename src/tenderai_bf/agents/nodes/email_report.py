@@ -78,6 +78,7 @@ def email_report_node(state) -> dict:
                 _db.query(Recipient)
                 .filter(
                     Recipient.country_id == state.country_id,
+                    Recipient.company_id == state.company_id,
                     Recipient.enabled == True,  # noqa: E712
                 )
                 .all()
