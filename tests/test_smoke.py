@@ -257,6 +257,16 @@ sources:
     assert patterns["entity"] == "TestOrg"
 
 
+def test_run_once_requires_company():
+    from click.testing import CliRunner
+
+    from tenderai_bf.cli import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["run-once", "--country-code", "BF"])
+    assert result.exit_code != 0
+
+
 if __name__ == "__main__":
     import pytest
 

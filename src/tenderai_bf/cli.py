@@ -29,12 +29,18 @@ def main():
 @click.option("--triggered-by", default="manual", help="Who triggered this run")
 @click.option("--user", default=None, help="User who triggered this run")
 @click.option(
-    "--country-id", default=1, type=int, help="Country ID to run pipeline for"
+    "--country-id", default=None, type=int, help="Country ID to run pipeline for"
 )
 @click.option(
     "--country-code",
     default=None,
     help="ISO-2 country code (CA, BF, CI, SN…) — overrides --country-id",
+)
+@click.option("--company-id", default=None, type=int, help="Company ID to deliver to")
+@click.option(
+    "--company-code",
+    default=None,
+    help="Company slug (yulcom…) — overrides --company-id",
 )
 @click.option(
     "--test",
@@ -46,22 +52,32 @@ def main():
 def run_once(
     triggered_by: str,
     user: str | None,
-    country_id: int,
+    country_id: int | None,
     country_code: str | None,
+    company_id: int | None,
+    company_code: str | None,
     test_mode: bool,
 ):
-    """Execute the pipeline once and generate a report."""
+    """Run harvest for one country, then delivery for one company, in sequence."""
+
+    if country_id is None and not country_code:
+        click.echo("❌ --country-id or --country-code is required")
+        sys.exit(1)
+    if company_id is None and not company_code:
+        click.echo("❌ --company-id or --company-code is required")
+        sys.exit(1)
 
     click.echo(
         "🚀 Starting TenderAI BF pipeline..." + (" [MODE TEST]" if test_mode else "")
     )
 
     try:
+        from sqlalchemy import text as _text
+
+        _engine = get_engine()
+
         # Resolve country code → country ID when --country-code is provided
         if country_code:
-            from sqlalchemy import text as _text
-
-            _engine = get_engine()
             with _engine.connect() as _conn:
                 _row = _conn.execute(
                     _text(
@@ -79,40 +95,80 @@ def run_once(
                 f"   Country: {_row[1]} (code={country_code.upper()}, id={country_id})"
             )
 
-        # Get pipeline
-        pipeline = get_pipeline()
+        # Resolve company code → company ID when --company-code is provided
+        if company_code:
+            with _engine.connect() as _conn:
+                _row = _conn.execute(
+                    _text(
+                        "SELECT id, name FROM companies WHERE UPPER(slug) = UPPER(:slug)"
+                    ),
+                    {"slug": company_code},
+                ).fetchone()
+            if not _row:
+                click.echo(
+                    f"❌ Unknown company code '{company_code}'. Check the companies table."
+                )
+                sys.exit(1)
+            company_id = _row[0]
+            click.echo(
+                f"   Company: {_row[1]} (slug={company_code.lower()}, id={company_id})"
+            )
 
-        # Execute pipeline (returns a TenderAIState)
-        result = pipeline.run(
+        # --- Harvest ---
+        harvest_pipeline = get_pipeline()
+        harvest_result = harvest_pipeline.run(
+            country_id=country_id,
+            triggered_by=triggered_by,
+            triggered_by_user=user,
+        )
+
+        if harvest_result.error_occurred:
+            click.echo(f"❌ Harvest failed with {len(harvest_result.errors)} error(s)")
+            for error in harvest_result.errors:
+                click.echo(f"   • [{error['step']}] {error['error']}")
+            sys.exit(1)
+
+        harvest_stats = harvest_result.stats.dict()
+        click.echo("✅ Harvest completed")
+        click.echo(f"   • Sources checked: {harvest_stats.get('sources_checked', 0)}")
+        click.echo(f"   • Items parsed: {harvest_stats.get('items_parsed', 0)}")
+        click.echo(f"   • Unique items: {harvest_stats.get('unique_items', 0)}")
+        click.echo(
+            f"   • Notices persisted: {harvest_stats.get('notices_persisted', 0)}"
+        )
+
+        # --- Delivery ---
+        from .agents import get_delivery_pipeline
+
+        delivery_pipeline = get_delivery_pipeline()
+        delivery_result = delivery_pipeline.run(
+            company_id=company_id,
             country_id=country_id,
             triggered_by=triggered_by,
             triggered_by_user=user,
             test_mode=test_mode,
         )
 
-        errors = result.errors
-        warnings = result.warnings
-        stats = result.stats.dict()
-        report_url = result.report_url
-        email_status = result.email_status or {}
+        errors = delivery_result.errors
+        warnings = delivery_result.warnings
+        stats = delivery_result.stats.dict()
+        report_url = delivery_result.report_url
+        email_status = delivery_result.email_status or {}
 
-        if result.error_occurred:
-            click.echo(f"❌ Pipeline failed with {len(errors)} error(s)")
+        if delivery_result.error_occurred:
+            click.echo(f"❌ Delivery failed with {len(errors)} error(s)")
             for error in errors:
                 click.echo(f"   • [{error['step']}] {error['error']}")
             sys.exit(1)
 
         if warnings:
-            click.echo(f"⚠️  Pipeline completed with {len(warnings)} warning(s)")
+            click.echo(f"⚠️  Delivery completed with {len(warnings)} warning(s)")
             for w in warnings:
                 click.echo(f"   • [{w['step']}] {w['warning']}")
         else:
-            click.echo("✅ Pipeline completed successfully!")
+            click.echo("✅ Delivery completed successfully!")
 
-        click.echo(f"   • Sources checked: {stats.get('sources_checked', 0)}")
-        click.echo(f"   • Items found: {stats.get('items_parsed', 0)}")
         click.echo(f"   • Relevant items: {stats.get('relevant_items', 0)}")
-        click.echo(f"   • Unique items: {stats.get('unique_items', 0)}")
         click.echo(f"   • Execution time: {stats.get('total_time_seconds', 0):.1f}s")
 
         if report_url:
