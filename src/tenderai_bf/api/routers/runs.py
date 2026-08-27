@@ -5,6 +5,7 @@ from datetime import datetime
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 from pydantic import BaseModel, Field
 
+from ...agents import get_delivery_pipeline, get_pipeline
 from ...logging import get_logger
 from ..dependencies import AuthenticatedUser, CurrentUser, DatabaseSession
 
@@ -82,8 +83,6 @@ async def trigger_run(
     Returns immediately with run_id for tracking.
     """
 
-    from ...agents import get_pipeline
-
     logger.info(
         "Pipeline run triggered via API",
         triggered_by=request.triggered_by,
@@ -116,15 +115,46 @@ async def trigger_run(
                 # TODO: Load full source data from DB based on names/IDs
                 sources_override = request.sources
 
-            result = pipeline.run(
+            harvest_result = pipeline.run(
                 country_id=request.country_id,
                 triggered_by=request.triggered_by,
                 triggered_by_user=triggered_by_user,
                 sources_override=sources_override,
-                send_email=request.send_email,
             )
 
-            # result is now always a TenderAIState (see TenderAIGraph.run)
+            if harvest_result.error_occurred:
+                logger.error(
+                    "Pipeline run failed",
+                    run_id=harvest_result.run_id,
+                    errors_count=len(harvest_result.errors),
+                )
+                return
+
+            result = harvest_result
+            if request.send_email:
+                # Stopgap until the Auth/API plan adds company selection to
+                # this endpoint: deliver to YULCOM (company zero) so this
+                # manual trigger keeps sending email as it did before the
+                # pipeline split.
+                from ...db import get_db_context
+                from ...models import Company
+
+                with get_db_context() as _db:
+                    yulcom = _db.query(Company).filter(Company.slug == "yulcom").first()
+                    yulcom_id = yulcom.id if yulcom else None
+                if yulcom_id is not None:
+                    result = get_delivery_pipeline().run(
+                        company_id=yulcom_id,
+                        country_id=request.country_id,
+                        triggered_by=request.triggered_by,
+                        triggered_by_user=triggered_by_user,
+                    )
+                else:
+                    logger.error(
+                        "YULCOM company not found — skipping delivery after manual harvest trigger",
+                        country_id=request.country_id,
+                    )
+
             if result.error_occurred:
                 run_status = "failed"
             elif result.warnings:
@@ -136,7 +166,6 @@ async def trigger_run(
                 "Pipeline run completed",
                 run_id=result.run_id,
                 status=run_status,
-                items=result.stats.unique_items,
                 warnings_count=len(result.warnings),
             )
 

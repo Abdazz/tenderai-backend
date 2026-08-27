@@ -165,7 +165,7 @@ async def trigger_run(
             status.HTTP_403_FORBIDDEN, detail="Access denied for this country"
         )
     _get_country_or_404(country_id, db)
-    from ...agents import get_pipeline
+    from ...agents import get_delivery_pipeline, get_pipeline
 
     def _run():
         get_pipeline().run(
@@ -173,6 +173,27 @@ async def trigger_run(
             triggered_by="api",
             triggered_by_user=user["username"],
         )
+        # Stopgap until the Auth/API plan adds company selection to this
+        # endpoint: deliver to YULCOM (company zero) so this manual trigger
+        # keeps sending email as it did before the pipeline split.
+        from ...db import get_db_context
+        from ...models import Company
+
+        with get_db_context() as _db:
+            yulcom = _db.query(Company).filter(Company.slug == "yulcom").first()
+            yulcom_id = yulcom.id if yulcom else None
+        if yulcom_id is not None:
+            get_delivery_pipeline().run(
+                company_id=yulcom_id,
+                country_id=country_id,
+                triggered_by="api",
+                triggered_by_user=user["username"],
+            )
+        else:
+            logger.error(
+                "YULCOM company not found — skipping delivery after manual harvest trigger",
+                country_id=country_id,
+            )
 
     background_tasks.add_task(_run)
     return {"status": "accepted", "country_id": country_id}
