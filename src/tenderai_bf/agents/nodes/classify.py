@@ -46,6 +46,7 @@ def _upsert_company_notice_status(db, company_id: int, item: dict) -> None:
             )
         )
 
+
 _ATTRIBUTION_SIGNALS = [
     # Attribution / marché attribué
     "résultats provisoires",
@@ -812,6 +813,7 @@ Répondez UNIQUEMENT par "OUI" ou "NON" suivi d'une explication en une phrase pr
 
                 # Include item if score meets threshold
                 if item["relevance_score"] >= threshold:
+                    item["is_relevant"] = True
                     relevant_items.append(item)
                     log_classification(
                         item["id"],
@@ -821,6 +823,7 @@ Répondez UNIQUEMENT par "OUI" ou "NON" suivi d'une explication en une phrase pr
                         method="llm",
                     )
                 else:
+                    item["is_relevant"] = False
                     log_classification(
                         item["id"],
                         item["relevance_score"],
@@ -843,9 +846,13 @@ Répondez UNIQUEMENT par "OUI" ou "NON" suivi d'une explication en une phrase pr
                     )
                     item["classification_method"] = "keyword_fallback_on_error"
                     if item["relevance_score"] >= 0.3:
+                        item["is_relevant"] = True
                         relevant_items.append(item)
+                    else:
+                        item["is_relevant"] = False
                 else:
                     item["relevance_score"] = 0.0
+                    item["is_relevant"] = False
 
         # Set state
         state.relevant_items = relevant_items

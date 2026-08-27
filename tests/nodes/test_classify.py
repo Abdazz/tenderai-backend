@@ -332,55 +332,103 @@ def test_classify_no_longer_reads_classification_embedded():
     assert "t3" not in relevant_ids
 
 
-def test_classify_sets_unique_items_for_delivery_report():
+def test_classify_sets_unique_items_for_delivery_report(monkeypatch):
+    from unittest.mock import MagicMock
+
+    class _NoDbCtx:
+        def __enter__(self):
+            return MagicMock()
+
+        def __exit__(self, *args):
+            pass
+
+    monkeypatch.setattr(
+        "tenderai_bf.agents.nodes.classify.get_db_context", lambda: _NoDbCtx()
+    )
+
     state = TenderAIState(
         country_id=1,
         country_config=COUNTRY_CONFIG_CLASSIFY,
         company_id=1,
         company_config=COMPANY_CONFIG_CLASSIFY,
         items_parsed=[
-            {"id": "t1", "title": "Acquisition de serveurs et réseau",
-             "description": "Fourniture de serveurs", "category": "IT",
-             "entity": "Ministère", "keywords": []},
+            {
+                "id": "t1",
+                "title": "Acquisition de serveurs et réseau",
+                "description": "Fourniture de serveurs",
+                "category": "IT",
+                "entity": "Ministère",
+                "keywords": [],
+            },
         ],
     )
     result = classify_with_keywords(state)
     assert result.unique_items == result.relevant_items
 
 
-def test_classify_writes_company_notice_status_for_every_item(monkeypatch, tmp_path):
-    import os
-
+def test_classify_writes_company_notice_status_for_every_item(monkeypatch):
     from sqlalchemy import create_engine
     from sqlalchemy.orm import Session
 
     from tenderai_bf.db import Base
-    from tenderai_bf.models import Company, CompanyNoticeStatus, Country, Notice, Run, Source
+    from tenderai_bf.models import (
+        Company,
+        CompanyNoticeStatus,
+        Country,
+        Notice,
+        Run,
+        Source,
+    )
 
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     session = Session(engine)
-    session.add_all([
-        Country(id=1, name="Burkina Faso", code="BF", locale="fr", active=True),
-        Source(id=10, name="DGCMEF", base_url="https://x", list_url="https://x/l",
-               parser_type="html", enabled=True, country_id=1),
-        Company(id=1, name="YULCOM Technologies", slug="yulcom", active=True),
-        Run(id="run-1", status="running", triggered_by="test", country_id=1),
-    ])
-    session.add_all([
-        Notice(id="t1", source_id=10, run_id="run-1", title="Acquisition de serveurs",
-               content_hash="h1", url="https://x/1"),
-        Notice(id="t2", source_id=10, run_id="run-1", title="Construction de routes",
-               content_hash="h2", url="https://x/2"),
-    ])
+    session.add_all(
+        [
+            Country(id=1, name="Burkina Faso", code="BF", locale="fr", active=True),
+            Source(
+                id=10,
+                name="DGCMEF",
+                base_url="https://x",
+                list_url="https://x/l",
+                parser_type="html",
+                enabled=True,
+                country_id=1,
+            ),
+            Company(id=1, name="YULCOM Technologies", slug="yulcom", active=True),
+            Run(id="run-1", status="running", triggered_by="test", country_id=1),
+        ]
+    )
+    session.add_all(
+        [
+            Notice(
+                id="t1",
+                source_id=10,
+                run_id="run-1",
+                title="Acquisition de serveurs",
+                content_hash="h1",
+                url="https://x/1",
+            ),
+            Notice(
+                id="t2",
+                source_id=10,
+                run_id="run-1",
+                title="Construction de routes",
+                content_hash="h2",
+                url="https://x/2",
+            ),
+        ]
+    )
     session.commit()
 
     def _fake_get_db_context():
         class _Ctx:
             def __enter__(self):
                 return session
+
             def __exit__(self, *a):
                 pass
+
         return _Ctx()
 
     monkeypatch.setattr(
@@ -393,12 +441,22 @@ def test_classify_writes_company_notice_status_for_every_item(monkeypatch, tmp_p
         company_id=1,
         company_config=COMPANY_CONFIG_CLASSIFY,
         items_parsed=[
-            {"id": "t1", "title": "Acquisition de serveurs et réseau",
-             "description": "Fourniture de serveurs", "category": "IT",
-             "entity": "Ministère", "keywords": []},
-            {"id": "t2", "title": "Construction de routes rurales",
-             "description": "Travaux BTP", "category": "BTP",
-             "entity": "Mairie", "keywords": []},
+            {
+                "id": "t1",
+                "title": "Acquisition de serveurs et réseau",
+                "description": "Fourniture de serveurs",
+                "category": "IT",
+                "entity": "Ministère",
+                "keywords": [],
+            },
+            {
+                "id": "t2",
+                "title": "Construction de routes rurales",
+                "description": "Travaux BTP",
+                "category": "BTP",
+                "entity": "Mairie",
+                "keywords": [],
+            },
         ],
     )
     classify_with_keywords(state)
