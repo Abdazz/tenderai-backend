@@ -79,18 +79,35 @@ _MOCK_COMPANY_CONFIG = {
 }
 
 
-def test_keyword_classification():
+def test_keyword_classification(monkeypatch):
     """Test keyword-based classification."""
 
     print("=" * 80)
     print("TEST: Classification par mots-clés")
     print("=" * 80)
 
+    # This test uses a hand-rolled MockState rather than TenderAIState/a real
+    # DB, so classify_with_keywords' CompanyNoticeStatus upsert must not hit
+    # the real database configured for this host — stub it out.
+    from unittest.mock import MagicMock
+
+    class _NoDbCtx:
+        def __enter__(self):
+            return MagicMock()
+
+        def __exit__(self, *args):
+            pass
+
+    monkeypatch.setattr(
+        "tenderai_bf.agents.nodes.classify.get_db_context", lambda: _NoDbCtx()
+    )
+
     # Create mock state
     class MockState:
         def __init__(self):
             self.items_parsed = sample_items
             self.relevant_items = []
+            self.unique_items = []
             self.run_id = "test_keywords"
             self.country_id = 0
             self.country_config = _MOCK_COUNTRY_CONFIG
@@ -123,12 +140,27 @@ def test_keyword_classification():
     return result
 
 
-def test_llm_classification():
+def test_llm_classification(monkeypatch):
     """Test LLM-based classification."""
 
     print("\n" + "=" * 80)
     print("TEST: Classification par LLM")
     print("=" * 80)
+
+    # Same rationale as test_keyword_classification: stub the DB context so
+    # the CompanyNoticeStatus upsert doesn't hit the real database.
+    from unittest.mock import MagicMock
+
+    class _NoDbCtx:
+        def __enter__(self):
+            return MagicMock()
+
+        def __exit__(self, *args):
+            pass
+
+    monkeypatch.setattr(
+        "tenderai_bf.agents.nodes.classify.get_db_context", lambda: _NoDbCtx()
+    )
 
     # Create mock state
     class MockState:
@@ -298,3 +330,82 @@ def test_classify_no_longer_reads_classification_embedded():
     result = classify_with_keywords(state)
     relevant_ids = [i["id"] for i in result.relevant_items]
     assert "t3" not in relevant_ids
+
+
+def test_classify_sets_unique_items_for_delivery_report():
+    state = TenderAIState(
+        country_id=1,
+        country_config=COUNTRY_CONFIG_CLASSIFY,
+        company_id=1,
+        company_config=COMPANY_CONFIG_CLASSIFY,
+        items_parsed=[
+            {"id": "t1", "title": "Acquisition de serveurs et réseau",
+             "description": "Fourniture de serveurs", "category": "IT",
+             "entity": "Ministère", "keywords": []},
+        ],
+    )
+    result = classify_with_keywords(state)
+    assert result.unique_items == result.relevant_items
+
+
+def test_classify_writes_company_notice_status_for_every_item(monkeypatch, tmp_path):
+    import os
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    from tenderai_bf.db import Base
+    from tenderai_bf.models import Company, CompanyNoticeStatus, Country, Notice, Run, Source
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session = Session(engine)
+    session.add_all([
+        Country(id=1, name="Burkina Faso", code="BF", locale="fr", active=True),
+        Source(id=10, name="DGCMEF", base_url="https://x", list_url="https://x/l",
+               parser_type="html", enabled=True, country_id=1),
+        Company(id=1, name="YULCOM Technologies", slug="yulcom", active=True),
+        Run(id="run-1", status="running", triggered_by="test", country_id=1),
+    ])
+    session.add_all([
+        Notice(id="t1", source_id=10, run_id="run-1", title="Acquisition de serveurs",
+               content_hash="h1", url="https://x/1"),
+        Notice(id="t2", source_id=10, run_id="run-1", title="Construction de routes",
+               content_hash="h2", url="https://x/2"),
+    ])
+    session.commit()
+
+    def _fake_get_db_context():
+        class _Ctx:
+            def __enter__(self):
+                return session
+            def __exit__(self, *a):
+                pass
+        return _Ctx()
+
+    monkeypatch.setattr(
+        "tenderai_bf.agents.nodes.classify.get_db_context", _fake_get_db_context
+    )
+
+    state = TenderAIState(
+        country_id=1,
+        country_config=COUNTRY_CONFIG_CLASSIFY,
+        company_id=1,
+        company_config=COMPANY_CONFIG_CLASSIFY,
+        items_parsed=[
+            {"id": "t1", "title": "Acquisition de serveurs et réseau",
+             "description": "Fourniture de serveurs", "category": "IT",
+             "entity": "Ministère", "keywords": []},
+            {"id": "t2", "title": "Construction de routes rurales",
+             "description": "Travaux BTP", "category": "BTP",
+             "entity": "Mairie", "keywords": []},
+        ],
+    )
+    classify_with_keywords(state)
+
+    rows = session.query(CompanyNoticeStatus).filter_by(company_id=1).all()
+    assert len(rows) == 2  # every classified item, relevant or not
+    by_notice = {r.notice_id: r for r in rows}
+    assert by_notice["t1"].is_relevant is True
+    assert by_notice["t2"].is_relevant is False
+    assert by_notice["t1"].delivered_at is None

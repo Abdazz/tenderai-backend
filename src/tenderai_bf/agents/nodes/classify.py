@@ -2,14 +2,49 @@
 
 import re
 import time
+import uuid
 from datetime import UTC, datetime
 
+from ...db import get_db_context
 from ...logging import get_logger, log_classification
+from ...models import CompanyNoticeStatus
 from ...utils.llm_utils import get_llm_instance
 from ...utils.node_logger import clear_node_output, log_node_output
 from .._cfg import cfg, company_cfg
 
 logger = get_logger(__name__)
+
+
+def _upsert_company_notice_status(db, company_id: int, item: dict) -> None:
+    """Record this item's classification result for this company.
+
+    Every classified item gets a row (relevant or not) — a row's absence is
+    what select_new_notices treats as "not yet classified", so an item with
+    no row would be reclassified on every future delivery run.
+    """
+    existing = (
+        db.query(CompanyNoticeStatus)
+        .filter(
+            CompanyNoticeStatus.company_id == company_id,
+            CompanyNoticeStatus.notice_id == item["id"],
+        )
+        .first()
+    )
+    if existing:
+        existing.is_relevant = bool(item.get("is_relevant", False))
+        existing.relevance_score = item.get("relevance_score")
+        existing.classification_method = item.get("classification_method")
+    else:
+        db.add(
+            CompanyNoticeStatus(
+                id=str(uuid.uuid4()),
+                company_id=company_id,
+                notice_id=item["id"],
+                is_relevant=bool(item.get("is_relevant", False)),
+                relevance_score=item.get("relevance_score"),
+                classification_method=item.get("classification_method"),
+            )
+        )
 
 _ATTRIBUTION_SIGNALS = [
     # Attribution / marché attribué
@@ -516,6 +551,13 @@ def classify_with_keywords(state) -> dict:
             )
 
         state.relevant_items = relevant_items
+        state.unique_items = relevant_items
+
+        with get_db_context() as _db:
+            for item in state.items_parsed:
+                _upsert_company_notice_status(_db, state.company_id, item)
+            _db.commit()
+
         state.update_stats(
             relevant_items=len(relevant_items),
             classify_time_seconds=time.time() - start_time,
@@ -807,6 +849,13 @@ Répondez UNIQUEMENT par "OUI" ou "NON" suivi d'une explication en une phrase pr
 
         # Set state
         state.relevant_items = relevant_items
+        state.unique_items = relevant_items
+
+        with get_db_context() as _db:
+            for item in state.items_parsed:
+                _upsert_company_notice_status(_db, state.company_id, item)
+            _db.commit()
+
         state.update_stats(
             relevant_items=len(relevant_items),
             classify_time_seconds=time.time() - start_time,
