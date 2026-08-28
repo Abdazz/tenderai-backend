@@ -58,7 +58,7 @@ async def get_recipient(
 async def create_recipient(
     request: RecipientCreate, db: DatabaseSession, user: AuthenticatedUser
 ):
-    from ...models import Recipient
+    from ...models import Company, Recipient
 
     query = db.query(Recipient).filter(Recipient.email == request.email)
     if request.country_id is not None:
@@ -69,6 +69,13 @@ async def create_recipient(
             detail=f"Recipient with email '{request.email}' already exists for this country",
         )
 
+    # Stopgap until the Auth/API plan adds company selection to this
+    # endpoint: attach new recipients to YULCOM so they're actually picked
+    # up by email_report_node's company-scoped query instead of silently
+    # getting company_id=NULL and being excluded from every delivery.
+    yulcom = db.query(Company).filter(Company.slug == "yulcom").first()
+    yulcom_id = yulcom.id if yulcom else None
+
     row = Recipient(
         email=request.email,
         name=request.name,
@@ -76,6 +83,7 @@ async def create_recipient(
         enabled=request.enabled,
         preferences=request.preferences,
         country_id=request.country_id,
+        company_id=yulcom_id,
     )
     db.add(row)
     db.commit()

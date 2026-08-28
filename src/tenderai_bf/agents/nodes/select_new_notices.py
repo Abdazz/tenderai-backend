@@ -1,13 +1,20 @@
-"""Select Notice rows a company hasn't classified yet, for one country.
+"""Select Notice rows a company still needs classified/delivered, for one country.
 
-A CompanyNoticeStatus row's absence is the delivery cursor — a Notice with
-no row for this (company_id, notice_id) pair hasn't been classified/seen by
-this company yet.
+The delivery cursor is NOT simply "does a CompanyNoticeStatus row exist" —
+that row is written at classify time, before summarize/compose_report/
+email_report run, so a mid-pipeline failure (MinIO down, SMTP misconfigured,
+no recipients) would otherwise strand the notice with a row but no actual
+delivery, and it would never be re-offered. A notice is excluded only when
+it was judged not relevant (is_relevant=False, regardless of delivered_at),
+or it was judged relevant AND already delivered (is_relevant=True and
+delivered_at IS NOT NULL). Everything else — no row at all, or a row with
+is_relevant=True and delivered_at IS NULL (classified but never
+successfully delivered) — is returned again.
 """
 
 import time
 
-from sqlalchemy import and_, not_, select
+from sqlalchemy import and_, not_, or_, select
 
 from ...db import get_db_context
 from ...logging import get_logger
@@ -60,8 +67,19 @@ def select_new_notices_node(state) -> dict:
 
     try:
         with get_db_context() as db:
-            already_classified = select(CompanyNoticeStatus.notice_id).where(
-                CompanyNoticeStatus.company_id == state.company_id
+            # A notice is excluded only if it was rejected (is_relevant=False,
+            # regardless of delivered_at) or it was judged relevant and has
+            # already been successfully delivered. A relevant-but-undelivered
+            # row (delivered_at IS NULL) is NOT excluded — it's retried.
+            excluded_notice_ids = select(CompanyNoticeStatus.notice_id).where(
+                CompanyNoticeStatus.company_id == state.company_id,
+                or_(
+                    CompanyNoticeStatus.is_relevant.is_(False),
+                    and_(
+                        CompanyNoticeStatus.is_relevant.is_(True),
+                        CompanyNoticeStatus.delivered_at.isnot(None),
+                    ),
+                ),
             )
             notices = (
                 db.query(Notice)
@@ -69,7 +87,7 @@ def select_new_notices_node(state) -> dict:
                 .filter(
                     and_(
                         Source.country_id == state.country_id,
-                        not_(Notice.id.in_(already_classified)),
+                        not_(Notice.id.in_(excluded_notice_ids)),
                     )
                 )
                 .all()

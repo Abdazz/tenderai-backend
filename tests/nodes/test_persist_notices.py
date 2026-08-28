@@ -85,6 +85,10 @@ def test_persist_notices_resolves_by_source_name(db_session):
     assert notices[0].title == "Acquisition de serveurs"
     assert notices[0].is_relevant is False  # column default — harvest never sets this
     assert notices[0].relevance_score is None
+    # RunStatistics must actually define these fields, or update_stats()
+    # silently drops them (it only assigns attributes that already exist).
+    assert result.stats.notices_persisted == 1
+    assert result.stats.persist_time_seconds >= 0
 
 
 def test_persist_notices_resolves_by_source_tag_substring(db_session):

@@ -16,7 +16,7 @@ from ..company_store import CompanyStore
 from ..country_store import CountryStore
 from ..db import get_db_context
 from ..logging import get_logger, log_run_complete, log_run_error, log_run_start
-from ..models import Company, Country as CountryModel, Run
+from ..models import Company, Country as CountryModel, Run, Source
 from .graph import TenderAIGraph, TenderAIState, _route_after_step, error_handler
 from .nodes.classify import classify_node
 from .nodes.compose_report import compose_report_node
@@ -122,6 +122,41 @@ class DeliveryGraph:
                 state.company_config = CompanyStore.get_all_with_fallback(
                     _db, company_id
                 )
+
+                # compose_report_node/docx_report.py read state.sources to render
+                # the "sources consultées" section — without this it always
+                # shows 0, since the delivery graph has no load_sources step of
+                # its own. Shape matches load_sources_node's dicts exactly.
+                db_sources = (
+                    _db.query(Source)
+                    .filter(
+                        Source.country_id == country_id,
+                        Source.enabled.is_(True),
+                    )
+                    .all()
+                )
+                state.sources = [
+                    {
+                        "id": db_source.id,
+                        "name": db_source.name,
+                        "base_url": db_source.base_url,
+                        "list_url": db_source.list_url,
+                        "parser_type": db_source.parser_type,
+                        "rate_limit": db_source.rate_limit,
+                        "patterns": db_source.patterns or {},
+                        "last_seen_at": db_source.last_seen_at.isoformat()
+                        if db_source.last_seen_at
+                        else None,
+                        "last_success_at": db_source.last_success_at.isoformat()
+                        if db_source.last_success_at
+                        else None,
+                        "last_error_at": db_source.last_error_at.isoformat()
+                        if db_source.last_error_at
+                        else None,
+                        "last_error_message": db_source.last_error_message,
+                    }
+                    for db_source in db_sources
+                ]
         except Exception as _e:
             state.add_error("delivery", f"Failed to load country/company config: {_e}")
             state.error_occurred = True
@@ -131,7 +166,7 @@ class DeliveryGraph:
             run_id,
             triggered_by=triggered_by,
             triggered_by_user=triggered_by_user,
-            sources_count=0,
+            sources_count=len(state.sources),
         )
 
         state.test_mode = test_mode

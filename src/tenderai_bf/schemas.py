@@ -319,6 +319,7 @@ class RunStatistics(BaseModel):
     reports_generated: int = 0
     emails_sent: int = 0
     errors_count: int = 0
+    notices_persisted: int = 0
 
     # Performance metrics
     fetch_time_seconds: float = 0
@@ -328,6 +329,7 @@ class RunStatistics(BaseModel):
     report_time_seconds: float = 0
     email_time_seconds: float = 0
     total_time_seconds: float = 0
+    persist_time_seconds: float = 0
 
 
 class HealthCheck(BaseModel):

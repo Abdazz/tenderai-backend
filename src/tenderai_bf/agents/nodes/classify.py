@@ -561,6 +561,7 @@ def classify_with_keywords(state) -> dict:
 
         state.update_stats(
             relevant_items=len(relevant_items),
+            unique_items=len(relevant_items),
             classify_time_seconds=time.time() - start_time,
         )
 
@@ -865,6 +866,7 @@ Répondez UNIQUEMENT par "OUI" ou "NON" suivi d'une explication en une phrase pr
 
         state.update_stats(
             relevant_items=len(relevant_items),
+            unique_items=len(relevant_items),
             classify_time_seconds=time.time() - start_time,
         )
 

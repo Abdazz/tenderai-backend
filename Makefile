@@ -78,11 +78,11 @@ reset-db: ## Reset database (WARNING: destroys data)
 	sleep 5
 	$(MAKE) migrate
 
-run-once: ## Execute pipeline once
-	poetry run python -m tenderai_bf.cli run-once
+run-once: ## Execute pipeline once (defaults to BF/yulcom for local dev)
+	poetry run python -m tenderai_bf.cli run-once --country-code BF --company-code yulcom
 
-run-once-docker: ## Execute pipeline once using docker
-	docker-compose exec api python -m tenderai_bf.cli run-once
+run-once-docker: ## Execute pipeline once using docker (defaults to BF/yulcom for local dev)
+	docker-compose exec api python -m tenderai_bf.cli run-once --country-code BF --company-code yulcom
 
 build-report: ## Generate report only
 	poetry run python -m tenderai_bf.cli build-report
