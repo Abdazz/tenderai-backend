@@ -109,3 +109,6 @@ models/
 # Temporary OCR files
 ocr-temp/
 *.pdf.tmp
+
+# Local test sqlite DB (tests/conftest.py's DATABASE_URL override)
+test.db

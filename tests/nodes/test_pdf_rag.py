@@ -9,6 +9,7 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 
+import pytest
 import requests
 
 from tenderai_bf.agents.nodes.parse_pdf_rag import (
@@ -109,6 +110,7 @@ def download_pdf(url: str) -> str:
         raise
 
 
+@pytest.mark.slow
 def test_extract_text():
     """Test text extraction from real DGCMEF PDF."""
 
@@ -148,6 +150,7 @@ def test_extract_text():
         Path(pdf_path).unlink(missing_ok=True)
 
 
+@pytest.mark.slow
 def test_chunk_splitting():
     """Test text chunking with RecursiveCharacterTextSplitter on real PDF."""
 
@@ -190,6 +193,7 @@ def test_chunk_splitting():
         Path(pdf_path).unlink(missing_ok=True)
 
 
+@pytest.mark.slow
 def test_full_rag_extraction():
     """Test complete RAG-based extraction pipeline on real DGCMEF PDF."""
 
@@ -251,6 +255,7 @@ def test_full_rag_extraction():
         Path(pdf_path).unlink(missing_ok=True)
 
 
+@pytest.mark.slow
 def test_direct_extraction():
     """Test direct extraction (no RAG, full text to LLM) on real PDF."""
 

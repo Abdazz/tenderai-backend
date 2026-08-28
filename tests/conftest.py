@@ -10,7 +10,13 @@ import pytest
 # supply non-trivial values up-front. These are only used in tests and never
 # reach a real environment.
 os.environ.setdefault("TENDERAI_ENVIRONMENT", "test")
-os.environ.setdefault("TENDERAI_DATABASE_URL", "sqlite:///test.db")
+# DatabaseSettings has env_prefix="DATABASE_" (not "TENDERAI_") — the bare
+# DATABASE_URL is what pydantic-settings actually reads. A stale
+# TENDERAI_DATABASE_URL here silently did nothing: locally it fell through
+# to DatabaseSettings' real-Postgres default and happened to find one
+# running for an unrelated project, masking the bug; in a clean CI runner
+# with no Postgres at all it fails outright with "Connection refused".
+os.environ.setdefault("DATABASE_URL", "sqlite:///test.db")
 os.environ.setdefault("TENDERAI_DEBUG", "true")
 # RAGChromaSettings.persist_directory defaults to "/app/data/chroma_db" —
 # a path only valid inside the Docker container (backed by a named volume
@@ -22,7 +28,7 @@ os.environ.setdefault("TENDERAI_DEBUG", "true")
 # has no env_prefix, so it reads the bare PERSIST_DIRECTORY env var. Tests
 # run on the bare host, where /app doesn't exist and can't be created
 # (PermissionError at the filesystem root), so override it the same way
-# TENDERAI_DATABASE_URL is overridden to sqlite above.
+# DATABASE_URL is overridden to sqlite above.
 os.environ.setdefault("PERSIST_DIRECTORY", "/tmp/tenderai_test_chroma_db")  # noqa: S108 — intentional test-only tmp path
 os.environ.setdefault(
     "TENDERAI_JWT_SECRET",

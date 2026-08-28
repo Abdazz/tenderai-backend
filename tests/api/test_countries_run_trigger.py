@@ -1,5 +1,6 @@
 import os
 import uuid
+from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
 os.environ.setdefault(
@@ -73,15 +74,31 @@ def admin_token(client, db_session):
     return resp.json()["access_token"]
 
 
+@patch("tenderai_bf.db.get_db_context")
 @patch("tenderai_bf.agents.get_delivery_pipeline")
 @patch("tenderai_bf.agents.get_pipeline")
 def test_trigger_run_calls_both_harvest_and_delivery(
-    mock_get_pipeline, mock_get_delivery_pipeline, client, admin_token, db_session
+    mock_get_pipeline,
+    mock_get_delivery_pipeline,
+    mock_get_db_context,
+    client,
+    admin_token,
+    db_session,
 ):
     country = Country(id=1, name="Burkina Faso", code="BF", locale="fr", active=True)
     company = Company(id=1, name="YULCOM Technologies", slug="yulcom", active=True)
     db_session.add_all([country, company])
     db_session.commit()
+
+    # countries.py's background _run() does `from ...db import get_db_context`
+    # freshly on every call and looks up the YULCOM company through it — a
+    # completely separate connection from this test's own in-memory
+    # db_session/FastAPI override unless patched to yield the same session.
+    @contextmanager
+    def _shared_db_context():
+        yield db_session
+
+    mock_get_db_context.side_effect = _shared_db_context
 
     mock_harvest_pipeline = MagicMock()
     mock_harvest_pipeline.run.return_value = MagicMock(error_occurred=False)
