@@ -9,7 +9,7 @@ os.environ.setdefault(
 )
 os.environ.setdefault("TENDERAI_ADMIN_PASSWORD", "test-admin-password-not-real")
 
-from tenderai_bf.db import Base
+from tenderai_bf.db import Base  # noqa: E402 — must follow the env var setup above
 
 
 @pytest.fixture

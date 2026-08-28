@@ -23,7 +23,7 @@ os.environ.setdefault("TENDERAI_DEBUG", "true")
 # run on the bare host, where /app doesn't exist and can't be created
 # (PermissionError at the filesystem root), so override it the same way
 # TENDERAI_DATABASE_URL is overridden to sqlite above.
-os.environ.setdefault("PERSIST_DIRECTORY", "/tmp/tenderai_test_chroma_db")
+os.environ.setdefault("PERSIST_DIRECTORY", "/tmp/tenderai_test_chroma_db")  # noqa: S108 — intentional test-only tmp path
 os.environ.setdefault(
     "TENDERAI_JWT_SECRET",
     "test-jwt-secret-not-used-for-real-auth-only-pytest-xxxxxxxx",
