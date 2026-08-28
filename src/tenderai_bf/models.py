@@ -472,9 +472,13 @@ class CompanySettings(Base):
 class CompanyNoticeStatus(Base):
     """Per-company classification result for a shared Notice.
 
-    A notice with no row here for a given company hasn't been classified/
-    seen by that company yet — this absence is the delivery cursor consumed
-    by the delivery pipeline. Unique on (company_id, notice_id).
+    The delivery cursor (agents/nodes/select_new_notices.py): a notice with
+    no row here hasn't been classified by this company yet — deliver it. A
+    row with is_relevant=False is a rejected notice — never deliver it. A
+    row with is_relevant=True is a relevant notice; if delivered_at is still
+    NULL it was never successfully delivered (a prior run failed after
+    classify but before email) — retry it. Once delivered_at is set, it's
+    done for good. Unique on (company_id, notice_id).
     """
 
     __tablename__ = "company_notice_status"
