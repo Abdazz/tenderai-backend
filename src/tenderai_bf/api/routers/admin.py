@@ -75,6 +75,7 @@ def _build_token(user: User) -> LoginResponse:
             "email": user.email,
             "role": user.role,
             "country_id": user.country_id,
+            "company_id": user.company_id,
             "password_reset_required": user.password_reset_required,
         }
     )
@@ -129,7 +130,7 @@ async def get_current_user_info(user: AuthenticatedUser):
     return UserResponse(
         username=user["username"],
         email=user.get("email"),
-        role=user.get("role", "viewer"),
+        role=user.get("role", "company_viewer"),
         is_active=True,
         password_reset_required=user.get("password_reset_required", False),
     )

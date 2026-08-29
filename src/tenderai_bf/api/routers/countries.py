@@ -113,8 +113,8 @@ async def update_section(
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST, detail=f"Unknown section: {section}"
         )
-    # Only admin or super_admin may write settings
-    if user.get("role") not in ("super_admin", "admin"):
+    # Only company_admin or super_admin may write settings
+    if user.get("role") not in ("super_admin", "company_admin"):
         raise HTTPException(
             status.HTTP_403_FORBIDDEN, detail="Admin role required to update settings"
         )
@@ -154,8 +154,8 @@ async def trigger_run(
     user: AuthenticatedUser,
     background_tasks: BackgroundTasks,
 ):
-    # Only admin or super_admin may trigger pipeline runs
-    if user.get("role") not in ("super_admin", "admin"):
+    # Only company_admin or super_admin may trigger pipeline runs
+    if user.get("role") not in ("super_admin", "company_admin"):
         raise HTTPException(
             status.HTTP_403_FORBIDDEN, detail="Admin role required to trigger runs"
         )

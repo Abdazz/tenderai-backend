@@ -50,8 +50,9 @@ async def get_current_user(
         return {
             "username": username,
             "email": payload.get("email"),
-            "role": payload.get("role", "viewer"),
+            "role": payload.get("role", "company_viewer"),
             "country_id": payload.get("country_id"),
+            "company_id": payload.get("company_id"),
             "password_reset_required": payload.get("password_reset_required", False),
         }
 
@@ -76,11 +77,11 @@ async def require_auth(
 
 
 async def require_admin(current_user: Annotated[dict, Depends(require_auth)]) -> dict:
-    """Require admin role. Raises 403 if authenticated but not admin."""
-    if current_user.get("role") != "admin":
+    """Require company_admin role. Raises 403 if authenticated but not company_admin."""
+    if current_user.get("role") != "company_admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required",
+            detail="Company admin access required",
         )
     return current_user
 
@@ -93,6 +94,25 @@ async def require_super_admin(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Super-admin access required",
+        )
+    return current_user
+
+
+async def require_company_scope(
+    current_user: Annotated[dict, Depends(require_auth)],
+    company_id: int | None = None,
+) -> dict:
+    """Enforce company scoping: super_admin may access any company_id (including
+    None); company_admin/company_viewer may only access their own company_id.
+    Raises 403 (not 404) on a mismatch, so a non-super_admin caller cannot
+    distinguish "wrong company" from "company doesn't exist" via status code.
+    """
+    if current_user.get("role") == "super_admin":
+        return current_user
+    if current_user.get("company_id") != company_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied for this company",
         )
     return current_user
 
@@ -131,3 +151,4 @@ CurrentUser = Annotated[dict | None, Depends(get_current_user)]
 AuthenticatedUser = Annotated[dict, Depends(require_auth)]
 AdminUser = Annotated[dict, Depends(require_admin)]
 SuperAdminUser = Annotated[dict, Depends(require_super_admin)]
+CompanyScopedUser = Annotated[dict, Depends(require_company_scope)]

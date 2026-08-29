@@ -17,13 +17,13 @@ router = APIRouter()
 
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
 
-VALID_ROLES = ("super_admin", "admin", "viewer")
+VALID_ROLES = ("super_admin", "company_admin", "company_viewer")
 
 
 class UserCreateRequest(BaseModel):
     username: str
     email: EmailStr
-    role: str  # "super_admin" | "admin" | "viewer"
+    role: str  # "super_admin" | "company_admin" | "company_viewer"
     country_id: int | None = None
 
 
