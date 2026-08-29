@@ -9,7 +9,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: ghcr.io/abdazz/tenderai-bf
+  IMAGE_PREFIX: ghcr.io/abdazz/tenderai
 
 jobs:
   lint-test:
