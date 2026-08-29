@@ -459,7 +459,7 @@ def create_admin(
                     text(
                         "INSERT INTO users (id, username, email, hashed_password, role, "
                         "is_active, password_reset_required) "
-                        "VALUES (:id, :username, :email, :pwd, 'admin', true, false)"
+                        "VALUES (:id, :username, :email, :pwd, 'super_admin', true, false)"
                     ),
                     {
                         "id": str(uuid.uuid4()),
