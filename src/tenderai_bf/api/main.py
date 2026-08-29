@@ -10,7 +10,17 @@ from fastapi.responses import JSONResponse
 
 from ..config import settings
 from ..logging import get_logger
-from .routers import admin, countries, health, recipients, reports, runs, sources, users
+from .routers import (
+    admin,
+    companies,
+    countries,
+    health,
+    recipients,
+    reports,
+    runs,
+    sources,
+    users,
+)
 
 logger = get_logger(__name__)
 
@@ -144,6 +154,9 @@ app.include_router(users.router, prefix="/api/v1/users", tags=["Users"])
 app.include_router(recipients.router, prefix="/api/v1/recipients", tags=["Recipients"])
 app.include_router(
     countries.router, prefix="/api/v1/admin/countries", tags=["Countries"]
+)
+app.include_router(
+    companies.router, prefix="/api/v1/admin/companies", tags=["Companies"]
 )
 
 
