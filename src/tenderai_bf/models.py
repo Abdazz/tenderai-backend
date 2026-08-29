@@ -306,8 +306,8 @@ class User(Base):
     email = Column(String(255), nullable=False, unique=True, index=True)
     hashed_password = Column(String(255), nullable=False)
     role = Column(
-        String(15), nullable=False, default="viewer"
-    )  # super_admin | admin | viewer
+        String(15), nullable=False, default="company_viewer"
+    )  # super_admin | company_admin | company_viewer
     is_active = Column(Boolean, nullable=False, default=True)
     password_reset_required = Column(Boolean, nullable=False, default=True)
     country_id = Column(Integer, ForeignKey("countries.id"), nullable=True, index=True)

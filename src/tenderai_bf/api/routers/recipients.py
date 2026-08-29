@@ -23,12 +23,15 @@ async def list_recipients(
     user: AuthenticatedUser,
     country_id: int | None = None,
     enabled_only: bool = False,
+    company_id: int | None = None,
 ):
     from ...models import Recipient
 
     query = db.query(Recipient)
     if user.get("role") != "super_admin":
         query = query.filter(Recipient.company_id == user.get("company_id"))
+    elif company_id is not None:
+        query = query.filter(Recipient.company_id == company_id)
     if country_id is not None:
         query = query.filter(Recipient.country_id == country_id)
     if enabled_only:
@@ -53,6 +56,11 @@ async def get_recipient(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Recipient {recipient_id} not found",
         )
+    if user.get("role") != "super_admin" and row.company_id != user.get("company_id"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied for this company",
+        )
     return RecipientSchema.from_orm(row)
 
 
@@ -62,7 +70,24 @@ async def create_recipient(
 ):
     from ...models import Recipient
 
-    query = db.query(Recipient).filter(Recipient.email == request.email)
+    # Non-super_admin cannot create a recipient for a company other than their own
+    if (
+        user.get("role") != "super_admin"
+        and request.company_id is not None
+        and request.company_id != user.get("company_id")
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot create a recipient for another company",
+        )
+
+    from ..dependencies import resolve_delivery_company_id
+
+    target_company_id = resolve_delivery_company_id(user, request.company_id, db)
+
+    query = db.query(Recipient).filter(
+        Recipient.email == request.email, Recipient.company_id == target_company_id
+    )
     if request.country_id is not None:
         query = query.filter(Recipient.country_id == request.country_id)
     if query.first():
@@ -71,8 +96,6 @@ async def create_recipient(
             detail=f"Recipient with email '{request.email}' already exists for this country",
         )
 
-    from ..dependencies import resolve_delivery_company_id
-
     row = Recipient(
         email=request.email,
         name=request.name,
@@ -80,7 +103,7 @@ async def create_recipient(
         enabled=request.enabled,
         preferences=request.preferences,
         country_id=request.country_id,
-        company_id=resolve_delivery_company_id(user, None, db),
+        company_id=target_company_id,
     )
     db.add(row)
     db.commit()
@@ -104,11 +127,22 @@ async def update_recipient(
 ):
     from ...models import Recipient
 
+    if user.get("role") == "company_viewer":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Company viewer role cannot modify recipients",
+        )
+
     row = db.query(Recipient).filter(Recipient.id == recipient_id).first()
     if not row:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Recipient {recipient_id} not found",
+        )
+    if user.get("role") != "super_admin" and row.company_id != user.get("company_id"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied for this company",
         )
 
     for field, value in request.model_dump(exclude_unset=True).items():
@@ -129,11 +163,22 @@ async def delete_recipient(
 ):
     from ...models import Recipient
 
+    if user.get("role") == "company_viewer":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Company viewer role cannot delete recipients",
+        )
+
     row = db.query(Recipient).filter(Recipient.id == recipient_id).first()
     if not row:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Recipient {recipient_id} not found",
+        )
+    if user.get("role") != "super_admin" and row.company_id != user.get("company_id"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied for this company",
         )
 
     db.delete(row)

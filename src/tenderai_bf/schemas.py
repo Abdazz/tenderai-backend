@@ -260,6 +260,12 @@ class RecipientCreate(RecipientBase):
     """Schema for creating a new Recipient."""
 
     country_id: int | None = None
+    company_id: int | None = Field(
+        default=None,
+        description="Company to create the recipient for (super_admin only; "
+        "company_admin/company_viewer always create for their own company; "
+        "defaults to YULCOM for super_admin if omitted)",
+    )
 
 
 class RecipientUpdate(BaseModel):

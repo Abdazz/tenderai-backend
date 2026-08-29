@@ -245,7 +245,7 @@ async def get_run_status(run_id: str, db: DatabaseSession):
 @router.get("", response_model=RunListResponse)
 async def list_runs(
     db: DatabaseSession,
-    current_user: CurrentUser,
+    current_user: AuthenticatedUser,
     page: int = 1,
     page_size: int = 20,
     status_filter: str | None = None,
@@ -258,7 +258,7 @@ async def list_runs(
     # Build query
     query = db.query(Run)
 
-    if current_user and current_user.get("role") != "super_admin":
+    if current_user.get("role") != "super_admin":
         query = query.filter(
             Run.run_type == "delivery", Run.company_id == current_user.get("company_id")
         )
@@ -379,6 +379,15 @@ async def delete_run(run_id: str, db: DatabaseSession, user: AuthenticatedUser):
     if not run:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Run {run_id} not found"
+        )
+
+    is_own_company_admin = user.get(
+        "role"
+    ) == "company_admin" and run.company_id == user.get("company_id")
+    if user.get("role") != "super_admin" and not is_own_company_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied for this run",
         )
 
     db.delete(run)

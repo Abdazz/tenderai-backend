@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 from ...config import settings
 from ...logging import get_logger
-from ..dependencies import CurrentUser, DatabaseSession
+from ..dependencies import AuthenticatedUser, DatabaseSession
 
 logger = get_logger(__name__)
 
@@ -31,14 +31,16 @@ class ReportListResponse(BaseModel):
 
 
 @router.get("", response_model=ReportListResponse)
-async def list_reports(db: DatabaseSession, current_user: CurrentUser, limit: int = 50):
+async def list_reports(
+    db: DatabaseSession, current_user: AuthenticatedUser, limit: int = 50
+):
     """List all available reports."""
 
     from ...models import Run
 
     # Query runs with reports
     query = db.query(Run).filter(Run.report_url.isnot(None))
-    if current_user and current_user.get("role") != "super_admin":
+    if current_user.get("role") != "super_admin":
         query = query.filter(
             Run.run_type == "delivery", Run.company_id == current_user.get("company_id")
         )

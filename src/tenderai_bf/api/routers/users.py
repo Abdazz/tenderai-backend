@@ -165,6 +165,19 @@ async def update_user(
     if request.is_active is not None:
         user.is_active = request.is_active
 
+    # Re-validate the resulting role/company_id/country_id pairing — mirrors
+    # the invariant create_user enforces, so a PATCH can't produce an
+    # orphaned company_admin/company_viewer (no company_id) or leave a
+    # promoted super_admin with a stale company_id/country_id.
+    if user.role in ("company_admin", "company_viewer") and not user.company_id:
+        raise HTTPException(
+            status_code=400,
+            detail="company_id is required for company_admin and company_viewer roles",
+        )
+    if user.role == "super_admin":
+        user.company_id = None
+        user.country_id = None
+
     db.commit()
     db.refresh(user)
     logger.info("User updated", user_id=user_id, updated_by=current_user["username"])
