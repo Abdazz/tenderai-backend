@@ -14,7 +14,7 @@ from sqlalchemy.pool import StaticPool
 from tenderai_bf.api.dependencies import get_password_hash
 from tenderai_bf.api.main import app
 from tenderai_bf.db import get_db
-from tenderai_bf.models import Base, Company, Country, Recipient, User
+from tenderai_bf.models import Base, Company, CompanySettings, Country, Recipient, User
 
 
 @pytest.fixture(scope="function")
@@ -116,6 +116,22 @@ def two_isolated_companies(client, db_session):
             ),
         ]
     )
+    db_session.add_all(
+        [
+            CompanySettings(
+                company_id=yulcom.id,
+                section="classification",
+                data={"relevant_keywords": {"construction": ["BTP", "travaux"]}},
+                updated_by="test-seed",
+            ),
+            CompanySettings(
+                company_id=test_co.id,
+                section="classification",
+                data={"relevant_keywords": {"informatique": ["logiciel", "reseau"]}},
+                updated_by="test-seed",
+            ),
+        ]
+    )
     db_session.commit()
 
     root_token = _login(client, "root", "rootpass123")
@@ -185,3 +201,32 @@ def test_super_admin_sees_all_recipients_unfiltered(client, two_isolated_compani
     assert resp.status_code == 200
     emails = {r["email"] for r in resp.json()["recipients"]}
     assert emails == {"yulcom-recipient@test.com", "testco-recipient@test.com"}
+
+
+def test_company_admin_sees_only_own_settings_values(client, two_isolated_companies):
+    """Proves company-specific settings *values* never cross company lines —
+    not just that the authorization gate returns 403 for the wrong company
+    (that's covered separately in test_companies_endpoints.py), but that each
+    company_admin, reading their own company's settings, gets back their own
+    company's data and never the other company's."""
+    yulcom_resp = client.get(
+        f"/api/v1/admin/companies/{two_isolated_companies['yulcom'].id}/settings/classification",
+        headers={"Authorization": f"Bearer {two_isolated_companies['yulcom_token']}"},
+    )
+    assert yulcom_resp.status_code == 200
+    assert yulcom_resp.json() == {
+        "relevant_keywords": {"construction": ["BTP", "travaux"]}
+    }
+
+    testco_resp = client.get(
+        f"/api/v1/admin/companies/{two_isolated_companies['test_co'].id}/settings/classification",
+        headers={"Authorization": f"Bearer {two_isolated_companies['testco_token']}"},
+    )
+    assert testco_resp.status_code == 200
+    assert testco_resp.json() == {
+        "relevant_keywords": {"informatique": ["logiciel", "reseau"]}
+    }
+
+    # The two companies' settings values are genuinely distinct, not
+    # accidentally identical (which would let a copy-paste bug hide here).
+    assert yulcom_resp.json() != testco_resp.json()
