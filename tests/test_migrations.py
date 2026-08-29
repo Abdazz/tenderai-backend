@@ -14,8 +14,8 @@ def test_role_rename_migration_logic():
     migrations use op.execute with Postgres-flavored SQL elsewhere)."""
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
-    session = Session()
+    session_factory = sessionmaker(bind=engine)
+    session = session_factory()
 
     admin_user = User(
         id=str(uuid.uuid4()),
