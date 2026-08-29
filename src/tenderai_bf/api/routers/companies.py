@@ -1,6 +1,6 @@
 """CRUD endpoints for companies, their country subscriptions, and per-company settings."""
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 
 from ...company_store import MUTABLE_SECTIONS, CompanyStore
@@ -235,13 +235,13 @@ async def trigger_company_delivery(
     company_id: int,
     db: DatabaseSession,
     user: CompanyScopedUser,
+    background_tasks: BackgroundTasks,
 ):
     if user.get("role") not in ("super_admin", "company_admin"):
         raise HTTPException(
             status.HTTP_403_FORBIDDEN, detail="Company admin role required"
         )
     company = _get_company_or_404(company_id, db)
-    from ...agents import get_delivery_pipeline
 
     subscriptions = (
         db.query(CompanyCountrySubscription)
@@ -251,13 +251,21 @@ async def trigger_company_delivery(
         )
         .all()
     )
-    for sub in subscriptions:
-        get_delivery_pipeline().run(
-            company_id=company_id,
-            country_id=sub.country_id,
-            triggered_by="api",
-            triggered_by_user=user["username"],
-        )
+    country_ids = [sub.country_id for sub in subscriptions]
+    triggered_by_user = user["username"]
+
+    def _run():
+        from ...agents import get_delivery_pipeline
+
+        for country_id in country_ids:
+            get_delivery_pipeline().run(
+                company_id=company_id,
+                country_id=country_id,
+                triggered_by="api",
+                triggered_by_user=triggered_by_user,
+            )
+
+    background_tasks.add_task(_run)
     return {
         "status": "accepted",
         "company_id": company_id,

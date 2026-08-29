@@ -1,5 +1,6 @@
 """Tests for the companies CRUD/subscriptions/settings router."""
 import uuid
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -10,7 +11,13 @@ from sqlalchemy.pool import StaticPool
 from tenderai_bf.api.dependencies import get_password_hash
 from tenderai_bf.api.main import app
 from tenderai_bf.db import get_db
-from tenderai_bf.models import Base, Company, Country, User
+from tenderai_bf.models import (
+    Base,
+    Company,
+    CompanyCountrySubscription,
+    Country,
+    User,
+)
 
 
 @pytest.fixture(scope="function")
@@ -205,3 +212,77 @@ def test_delete_company_is_soft_delete(client, db_session, super_admin_token):
     row = db_session.query(CompanyModel).filter(CompanyModel.id == company_id).first()
     assert row is not None  # not actually deleted
     assert row.active is False
+
+
+@patch("tenderai_bf.agents.get_delivery_pipeline")
+def test_company_admin_can_trigger_run_for_own_company(
+    mock_get_delivery_pipeline, client, db_session
+):
+    yulcom = Company(name="YULCOM Technologies", slug="yulcom", active=True)
+    country = Country(name="Burkina Faso", code="BF", locale="fr")
+    db_session.add_all([yulcom, country])
+    db_session.commit()
+
+    sub = CompanyCountrySubscription(
+        company_id=yulcom.id, country_id=country.id, enabled=True
+    )
+    db_session.add(sub)
+    db_session.commit()
+
+    company_admin = User(
+        id=str(uuid.uuid4()),
+        username="yulcom_admin",
+        email="yulcom_admin@test.com",
+        hashed_password=get_password_hash("pass12345"),
+        role="company_admin",
+        company_id=yulcom.id,
+        is_active=True,
+        password_reset_required=False,
+    )
+    db_session.add(company_admin)
+    db_session.commit()
+
+    token = _login(client, "yulcom_admin", "pass12345")
+
+    mock_delivery_pipeline = MagicMock()
+    mock_get_delivery_pipeline.return_value = mock_delivery_pipeline
+
+    resp = client.post(
+        f"/api/v1/admin/companies/{yulcom.id}/run",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 202
+
+    assert mock_delivery_pipeline.run.called
+    call_kwargs = mock_delivery_pipeline.run.call_args.kwargs
+    assert call_kwargs["company_id"] == yulcom.id
+    assert call_kwargs["country_id"] == country.id
+    assert call_kwargs["triggered_by_user"] == "yulcom_admin"
+
+
+def test_company_viewer_cannot_update_settings(client, db_session):
+    yulcom = Company(name="YULCOM Technologies", slug="yulcom", active=True)
+    db_session.add(yulcom)
+    db_session.commit()
+
+    viewer = User(
+        id=str(uuid.uuid4()),
+        username="yulcom_viewer",
+        email="yulcom_viewer@test.com",
+        hashed_password=get_password_hash("pass12345"),
+        role="company_viewer",
+        company_id=yulcom.id,
+        is_active=True,
+        password_reset_required=False,
+    )
+    db_session.add(viewer)
+    db_session.commit()
+
+    token = _login(client, "yulcom_viewer", "pass12345")
+
+    resp = client.put(
+        f"/api/v1/admin/companies/{yulcom.id}/settings/email",
+        json={},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 403
