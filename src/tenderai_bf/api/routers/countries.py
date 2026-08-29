@@ -172,7 +172,8 @@ async def trigger_run(
         and company_id != user.get("company_id")
     ):
         raise HTTPException(
-            status.HTTP_403_FORBIDDEN, detail="Cannot trigger delivery for another company"
+            status.HTTP_403_FORBIDDEN,
+            detail="Cannot trigger delivery for another company",
         )
     _get_country_or_404(country_id, db)
     from ...agents import get_delivery_pipeline, get_pipeline
@@ -201,4 +202,8 @@ async def trigger_run(
             )
 
     background_tasks.add_task(_run)
-    return {"status": "accepted", "country_id": country_id, "company_id": target_company_id}
+    return {
+        "status": "accepted",
+        "country_id": country_id,
+        "company_id": target_company_id,
+    }

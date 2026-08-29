@@ -42,8 +42,12 @@ def test_role_rename_migration_logic():
     session.commit()
 
     # Same UPDATE statements migration 0014 runs against Postgres.
-    session.execute(text("UPDATE users SET role = 'company_admin' WHERE role = 'admin'"))
-    session.execute(text("UPDATE users SET role = 'company_viewer' WHERE role = 'viewer'"))
+    session.execute(
+        text("UPDATE users SET role = 'company_admin' WHERE role = 'admin'")
+    )
+    session.execute(
+        text("UPDATE users SET role = 'company_viewer' WHERE role = 'viewer'")
+    )
     session.commit()
 
     session.refresh(admin_user)
