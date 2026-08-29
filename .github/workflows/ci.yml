@@ -16,6 +16,14 @@ jobs:
     name: Lint & Test
     runs-on: ubuntu-latest
     steps:
+      - name: Free up runner disk space
+        run: |
+          # ubuntu-latest ships several GB of toolchains this project never
+          # uses (dotnet, Android SDK, GHC, etc.) — the "full" extras install
+          # (playwright, spacy, crawl4ai, onnxruntime) needs the room.
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+          docker system prune -af --volumes || true
+          df -h /
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
