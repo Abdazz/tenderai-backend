@@ -112,3 +112,6 @@ ocr-temp/
 
 # Local test sqlite DB (tests/conftest.py's DATABASE_URL override)
 test.db
+
+# Git worktrees (superpowers:using-git-worktrees)
+.worktrees/
