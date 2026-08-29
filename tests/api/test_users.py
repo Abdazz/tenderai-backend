@@ -112,7 +112,7 @@ def test_create_user_sends_email(mock_email, client, admin_token, db_session):
         json={
             "username": "newuser",
             "email": "new@test.com",
-            "role": "viewer",
+            "role": "company_viewer",
             "country_id": country.id,
         },
         headers={"Authorization": f"Bearer {admin_token}"},
