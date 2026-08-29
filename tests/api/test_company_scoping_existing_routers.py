@@ -226,3 +226,236 @@ def test_company_admin_cannot_trigger_delivery_for_another_company(
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 403
+
+
+def test_source_write_endpoints_require_super_admin(client, db_session):
+    """sources.py's new read-only enforcement: company_admin/company_viewer
+    cannot create/update/delete sources; super_admin is not blocked."""
+    from tenderai_bf.models import Source
+
+    source = Source(
+        name="Existing Source",
+        base_url="https://example.com",
+        list_url="https://example.com/list",
+    )
+    db_session.add(source)
+    db_session.commit()
+
+    admin = User(
+        id=str(uuid.uuid4()),
+        username="src_admin",
+        email="src_admin@test.com",
+        hashed_password=get_password_hash("pass12345"),
+        role="company_admin",
+        is_active=True,
+        password_reset_required=False,
+    )
+    root = User(
+        id=str(uuid.uuid4()),
+        username="src_root",
+        email="src_root@test.com",
+        hashed_password=get_password_hash("rootpass123"),
+        role="super_admin",
+        is_active=True,
+        password_reset_required=False,
+    )
+    db_session.add_all([admin, root])
+    db_session.commit()
+
+    admin_token = _login(client, "src_admin", "pass12345")
+    root_token = _login(client, "src_root", "rootpass123")
+
+    new_source_payload = {
+        "name": "New Source",
+        "base_url": "https://example.com",
+        "list_url": "https://example.com/list",
+    }
+
+    create_resp = client.post(
+        "/api/v1/sources",
+        json=new_source_payload,
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert create_resp.status_code == 403
+
+    update_resp = client.put(
+        f"/api/v1/sources/{source.id}",
+        json={"enabled": False},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert update_resp.status_code == 403
+
+    delete_resp = client.delete(
+        f"/api/v1/sources/{source.id}",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert delete_resp.status_code == 403
+
+    # super_admin is not blocked by this guard
+    root_create_resp = client.post(
+        "/api/v1/sources",
+        json=new_source_payload,
+        headers={"Authorization": f"Bearer {root_token}"},
+    )
+    assert root_create_resp.status_code == 201
+
+
+def test_list_runs_filtered_to_own_company(client, db_session):
+    """runs.py's list_runs: company_admin sees only run_type='delivery' runs
+    for their own company; super_admin sees everything."""
+    from tenderai_bf.models import Run
+
+    company_a = Company(name="Runs Company A", slug="runs-company-a", active=True)
+    company_b = Company(name="Runs Company B", slug="runs-company-b", active=True)
+    db_session.add_all([company_a, company_b])
+    db_session.commit()
+
+    db_session.add_all(
+        [
+            Run(id=str(uuid.uuid4()), status="completed", run_type="delivery", company_id=company_a.id),
+            Run(id=str(uuid.uuid4()), status="completed", run_type="delivery", company_id=company_b.id),
+            Run(id=str(uuid.uuid4()), status="completed", run_type="harvest", company_id=None),
+        ]
+    )
+    admin_a = User(
+        id=str(uuid.uuid4()),
+        username="runs_admin_a",
+        email="runs_admin_a@test.com",
+        hashed_password=get_password_hash("pass12345"),
+        role="company_admin",
+        company_id=company_a.id,
+        is_active=True,
+        password_reset_required=False,
+    )
+    root = User(
+        id=str(uuid.uuid4()),
+        username="runs_root",
+        email="runs_root@test.com",
+        hashed_password=get_password_hash("rootpass123"),
+        role="super_admin",
+        is_active=True,
+        password_reset_required=False,
+    )
+    db_session.add_all([admin_a, root])
+    db_session.commit()
+
+    admin_token = _login(client, "runs_admin_a", "pass12345")
+    root_token = _login(client, "runs_root", "rootpass123")
+
+    admin_resp = client.get(
+        "/api/v1/runs", headers={"Authorization": f"Bearer {admin_token}"}
+    )
+    assert admin_resp.status_code == 200
+    assert admin_resp.json()["total"] == 1
+
+    root_resp = client.get(
+        "/api/v1/runs", headers={"Authorization": f"Bearer {root_token}"}
+    )
+    assert root_resp.status_code == 200
+    assert root_resp.json()["total"] == 3
+
+
+def test_list_reports_filtered_to_own_company(client, db_session):
+    """reports.py's list_reports: company_admin sees only their own
+    company's delivery reports; super_admin sees everything."""
+    from tenderai_bf.models import Run
+
+    company_a = Company(name="Reports Company A", slug="reports-company-a", active=True)
+    company_b = Company(name="Reports Company B", slug="reports-company-b", active=True)
+    db_session.add_all([company_a, company_b])
+    db_session.commit()
+
+    db_session.add_all(
+        [
+            Run(
+                id=str(uuid.uuid4()),
+                status="completed",
+                run_type="delivery",
+                company_id=company_a.id,
+                report_url="http://minio/report-a.docx",
+            ),
+            Run(
+                id=str(uuid.uuid4()),
+                status="completed",
+                run_type="delivery",
+                company_id=company_b.id,
+                report_url="http://minio/report-b.docx",
+            ),
+            Run(
+                id=str(uuid.uuid4()),
+                status="completed",
+                run_type="harvest",
+                company_id=None,
+                report_url="http://minio/report-harvest.docx",
+            ),
+        ]
+    )
+    admin_a = User(
+        id=str(uuid.uuid4()),
+        username="reports_admin_a",
+        email="reports_admin_a@test.com",
+        hashed_password=get_password_hash("pass12345"),
+        role="company_admin",
+        company_id=company_a.id,
+        is_active=True,
+        password_reset_required=False,
+    )
+    root = User(
+        id=str(uuid.uuid4()),
+        username="reports_root",
+        email="reports_root@test.com",
+        hashed_password=get_password_hash("rootpass123"),
+        role="super_admin",
+        is_active=True,
+        password_reset_required=False,
+    )
+    db_session.add_all([admin_a, root])
+    db_session.commit()
+
+    admin_token = _login(client, "reports_admin_a", "pass12345")
+    root_token = _login(client, "reports_root", "rootpass123")
+
+    admin_resp = client.get(
+        "/api/v1/reports", headers={"Authorization": f"Bearer {admin_token}"}
+    )
+    assert admin_resp.status_code == 200
+    assert admin_resp.json()["total"] == 1
+
+    root_resp = client.get(
+        "/api/v1/reports", headers={"Authorization": f"Bearer {root_token}"}
+    )
+    assert root_resp.status_code == 200
+    assert root_resp.json()["total"] == 3
+
+
+def test_company_admin_cannot_trigger_runs_endpoint_for_another_company(
+    client, db_session
+):
+    """runs.py's POST /trigger: the symmetric guard to the countries.py test
+    above — a company_admin requesting delivery for a company_id that isn't
+    their own gets 403."""
+    own_company = Company(name="Trigger Own Co", slug="trigger-own-co", active=True)
+    other_company = Company(name="Trigger Other Co", slug="trigger-other-co", active=True)
+    db_session.add_all([own_company, other_company])
+    db_session.commit()
+
+    admin = User(
+        id=str(uuid.uuid4()),
+        username="trigger_admin",
+        email="trigger_admin@test.com",
+        hashed_password=get_password_hash("pass12345"),
+        role="company_admin",
+        company_id=own_company.id,
+        is_active=True,
+        password_reset_required=False,
+    )
+    db_session.add(admin)
+    db_session.commit()
+    token = _login(client, "trigger_admin", "pass12345")
+
+    resp = client.post(
+        "/api/v1/runs/trigger",
+        json={"company_id": other_company.id},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 403

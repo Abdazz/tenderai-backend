@@ -42,7 +42,7 @@ async def list_reports(db: DatabaseSession, current_user: CurrentUser, limit: in
         query = query.filter(
             Run.run_type == "delivery", Run.company_id == current_user.get("company_id")
         )
-    runs = query.order_by(Run.completed_at.desc()).limit(limit).all()
+    runs = query.order_by(Run.finished_at.desc()).limit(limit).all()
 
     reports = []
     for run in runs:
