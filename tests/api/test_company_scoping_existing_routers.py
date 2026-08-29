@@ -1,6 +1,7 @@
 """Tests for company_id scoping added to recipients/runs/users, and removal
 of the YULCOM-hardcoded stopgaps."""
 import uuid
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -97,8 +98,12 @@ def test_recipients_list_filtered_to_own_company(client, db_session):
 
     db_session.add_all(
         [
-            Recipient(email="a@a.com", group="to", enabled=True, company_id=company_a.id),
-            Recipient(email="b@b.com", group="to", enabled=True, company_id=company_b.id),
+            Recipient(
+                email="a@a.com", group="to", enabled=True, company_id=company_a.id
+            ),
+            Recipient(
+                email="b@b.com", group="to", enabled=True, company_id=company_b.id
+            ),
         ]
     )
     admin_a = User(
@@ -150,10 +155,27 @@ def test_create_company_admin_user_requires_company_id(client, db_session):
     assert resp.status_code == 400
 
 
-def test_super_admin_manual_trigger_defaults_to_yulcom(client, db_session, monkeypatch):
+@patch("tenderai_bf.agents.get_pipeline")
+def test_super_admin_manual_trigger_defaults_to_yulcom(
+    mock_get_pipeline, client, db_session, monkeypatch
+):
     """The exact regression this task must not reintroduce: today's live
     admin account is super_admin, and clicking "Lancer maintenant" must
-    keep delivering to YULCOM by default when no company_id is given."""
+    keep delivering to YULCOM by default when no company_id is given.
+
+    get_pipeline() (the harvest step) is patched here too, not just the
+    delivery pipeline's run — countries.py's background _run() calls
+    get_pipeline().run(...) FIRST, unpatched, and since TestClient executes
+    background tasks synchronously within the request/response cycle, an
+    unpatched get_pipeline() would run a real (network-touching) harvest
+    pipeline during this test. See test_countries_run_trigger.py for the
+    same pattern."""
+    from unittest.mock import MagicMock
+
+    mock_harvest_pipeline = MagicMock()
+    mock_harvest_pipeline.run.return_value = MagicMock(error_occurred=False)
+    mock_get_pipeline.return_value = mock_harvest_pipeline
+
     from tenderai_bf.models import Country
 
     yulcom = Company(name="YULCOM Technologies", slug="yulcom", active=True)
@@ -174,8 +196,6 @@ def test_super_admin_manual_trigger_defaults_to_yulcom(client, db_session, monke
     db_session.commit()
     token = _login(client, "root", "rootpass123")
 
-    from unittest.mock import MagicMock
-
     from tenderai_bf.agents import get_delivery_pipeline
 
     fake_result = MagicMock(error_occurred=False, warnings=[])
@@ -195,9 +215,7 @@ def test_super_admin_manual_trigger_defaults_to_yulcom(client, db_session, monke
     assert resp.json()["company_id"] == yulcom.id
 
 
-def test_company_admin_cannot_trigger_delivery_for_another_company(
-    client, db_session
-):
+def test_company_admin_cannot_trigger_delivery_for_another_company(client, db_session):
     from tenderai_bf.models import Country
 
     own_company = Company(name="Own Co", slug="own-co", active=True)
@@ -312,9 +330,24 @@ def test_list_runs_filtered_to_own_company(client, db_session):
 
     db_session.add_all(
         [
-            Run(id=str(uuid.uuid4()), status="completed", run_type="delivery", company_id=company_a.id),
-            Run(id=str(uuid.uuid4()), status="completed", run_type="delivery", company_id=company_b.id),
-            Run(id=str(uuid.uuid4()), status="completed", run_type="harvest", company_id=None),
+            Run(
+                id=str(uuid.uuid4()),
+                status="completed",
+                run_type="delivery",
+                company_id=company_a.id,
+            ),
+            Run(
+                id=str(uuid.uuid4()),
+                status="completed",
+                run_type="delivery",
+                company_id=company_b.id,
+            ),
+            Run(
+                id=str(uuid.uuid4()),
+                status="completed",
+                run_type="harvest",
+                company_id=None,
+            ),
         ]
     )
     admin_a = User(
@@ -435,7 +468,9 @@ def test_company_admin_cannot_trigger_runs_endpoint_for_another_company(
     above — a company_admin requesting delivery for a company_id that isn't
     their own gets 403."""
     own_company = Company(name="Trigger Own Co", slug="trigger-own-co", active=True)
-    other_company = Company(name="Trigger Other Co", slug="trigger-other-co", active=True)
+    other_company = Company(
+        name="Trigger Other Co", slug="trigger-other-co", active=True
+    )
     db_session.add_all([own_company, other_company])
     db_session.commit()
 
@@ -459,3 +494,348 @@ def test_company_admin_cannot_trigger_runs_endpoint_for_another_company(
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 403
+
+
+def _seed_two_companies_with_recipient(db_session):
+    """Shared setup for the recipients-by-ID scoping tests below: two
+    companies, a company_admin for each, and a recipient owned by company B."""
+    company_a = Company(name="Recip Scope Co A", slug="recip-scope-co-a", active=True)
+    company_b = Company(name="Recip Scope Co B", slug="recip-scope-co-b", active=True)
+    db_session.add_all([company_a, company_b])
+    db_session.commit()
+
+    recipient_b = Recipient(
+        email="b-owned@test.com", group="to", enabled=True, company_id=company_b.id
+    )
+    db_session.add(recipient_b)
+
+    admin_a = User(
+        id=str(uuid.uuid4()),
+        username="recip_admin_a",
+        email="recip_admin_a@test.com",
+        hashed_password=get_password_hash("pass12345"),
+        role="company_admin",
+        company_id=company_a.id,
+        is_active=True,
+        password_reset_required=False,
+    )
+    viewer_b = User(
+        id=str(uuid.uuid4()),
+        username="recip_viewer_b",
+        email="recip_viewer_b@test.com",
+        hashed_password=get_password_hash("pass12345"),
+        role="company_viewer",
+        company_id=company_b.id,
+        is_active=True,
+        password_reset_required=False,
+    )
+    db_session.add_all([admin_a, viewer_b])
+    db_session.commit()
+    db_session.refresh(recipient_b)
+
+    return company_a, company_b, recipient_b
+
+
+def test_company_admin_cannot_get_update_delete_other_companys_recipient(
+    client, db_session
+):
+    """C2: get/update/delete by ID had zero company scoping — a company_admin
+    of company A could GET/PUT/DELETE company B's recipient by ID."""
+    _company_a, _company_b, recipient_b = _seed_two_companies_with_recipient(db_session)
+    token_a = _login(client, "recip_admin_a", "pass12345")
+    headers = {"Authorization": f"Bearer {token_a}"}
+
+    get_resp = client.get(f"/api/v1/recipients/{recipient_b.id}", headers=headers)
+    assert get_resp.status_code == 403
+
+    put_resp = client.put(
+        f"/api/v1/recipients/{recipient_b.id}",
+        json={"name": "Hijacked"},
+        headers=headers,
+    )
+    assert put_resp.status_code == 403
+
+    delete_resp = client.delete(f"/api/v1/recipients/{recipient_b.id}", headers=headers)
+    assert delete_resp.status_code == 403
+
+
+def test_company_viewer_cannot_update_or_delete_own_recipient_but_can_get(
+    client, db_session
+):
+    """C2: company_viewer is explicitly read-only — it must 403 on PUT/DELETE
+    even for its own company's recipient, but GET must still succeed (200)."""
+    _company_a, _company_b, recipient_b = _seed_two_companies_with_recipient(db_session)
+    token_viewer = _login(client, "recip_viewer_b", "pass12345")
+    headers = {"Authorization": f"Bearer {token_viewer}"}
+
+    get_resp = client.get(f"/api/v1/recipients/{recipient_b.id}", headers=headers)
+    assert get_resp.status_code == 200
+
+    put_resp = client.put(
+        f"/api/v1/recipients/{recipient_b.id}",
+        json={"name": "Should Not Work"},
+        headers=headers,
+    )
+    assert put_resp.status_code == 403
+
+    delete_resp = client.delete(f"/api/v1/recipients/{recipient_b.id}", headers=headers)
+    assert delete_resp.status_code == 403
+
+
+def test_super_admin_can_create_recipient_for_explicit_non_yulcom_company(
+    client, db_session
+):
+    """I2: RecipientCreate previously had no company_id param, so a
+    super_admin could never create a recipient for any company except
+    YULCOM (the hardcoded fallback) via the API."""
+    yulcom = Company(name="YULCOM Technologies", slug="yulcom", active=True)
+    other = Company(name="Some Other Co", slug="some-other-co", active=True)
+    db_session.add_all([yulcom, other])
+    db_session.commit()
+
+    root = User(
+        id=str(uuid.uuid4()),
+        username="recip_root",
+        email="recip_root@test.com",
+        hashed_password=get_password_hash("rootpass123"),
+        role="super_admin",
+        is_active=True,
+        password_reset_required=False,
+    )
+    db_session.add(root)
+    db_session.commit()
+    token = _login(client, "recip_root", "rootpass123")
+
+    resp = client.post(
+        "/api/v1/recipients",
+        json={
+            "email": "someone@some-other-co.com",
+            "name": "Someone",
+            "group": "to",
+            "enabled": True,
+            "company_id": other.id,
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 201
+    assert resp.json()["company_id"] == other.id
+
+
+def test_anonymous_request_gets_401_not_unfiltered_data(client, db_session):
+    """C3: list_runs/list_reports previously used the optional-auth
+    CurrentUser type with a `if current_user and ...` guard, so a caller
+    presenting no Authorization header at all skipped the company filter
+    entirely and got every company's runs/reports back. An anonymous
+    request must now 401, not 200-with-all-data."""
+    from tenderai_bf.models import Run
+
+    db_session.add(
+        Run(
+            id=str(uuid.uuid4()),
+            status="completed",
+            run_type="delivery",
+            company_id=None,
+            report_url="http://minio/anon-report.docx",
+        )
+    )
+    db_session.commit()
+
+    runs_resp = client.get("/api/v1/runs")
+    assert runs_resp.status_code == 401
+
+    reports_resp = client.get("/api/v1/reports")
+    assert reports_resp.status_code == 401
+
+
+def test_company_viewer_cannot_delete_run(client, db_session):
+    """I4: delete_run had no company/role scoping at all — a company_viewer
+    of company A could delete company B's (or anyone's) run row."""
+    from tenderai_bf.models import Run
+
+    company_a = Company(name="Del Run Co A", slug="del-run-co-a", active=True)
+    company_b = Company(name="Del Run Co B", slug="del-run-co-b", active=True)
+    db_session.add_all([company_a, company_b])
+    db_session.commit()
+
+    run_b = Run(
+        id=str(uuid.uuid4()),
+        status="completed",
+        run_type="delivery",
+        company_id=company_b.id,
+    )
+    db_session.add(run_b)
+
+    viewer_a = User(
+        id=str(uuid.uuid4()),
+        username="del_run_viewer_a",
+        email="del_run_viewer_a@test.com",
+        hashed_password=get_password_hash("pass12345"),
+        role="company_viewer",
+        company_id=company_a.id,
+        is_active=True,
+        password_reset_required=False,
+    )
+    db_session.add(viewer_a)
+    db_session.commit()
+    token = _login(client, "del_run_viewer_a", "pass12345")
+
+    resp = client.delete(
+        f"/api/v1/runs/{run_b.id}", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert resp.status_code == 403
+
+
+def test_company_admin_cannot_delete_other_companys_run(client, db_session):
+    """I4: symmetric to the viewer case — a company_admin of company A
+    cannot delete company B's run even though company_admin can write."""
+    from tenderai_bf.models import Run
+
+    company_a = Company(name="Del Run Co A2", slug="del-run-co-a2", active=True)
+    company_b = Company(name="Del Run Co B2", slug="del-run-co-b2", active=True)
+    db_session.add_all([company_a, company_b])
+    db_session.commit()
+
+    run_b = Run(
+        id=str(uuid.uuid4()),
+        status="completed",
+        run_type="delivery",
+        company_id=company_b.id,
+    )
+    db_session.add(run_b)
+
+    admin_a = User(
+        id=str(uuid.uuid4()),
+        username="del_run_admin_a",
+        email="del_run_admin_a@test.com",
+        hashed_password=get_password_hash("pass12345"),
+        role="company_admin",
+        company_id=company_a.id,
+        is_active=True,
+        password_reset_required=False,
+    )
+    db_session.add(admin_a)
+    db_session.commit()
+    token = _login(client, "del_run_admin_a", "pass12345")
+
+    resp = client.delete(
+        f"/api/v1/runs/{run_b.id}", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert resp.status_code == 403
+
+
+def test_company_admin_can_delete_own_companys_run(client, db_session):
+    """I4: the positive case — company_admin CAN delete a run belonging to
+    their own company."""
+    from tenderai_bf.models import Run
+
+    company_a = Company(name="Del Run Co A3", slug="del-run-co-a3", active=True)
+    db_session.add(company_a)
+    db_session.commit()
+
+    run_a = Run(
+        id=str(uuid.uuid4()),
+        status="completed",
+        run_type="delivery",
+        company_id=company_a.id,
+    )
+    db_session.add(run_a)
+
+    admin_a = User(
+        id=str(uuid.uuid4()),
+        username="del_run_admin_a3",
+        email="del_run_admin_a3@test.com",
+        hashed_password=get_password_hash("pass12345"),
+        role="company_admin",
+        company_id=company_a.id,
+        is_active=True,
+        password_reset_required=False,
+    )
+    db_session.add(admin_a)
+    db_session.commit()
+    token = _login(client, "del_run_admin_a3", "pass12345")
+
+    resp = client.delete(
+        f"/api/v1/runs/{run_a.id}", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert resp.status_code == 204
+
+
+def test_update_user_rejects_company_role_without_company_id(client, db_session):
+    """I5: update_user didn't re-validate the role/company_id pairing that
+    create_user enforces — a PATCH setting role=company_admin on a user
+    whose company_id is currently NULL used to succeed, producing an
+    orphaned company_admin."""
+    root = User(
+        id=str(uuid.uuid4()),
+        username="update_role_root",
+        email="update_role_root@test.com",
+        hashed_password=get_password_hash("rootpass123"),
+        role="super_admin",
+        is_active=True,
+        password_reset_required=False,
+    )
+    orphan_candidate = User(
+        id=str(uuid.uuid4()),
+        username="orphan_candidate",
+        email="orphan_candidate@test.com",
+        hashed_password=get_password_hash("pass12345"),
+        role="super_admin",
+        is_active=True,
+        password_reset_required=False,
+    )
+    db_session.add_all([root, orphan_candidate])
+    db_session.commit()
+    token = _login(client, "update_role_root", "rootpass123")
+
+    resp = client.patch(
+        f"/api/v1/users/{orphan_candidate.id}",
+        json={"role": "company_admin"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 400
+
+
+def test_update_user_promoting_to_super_admin_clears_company_and_country(
+    client, db_session
+):
+    """I5: symmetrically, promoting a user to super_admin via PATCH must
+    clear their existing company_id/country_id, not leave them stale."""
+    from tenderai_bf.models import Country
+
+    company = Company(name="Promote Co", slug="promote-co", active=True)
+    country = Country(name="Burkina Faso", code="BF", locale="fr")
+    db_session.add_all([company, country])
+    db_session.commit()
+
+    root = User(
+        id=str(uuid.uuid4()),
+        username="promote_root",
+        email="promote_root@test.com",
+        hashed_password=get_password_hash("rootpass123"),
+        role="super_admin",
+        is_active=True,
+        password_reset_required=False,
+    )
+    to_promote = User(
+        id=str(uuid.uuid4()),
+        username="to_promote",
+        email="to_promote@test.com",
+        hashed_password=get_password_hash("pass12345"),
+        role="company_admin",
+        company_id=company.id,
+        country_id=country.id,
+        is_active=True,
+        password_reset_required=False,
+    )
+    db_session.add_all([root, to_promote])
+    db_session.commit()
+    token = _login(client, "promote_root", "rootpass123")
+
+    resp = client.patch(
+        f"/api/v1/users/{to_promote.id}",
+        json={"role": "super_admin"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["company_id"] is None
+    assert resp.json()["country_id"] is None

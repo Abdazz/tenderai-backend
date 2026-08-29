@@ -1,8 +1,9 @@
 """End-to-end verification that two companies are fully isolated from each
-other across the surfaces this plan touches: settings, recipients, runs,
-and company management itself. Exercises real login + real JWTs + real
-DB queries across two independently seeded companies (YULCOM and a
-throwaway 'test-co'), per this plan's Global Constraints."""
+other across the surfaces this plan touches: settings, recipients (both
+list and by-ID access), and company management itself. Exercises real
+login + real JWTs + real DB queries across two independently seeded
+companies (YULCOM and a throwaway 'test-co'), per this plan's Global
+Constraints."""
 import uuid
 
 import pytest
@@ -230,3 +231,42 @@ def test_company_admin_sees_only_own_settings_values(client, two_isolated_compan
     # The two companies' settings values are genuinely distinct, not
     # accidentally identical (which would let a copy-paste bug hide here).
     assert yulcom_resp.json() != testco_resp.json()
+
+
+def test_company_admin_cannot_access_other_companys_recipient_by_id(
+    client, db_session, two_isolated_companies
+):
+    """The by-ID counterpart to test_company_admin_sees_only_own_recipients
+    above: list-scoping alone doesn't stop a company_admin from reaching
+    another company's recipient by guessing/enumerating its ID. GET/PUT/
+    DELETE on a cross-company recipient ID must all 403 for a company_admin,
+    exercised through this file's real login/JWT flow against the
+    two_isolated_companies fixture's already-seeded recipients."""
+    other_company_recipient = (
+        db_session.query(Recipient)
+        .filter(Recipient.email == "testco-recipient@test.com")
+        .one()
+    )
+
+    headers = {"Authorization": f"Bearer {two_isolated_companies['yulcom_token']}"}
+
+    get_resp = client.get(
+        f"/api/v1/recipients/{other_company_recipient.id}", headers=headers
+    )
+    assert get_resp.status_code == 403
+
+    put_resp = client.put(
+        f"/api/v1/recipients/{other_company_recipient.id}",
+        json={"name": "Hijacked"},
+        headers=headers,
+    )
+    assert put_resp.status_code == 403
+
+    delete_resp = client.delete(
+        f"/api/v1/recipients/{other_company_recipient.id}", headers=headers
+    )
+    assert delete_resp.status_code == 403
+
+    # The recipient survives untouched.
+    db_session.refresh(other_company_recipient)
+    assert other_company_recipient.name != "Hijacked"
