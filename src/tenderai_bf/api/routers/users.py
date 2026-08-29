@@ -25,12 +25,14 @@ class UserCreateRequest(BaseModel):
     email: EmailStr
     role: str  # "super_admin" | "company_admin" | "company_viewer"
     country_id: int | None = None
+    company_id: int | None = None
 
 
 class UserUpdateRequest(BaseModel):
     role: str | None = None
     is_active: bool | None = None
     country_id: int | None = None
+    company_id: int | None = None
 
 
 class UserOut(BaseModel):
@@ -41,6 +43,7 @@ class UserOut(BaseModel):
     is_active: bool
     password_reset_required: bool
     country_id: int | None = None
+    company_id: int | None = None
 
     class Config:
         from_attributes = True
@@ -61,10 +64,16 @@ async def create_user(
             status_code=400, detail=f"role must be one of: {', '.join(VALID_ROLES)}"
         )
 
-    # Non-super_admin users must have a country
+    # Non-super_admin users must have a country and a company
     if request.role != "super_admin" and not request.country_id:
         raise HTTPException(
-            status_code=400, detail="country_id is required for admin and viewer roles"
+            status_code=400,
+            detail="country_id is required for company_admin and company_viewer roles",
+        )
+    if request.role != "super_admin" and not request.company_id:
+        raise HTTPException(
+            status_code=400,
+            detail="company_id is required for company_admin and company_viewer roles",
         )
 
     # Validate country exists
@@ -72,6 +81,14 @@ async def create_user(
         country = db.query(Country).filter(Country.id == request.country_id).first()
         if not country:
             raise HTTPException(status_code=400, detail="Country not found")
+
+    # Validate company exists
+    if request.company_id:
+        from ...models import Company
+
+        company = db.query(Company).filter(Company.id == request.company_id).first()
+        if not company:
+            raise HTTPException(status_code=400, detail="Company not found")
 
     if db.query(User).filter(User.username == request.username).first():
         raise HTTPException(status_code=409, detail="Username already exists")
@@ -87,6 +104,7 @@ async def create_user(
         hashed_password=get_password_hash(password),
         role=request.role,
         country_id=request.country_id if request.role != "super_admin" else None,
+        company_id=request.company_id if request.role != "super_admin" else None,
         is_active=True,
         password_reset_required=True,
     )
@@ -135,6 +153,14 @@ async def update_user(
         if not country:
             raise HTTPException(status_code=400, detail="Country not found")
         user.country_id = request.country_id
+
+    if request.company_id is not None:
+        from ...models import Company
+
+        company = db.query(Company).filter(Company.id == request.company_id).first()
+        if not company:
+            raise HTTPException(status_code=400, detail="Company not found")
+        user.company_id = request.company_id
 
     if request.is_active is not None:
         user.is_active = request.is_active

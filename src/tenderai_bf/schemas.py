@@ -275,6 +275,8 @@ class Recipient(RecipientBase):
     """Schema for Recipient with all fields."""
 
     id: int
+    country_id: int | None = None
+    company_id: int | None = None
     last_sent_at: datetime | None = None
     bounce_count: int = 0
     created_at: datetime

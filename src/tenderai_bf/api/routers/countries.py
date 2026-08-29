@@ -153,6 +153,7 @@ async def trigger_run(
     db: DatabaseSession,
     user: AuthenticatedUser,
     background_tasks: BackgroundTasks,
+    company_id: int | None = None,
 ):
     # Only company_admin or super_admin may trigger pipeline runs
     if user.get("role") not in ("super_admin", "company_admin"):
@@ -164,8 +165,20 @@ async def trigger_run(
         raise HTTPException(
             status.HTTP_403_FORBIDDEN, detail="Access denied for this country"
         )
+    # Non-super_admin cannot request delivery to a company other than their own
+    if (
+        user.get("role") != "super_admin"
+        and company_id is not None
+        and company_id != user.get("company_id")
+    ):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, detail="Cannot trigger delivery for another company"
+        )
     _get_country_or_404(country_id, db)
     from ...agents import get_delivery_pipeline, get_pipeline
+    from ..dependencies import resolve_delivery_company_id
+
+    target_company_id = resolve_delivery_company_id(user, company_id, db)
 
     def _run():
         get_pipeline().run(
@@ -173,27 +186,19 @@ async def trigger_run(
             triggered_by="api",
             triggered_by_user=user["username"],
         )
-        # Stopgap until the Auth/API plan adds company selection to this
-        # endpoint: deliver to YULCOM (company zero) so this manual trigger
-        # keeps sending email as it did before the pipeline split.
-        from ...db import get_db_context
-        from ...models import Company
-
-        with get_db_context() as _db:
-            yulcom = _db.query(Company).filter(Company.slug == "yulcom").first()
-            yulcom_id = yulcom.id if yulcom else None
-        if yulcom_id is not None:
+        if target_company_id is not None:
             get_delivery_pipeline().run(
-                company_id=yulcom_id,
+                company_id=target_company_id,
                 country_id=country_id,
                 triggered_by="api",
                 triggered_by_user=user["username"],
             )
         else:
-            logger.error(
-                "YULCOM company not found — skipping delivery after manual harvest trigger",
+            logger.warning(
+                "No company_id resolved for delivery after manual harvest trigger",
                 country_id=country_id,
+                username=user["username"],
             )
 
     background_tasks.add_task(_run)
-    return {"status": "accepted", "country_id": country_id}
+    return {"status": "accepted", "country_id": country_id, "company_id": target_company_id}

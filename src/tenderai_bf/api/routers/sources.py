@@ -67,6 +67,11 @@ async def create_source(
     request: SourceCreate, db: DatabaseSession, user: AuthenticatedUser
 ):
     """Create a new source (admin only)."""
+    if user.get("role") != "super_admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Super-admin access required to create sources",
+        )
 
     from ...models import Source
 
@@ -109,6 +114,11 @@ async def update_source(
     source_id: int, request: SourceUpdate, db: DatabaseSession, user: AuthenticatedUser
 ):
     """Update an existing source (admin only)."""
+    if user.get("role") != "super_admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Super-admin access required to update sources",
+        )
 
     from ...models import Source
 
@@ -141,6 +151,11 @@ async def update_source(
 @router.delete("/{source_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_source(source_id: int, db: DatabaseSession, user: AuthenticatedUser):
     """Delete a source (admin only)."""
+    if user.get("role") != "super_admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Super-admin access required to delete sources",
+        )
 
     from ...models import Source
 

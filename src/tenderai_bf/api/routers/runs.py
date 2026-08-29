@@ -31,6 +31,12 @@ class RunTriggerRequest(BaseModel):
         default=False, description="Dry run mode (no database writes)"
     )
     country_id: int = Field(default=1, description="Country ID to run pipeline for")
+    company_id: int | None = Field(
+        default=None,
+        description="Company to deliver to (super_admin only; company_admin/"
+        "company_viewer always deliver to their own company; defaults to "
+        "YULCOM for super_admin if omitted)",
+    )
 
 
 class RunStatusResponse(BaseModel):
@@ -76,6 +82,7 @@ async def trigger_run(
     request: RunTriggerRequest,
     background_tasks: BackgroundTasks,
     current_user: CurrentUser,
+    db: DatabaseSession,
 ):
     """Trigger a new pipeline run.
 
@@ -106,6 +113,24 @@ async def trigger_run(
     if current_user and not triggered_by_user:
         triggered_by_user = current_user.get("username", "api_user")
 
+    # Non-super_admin cannot request delivery to a company other than their own
+    if (
+        current_user
+        and current_user.get("role") != "super_admin"
+        and request.company_id is not None
+        and request.company_id != current_user.get("company_id")
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot trigger delivery for another company",
+        )
+
+    from ..dependencies import resolve_delivery_company_id
+
+    target_company_id = resolve_delivery_company_id(
+        current_user, request.company_id, db
+    )
+
     # Execute in background
     def run_pipeline():
         try:
@@ -132,26 +157,17 @@ async def trigger_run(
 
             result = harvest_result
             if request.send_email:
-                # Stopgap until the Auth/API plan adds company selection to
-                # this endpoint: deliver to YULCOM (company zero) so this
-                # manual trigger keeps sending email as it did before the
-                # pipeline split.
-                from ...db import get_db_context
-                from ...models import Company
-
-                with get_db_context() as _db:
-                    yulcom = _db.query(Company).filter(Company.slug == "yulcom").first()
-                    yulcom_id = yulcom.id if yulcom else None
-                if yulcom_id is not None:
+                if target_company_id is not None:
                     result = get_delivery_pipeline().run(
-                        company_id=yulcom_id,
+                        company_id=target_company_id,
                         country_id=request.country_id,
                         triggered_by=request.triggered_by,
                         triggered_by_user=triggered_by_user,
                     )
                 else:
-                    logger.error(
-                        "YULCOM company not found — skipping delivery after manual harvest trigger",
+                    logger.warning(
+                        "No company_id resolved for delivery after manual harvest "
+                        "trigger — skipping delivery",
                         country_id=request.country_id,
                     )
 
@@ -229,6 +245,7 @@ async def get_run_status(run_id: str, db: DatabaseSession):
 @router.get("", response_model=RunListResponse)
 async def list_runs(
     db: DatabaseSession,
+    current_user: CurrentUser,
     page: int = 1,
     page_size: int = 20,
     status_filter: str | None = None,
@@ -240,6 +257,11 @@ async def list_runs(
 
     # Build query
     query = db.query(Run)
+
+    if current_user and current_user.get("role") != "super_admin":
+        query = query.filter(
+            Run.run_type == "delivery", Run.company_id == current_user.get("company_id")
+        )
 
     if status_filter:
         query = query.filter(Run.status == status_filter)

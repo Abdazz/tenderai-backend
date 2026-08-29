@@ -117,6 +117,42 @@ async def require_company_scope(
     return current_user
 
 
+def resolve_delivery_company_id(
+    user: dict | None, requested_company_id: int | None, db: Session
+) -> int | None:
+    """Resolve which company_id a manual harvest-trigger endpoint should
+    deliver to.
+
+    - Anonymous caller (user is None): no company can be resolved — caller
+      must handle None by skipping delivery.
+    - company_admin/company_viewer: always their own company_id. Callers
+      must reject a mismatched requested_company_id with 403 *before*
+      calling this (see the two router call sites below) — this function
+      does not re-check that, it only resolves the effective value once
+      authorization has already passed.
+    - super_admin with an explicit requested_company_id: uses it as given.
+    - super_admin with no explicit selection: falls back to the YULCOM
+      company, preserving today's default behavior for the existing
+      "Lancer maintenant" button until the frontend (Section 4) adds a
+      real company picker that sends an explicit company_id.
+
+    Returns None if no company can be resolved at all (e.g. anonymous
+    caller, or the YULCOM row is missing) — callers must handle None by
+    skipping delivery and logging, not raising.
+    """
+    if user is None:
+        return None
+    if user.get("role") != "super_admin":
+        return user.get("company_id")
+    if requested_company_id is not None:
+        return requested_company_id
+
+    from ..models import Company
+
+    yulcom = db.query(Company).filter(Company.slug == "yulcom").first()
+    return yulcom.id if yulcom else None
+
+
 def create_access_token(data: dict, expires_delta: int | None = None) -> str:
     """Create JWT access token."""
 

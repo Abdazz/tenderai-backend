@@ -12,7 +12,7 @@ from sqlalchemy.pool import StaticPool
 from tenderai_bf.api.dependencies import get_password_hash
 from tenderai_bf.api.main import app
 from tenderai_bf.db import get_db
-from tenderai_bf.models import Base, Country, User
+from tenderai_bf.models import Base, Company, Country, User
 
 
 @pytest.fixture(scope="function")
@@ -102,9 +102,10 @@ def test_list_users_forbidden_for_viewer(client, db_session):
 
 @patch("tenderai_bf.api.routers.users.send_credentials_email", return_value=True)
 def test_create_user_sends_email(mock_email, client, admin_token, db_session):
-    # country_id is required for non-super_admin roles
+    # country_id and company_id are required for non-super_admin roles
     country = Country(name="Burkina Faso", code="BF", locale="fr")
-    db_session.add(country)
+    company = Company(name="Test Co", slug="test-co", active=True)
+    db_session.add_all([country, company])
     db_session.commit()
 
     resp = client.post(
@@ -114,6 +115,7 @@ def test_create_user_sends_email(mock_email, client, admin_token, db_session):
             "email": "new@test.com",
             "role": "company_viewer",
             "country_id": country.id,
+            "company_id": company.id,
         },
         headers={"Authorization": f"Bearer {admin_token}"},
     )
