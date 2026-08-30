@@ -53,6 +53,7 @@ class RunStatusResponse(BaseModel):
     errors_count: int
     stats: dict | None
     report_url: str | None
+    run_type: str
 
 
 class RunListResponse(BaseModel):
@@ -202,6 +203,7 @@ async def trigger_run(
         errors_count=0,
         stats=None,
         report_url=None,
+        run_type="harvest",
     )
 
 
@@ -239,6 +241,7 @@ async def get_run_status(run_id: str, db: DatabaseSession):
         errors_count=0,  # TODO: Add error tracking to Run model
         stats=stats,
         report_url=run.report_url,
+        run_type=run.run_type,
     )
 
 
@@ -298,6 +301,7 @@ async def list_runs(
                 errors_count=0,  # TODO: Add error tracking
                 stats=stats,
                 report_url=run.report_url,
+                run_type=run.run_type,
             )
         )
 
@@ -356,6 +360,7 @@ async def get_run_statistics(db: DatabaseSession):
             errors_count=0,  # TODO: Add error tracking
             stats=stats,
             report_url=last_run.report_url,
+            run_type=last_run.run_type,
         )
 
     return RunStatsResponse(

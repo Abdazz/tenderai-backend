@@ -379,13 +379,17 @@ def test_list_runs_filtered_to_own_company(client, db_session):
         "/api/v1/runs", headers={"Authorization": f"Bearer {admin_token}"}
     )
     assert admin_resp.status_code == 200
-    assert admin_resp.json()["total"] == 1
+    admin_body = admin_resp.json()
+    assert admin_body["total"] == 1
+    assert admin_body["runs"][0]["run_type"] == "delivery"
 
     root_resp = client.get(
         "/api/v1/runs", headers={"Authorization": f"Bearer {root_token}"}
     )
     assert root_resp.status_code == 200
-    assert root_resp.json()["total"] == 3
+    root_body = root_resp.json()
+    assert root_body["total"] == 3
+    assert {r["run_type"] for r in root_body["runs"]} == {"delivery", "harvest"}
 
 
 def test_list_reports_filtered_to_own_company(client, db_session):
