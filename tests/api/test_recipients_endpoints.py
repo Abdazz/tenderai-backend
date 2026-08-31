@@ -96,3 +96,100 @@ def test_create_recipient_defaults_to_yulcom_company(client, admin_token, db_ses
     )
     assert row is not None
     assert row.company_id == yulcom.id
+
+
+def test_two_companies_can_share_email_and_country(client, admin_token, db_session):
+    """Two companies sharing a country must both be able to register the same
+    recipient email — the uniqueness guarantee is scoped by company_id since
+    migration 0016, not just (email, country_id) as it was pre-chantier-5."""
+    yulcom = Company(id=1, name="YULCOM Technologies", slug="yulcom", active=True)
+    acme = Company(id=2, name="Acme Corp", slug="acme", active=True)
+    db_session.add_all([yulcom, acme])
+    db_session.commit()
+
+    payload = {"email": "shared@example.com", "name": "Shared Recipient"}
+
+    resp1 = client.post(
+        "/api/v1/recipients",
+        json={**payload, "company_id": yulcom.id},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert resp1.status_code == 201
+
+    resp2 = client.post(
+        "/api/v1/recipients",
+        json={**payload, "company_id": acme.id},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert resp2.status_code == 201
+
+    rows = (
+        db_session.query(Recipient)
+        .filter(Recipient.email == "shared@example.com")
+        .all()
+    )
+    assert len(rows) == 2
+    assert {r.company_id for r in rows} == {yulcom.id, acme.id}
+
+
+def test_duplicate_recipient_same_company_returns_409(client, admin_token, db_session):
+    """Same company + same email + same country must be rejected with a
+    handled 409, not an unhandled IntegrityError/500, on both the app-level
+    dedup check and (as a safety net) the DB-level unique constraint."""
+    yulcom = Company(id=1, name="YULCOM Technologies", slug="yulcom", active=True)
+    db_session.add(yulcom)
+    db_session.commit()
+
+    payload = {
+        "email": "dup@example.com",
+        "name": "Dup Recipient",
+        "company_id": yulcom.id,
+    }
+
+    resp1 = client.post(
+        "/api/v1/recipients",
+        json=payload,
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert resp1.status_code == 201
+
+    resp2 = client.post(
+        "/api/v1/recipients",
+        json=payload,
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert resp2.status_code == 409
+
+    rows = (
+        db_session.query(Recipient).filter(Recipient.email == "dup@example.com").all()
+    )
+    assert len(rows) == 1
+
+
+def test_update_recipient_still_succeeds_with_integrity_error_handling(
+    client, admin_token, db_session
+):
+    """Regression check: wrapping update_recipient's commit() in a
+    try/except IntegrityError (for defense-in-depth, matching create) must
+    not break the normal, non-conflicting update path. RecipientUpdate does
+    not expose email/company_id/country_id, so a real conflict cannot be
+    triggered through this endpoint today — this only guards against a
+    future field addition regressing to an unhandled 500."""
+    yulcom = Company(id=1, name="YULCOM Technologies", slug="yulcom", active=True)
+    db_session.add(yulcom)
+    db_session.commit()
+
+    recipient = Recipient(
+        email="movable@example.com", company_id=yulcom.id, group="to", enabled=True
+    )
+    db_session.add(recipient)
+    db_session.commit()
+    db_session.refresh(recipient)
+
+    resp = client.put(
+        f"/api/v1/recipients/{recipient.id}",
+        json={"name": "Renamed"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["name"] == "Renamed"

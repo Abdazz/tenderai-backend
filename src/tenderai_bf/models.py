@@ -264,7 +264,7 @@ class Recipient(Base):
     __tablename__ = "recipients"
 
     id = Column(Integer, primary_key=True, index=True)
-    email = Column(String(255), nullable=False, unique=True, index=True)
+    email = Column(String(255), nullable=False, index=True)
     name = Column(String(200), nullable=True)
 
     # Grouping and preferences
@@ -290,6 +290,15 @@ class Recipient(Base):
     created_at = Column(DateTime, nullable=False, default=func.now())
     updated_at = Column(
         DateTime, nullable=False, default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "company_id",
+            "email",
+            "country_id",
+            name="uq_recipients_company_email_country",
+        ),
     )
 
     def __repr__(self) -> str:

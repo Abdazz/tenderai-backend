@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
 
 from ...logging import get_logger
 from ...schemas import Recipient as RecipientSchema, RecipientCreate, RecipientUpdate
@@ -106,7 +107,14 @@ async def create_recipient(
         company_id=target_company_id,
     )
     db.add(row)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Recipient with email '{request.email}' already exists for this country",
+        ) from e
     db.refresh(row)
 
     logger.info(
@@ -148,7 +156,14 @@ async def update_recipient(
     for field, value in request.model_dump(exclude_unset=True).items():
         setattr(row, field, value)
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Recipient with email '{row.email}' already exists for this country",
+        ) from e
     db.refresh(row)
 
     logger.info(
