@@ -286,3 +286,76 @@ def test_company_viewer_cannot_update_settings(client, db_session):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 403
+
+
+def test_update_company_can_clear_nullable_field_back_to_null(
+    client, db_session, super_admin_token
+):
+    """Regression test: PUT must distinguish 'field omitted' from 'field
+    explicitly set to null' for logo_url/subject_prefix/signature. Before
+    the fix, `if body.signature is not None` meant a value, once set,
+    could never be cleared again — an explicit null in the request body
+    was indistinguishable from the key being absent altogether."""
+    company = Company(
+        name="Test Co", slug="test-co", active=True, signature="Some Signature"
+    )
+    db_session.add(company)
+    db_session.commit()
+
+    resp = client.put(
+        f"/api/v1/admin/companies/{company.id}",
+        json={"signature": None},
+        headers={"Authorization": f"Bearer {super_admin_token}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["signature"] is None
+
+    db_session.refresh(company)
+    assert company.signature is None
+
+
+def test_update_company_omitted_field_leaves_existing_value_untouched(
+    client, db_session, super_admin_token
+):
+    """The other half of the fix: a field genuinely absent from the
+    request body must NOT be touched, only one explicitly included
+    (even as null) should be."""
+    company = Company(name="Test Co", slug="test-co", active=True, signature="Keep Me")
+    db_session.add(company)
+    db_session.commit()
+
+    resp = client.put(
+        f"/api/v1/admin/companies/{company.id}",
+        json={"subject_prefix": "[NEW]"},
+        headers={"Authorization": f"Bearer {super_admin_token}"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["subject_prefix"] == "[NEW]"
+    assert body["signature"] == "Keep Me"
+
+    db_session.refresh(company)
+    assert company.signature == "Keep Me"
+
+
+def test_update_company_can_set_all_three_nullable_fields(
+    client, db_session, super_admin_token
+):
+    company = Company(name="Test Co", slug="test-co", active=True)
+    db_session.add(company)
+    db_session.commit()
+
+    resp = client.put(
+        f"/api/v1/admin/companies/{company.id}",
+        json={
+            "logo_url": "https://example.com/logo.png",
+            "subject_prefix": "[ACME]",
+            "signature": "Best regards",
+        },
+        headers={"Authorization": f"Bearer {super_admin_token}"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["logo_url"] == "https://example.com/logo.png"
+    assert body["subject_prefix"] == "[ACME]"
+    assert body["signature"] == "Best regards"

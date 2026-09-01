@@ -69,15 +69,21 @@ async def update_company(
     company_id: int, body: CompanyUpdate, db: DatabaseSession, user: SuperAdminUser
 ):
     company = _get_company_or_404(company_id, db)
+    fields_set = body.model_fields_set
     if body.name is not None:
         company.name = body.name
     if body.active is not None:
         company.active = body.active
-    if body.logo_url is not None:
+    # logo_url/subject_prefix/signature are genuinely nullable — a client
+    # clearing one back to null must be distinguishable from simply
+    # omitting it, so these three check "was the key present in the
+    # request" rather than "is not None" (unlike name/active above, which
+    # should never be explicitly nulled through this endpoint).
+    if "logo_url" in fields_set:
         company.logo_url = body.logo_url
-    if body.subject_prefix is not None:
+    if "subject_prefix" in fields_set:
         company.subject_prefix = body.subject_prefix
-    if body.signature is not None:
+    if "signature" in fields_set:
         company.signature = body.signature
     db.commit()
     db.refresh(company)
