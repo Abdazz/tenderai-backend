@@ -380,7 +380,7 @@ class RAGSettings(BaseSettings):
 class Settings(BaseSettings):
     """Main application settings."""
 
-    app_name: str = Field(default="TenderAI BF")
+    app_name: str = Field(default="TenderAI")
     app_version: str = Field(default="0.1.0")
     environment: str = Field(default="development")
     debug: bool = Field(default=False)

@@ -2,10 +2,10 @@
 
 import json
 
-from tenderai_bf.config import settings
-from tenderai_bf.logging import get_logger
-from tenderai_bf.schemas import TenderExtraction
-from tenderai_bf.utils.llm_utils import get_llm_instance
+from tenderai.config import settings
+from tenderai.logging import get_logger
+from tenderai.schemas import TenderExtraction
+from tenderai.utils.llm_utils import get_llm_instance
 
 logger = get_logger(__name__)
 

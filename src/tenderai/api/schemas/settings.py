@@ -1,4 +1,4 @@
-# src/tenderai_bf/api/schemas/settings.py
+# src/tenderai/api/schemas/settings.py
 """Pydantic validation schemas for settings sections."""
 
 from typing import Any

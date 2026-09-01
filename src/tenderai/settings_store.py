@@ -1,4 +1,4 @@
-# src/tenderai_bf/settings_store.py
+# src/tenderai/settings_store.py
 """DB-backed settings store. One row per section in app_settings."""
 
 

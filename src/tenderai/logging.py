@@ -100,7 +100,7 @@ def configure_logging() -> FilteringBoundLogger:
                 "level": settings.monitoring.log_level,
                 "propagate": False,
             },
-            "tenderai_bf": {
+            "tenderai": {
                 "handlers": _active_handlers,
                 "level": settings.monitoring.log_level,
                 "propagate": False,
@@ -158,7 +158,7 @@ def configure_logging() -> FilteringBoundLogger:
         )
 
     # Return configured logger
-    logger = structlog.get_logger("tenderai_bf")
+    logger = structlog.get_logger("tenderai")
 
     # Log startup information
     logger.info(
@@ -174,7 +174,7 @@ def configure_logging() -> FilteringBoundLogger:
 def get_logger(name: str | None = None) -> FilteringBoundLogger:
     """Get a logger instance for a specific module."""
     _ensure_logging_configured()
-    return structlog.get_logger(name or "tenderai_bf")
+    return structlog.get_logger(name or "tenderai")
 
 
 def log_run_start(run_id: str, **kwargs) -> None:
