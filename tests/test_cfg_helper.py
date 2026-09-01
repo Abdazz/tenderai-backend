@@ -10,7 +10,7 @@ os.environ.setdefault("TENDERAI_ADMIN_PASSWORD", "test-admin-password-not-real")
 
 import pytest  # noqa: E402 — must follow env var setup above
 
-from tenderai_bf.agents.graph import (  # noqa: E402 — must follow env var setup above
+from tenderai.agents.graph import (  # noqa: E402 — must follow env var setup above
     TenderAIState,
     cfg,
 )
@@ -75,7 +75,7 @@ def test_cfg_error_message_includes_country_id_section_key():
 def test_company_cfg_reads_company_config():
     from typing import ClassVar
 
-    from tenderai_bf.agents._cfg import company_cfg
+    from tenderai.agents._cfg import company_cfg
 
     class FakeState:
         company_id = 5
@@ -89,7 +89,7 @@ def test_company_cfg_fails_hard_if_missing():
 
     import pytest
 
-    from tenderai_bf.agents._cfg import company_cfg
+    from tenderai.agents._cfg import company_cfg
 
     class FakeState:
         company_id = 5

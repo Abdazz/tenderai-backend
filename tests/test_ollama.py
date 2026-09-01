@@ -5,7 +5,7 @@ import sys
 
 from langchain_ollama import ChatOllama
 
-from tenderai_bf.config import settings
+from tenderai.config import settings
 
 
 def test_ollama_connection():

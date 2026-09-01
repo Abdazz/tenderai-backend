@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-# Set test environment. Importing tenderai_bf.config triggers strict security
+# Set test environment. Importing tenderai.config triggers strict security
 # validation (no admin/JWT fallbacks anywhere), so the test process needs to
 # supply non-trivial values up-front. These are only used in tests and never
 # reach a real environment.

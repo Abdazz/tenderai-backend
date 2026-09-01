@@ -9,7 +9,7 @@ os.environ.setdefault(
 )
 os.environ.setdefault("TENDERAI_ADMIN_PASSWORD", "test-admin-password-not-real")
 
-from tenderai_bf.db import Base  # noqa: E402 — must follow env var setup above
+from tenderai.db import Base  # noqa: E402 — must follow env var setup above
 
 
 @pytest.fixture
@@ -28,7 +28,7 @@ def test_app_settings_table_has_expected_columns(db):
 
 
 def test_app_settings_can_insert_and_retrieve(db):
-    from tenderai_bf.models import AppSettings
+    from tenderai.models import AppSettings
 
     row = AppSettings(
         section="pipeline", data={"min_relevance_score": 0.7}, updated_by="test"
@@ -41,13 +41,13 @@ def test_app_settings_can_insert_and_retrieve(db):
 
 
 def test_get_section_returns_none_when_absent(db):
-    from tenderai_bf.settings_store import SettingsStore
+    from tenderai.settings_store import SettingsStore
 
     assert SettingsStore.get_section(db, "pipeline") is None
 
 
 def test_put_section_inserts_new_row(db):
-    from tenderai_bf.settings_store import SettingsStore
+    from tenderai.settings_store import SettingsStore
 
     SettingsStore.put_section(
         db, "pipeline", {"min_relevance_score": 0.8}, updated_by="admin"
@@ -57,7 +57,7 @@ def test_put_section_inserts_new_row(db):
 
 
 def test_put_section_updates_existing_row(db):
-    from tenderai_bf.settings_store import SettingsStore
+    from tenderai.settings_store import SettingsStore
 
     SettingsStore.put_section(
         db, "pipeline", {"min_relevance_score": 0.7}, updated_by="admin"
@@ -70,7 +70,7 @@ def test_put_section_updates_existing_row(db):
 
 
 def test_get_all_returns_all_sections(db):
-    from tenderai_bf.settings_store import SettingsStore
+    from tenderai.settings_store import SettingsStore
 
     SettingsStore.put_section(db, "pipeline", {"x": 1}, updated_by="admin")
     SettingsStore.put_section(db, "llm", {"provider": "groq"}, updated_by="admin")
@@ -81,7 +81,7 @@ def test_get_all_returns_all_sections(db):
 
 
 def test_seed_from_settings_inserts_all_sections(db):
-    from tenderai_bf.settings_store import SettingsStore
+    from tenderai.settings_store import SettingsStore
 
     seeded = SettingsStore.seed_from_settings(db)
     assert len(seeded) == 7
@@ -95,7 +95,7 @@ def test_seed_from_settings_inserts_all_sections(db):
 
 
 def test_seed_from_settings_is_idempotent(db):
-    from tenderai_bf.settings_store import SettingsStore
+    from tenderai.settings_store import SettingsStore
 
     seeded_first = SettingsStore.seed_from_settings(db)
     seeded_second = SettingsStore.seed_from_settings(db)
@@ -110,7 +110,7 @@ def test_pipeline_section_roundtrip(db):
     globally; instead each pipeline run reads from state.country_config which is loaded
     from DB at run startup.
     """
-    from tenderai_bf.settings_store import SettingsStore
+    from tenderai.settings_store import SettingsStore
 
     new_score = 0.65
 

@@ -9,10 +9,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from tenderai_bf.api.dependencies import get_password_hash
-from tenderai_bf.api.main import app
-from tenderai_bf.db import get_db
-from tenderai_bf.models import Base, Company, Country, User
+from tenderai.api.dependencies import get_password_hash
+from tenderai.api.main import app
+from tenderai.db import get_db
+from tenderai.models import Base, Company, Country, User
 
 
 @pytest.fixture(scope="function")
@@ -100,7 +100,7 @@ def test_list_users_forbidden_for_viewer(client, db_session):
     assert resp.status_code == 403
 
 
-@patch("tenderai_bf.api.routers.users.send_credentials_email", return_value=True)
+@patch("tenderai.api.routers.users.send_credentials_email", return_value=True)
 def test_create_user_sends_email(mock_email, client, admin_token, db_session):
     # country_id and company_id are required for non-super_admin roles
     country = Country(name="Burkina Faso", code="BF", locale="fr")

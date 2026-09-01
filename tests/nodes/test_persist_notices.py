@@ -11,10 +11,10 @@ import pytest  # noqa: E402
 from sqlalchemy import create_engine  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
 
-from tenderai_bf.agents.graph import TenderAIState  # noqa: E402
-from tenderai_bf.agents.nodes.persist_notices import persist_notices_node  # noqa: E402
-from tenderai_bf.db import Base  # noqa: E402
-from tenderai_bf.models import Country, Notice, Run, Source  # noqa: E402
+from tenderai.agents.graph import TenderAIState  # noqa: E402
+from tenderai.agents.nodes.persist_notices import persist_notices_node  # noqa: E402
+from tenderai.db import Base  # noqa: E402
+from tenderai.models import Country, Notice, Run, Source  # noqa: E402
 
 
 @pytest.fixture
@@ -48,7 +48,7 @@ def db_session(monkeypatch):
         return _Ctx()
 
     monkeypatch.setattr(
-        "tenderai_bf.agents.nodes.persist_notices.get_db_context", _fake_get_db_context
+        "tenderai.agents.nodes.persist_notices.get_db_context", _fake_get_db_context
     )
     yield session
     session.close()
@@ -139,7 +139,7 @@ def test_persist_notices_resolves_by_source_tag_substring(db_session):
 
 def test_persist_notices_skips_unresolvable_source_with_warning(db_session):
     # Add a second source so the single-source fallback no longer applies.
-    from tenderai_bf.models import Source
+    from tenderai.models import Source
 
     db_session.add(
         Source(

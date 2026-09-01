@@ -69,7 +69,7 @@ def test_tavily_search_success():
     mock_response.json.return_value = TAVILY_SEARCH_RESPONSE
     mock_response.raise_for_status = MagicMock()
 
-    with patch("tenderai_bf.agents.nodes.fetch_tavily.settings") as mock_settings:
+    with patch("tenderai.agents.nodes.fetch_tavily.settings") as mock_settings:
         mock_settings.tavily.api_key.get_secret_value.return_value = "tvly-test-key"
         mock_settings.tavily.max_results = 10
         mock_settings.tavily.search_depth = "basic"
@@ -81,7 +81,7 @@ def test_tavily_search_success():
             mock_client.post = AsyncMock(return_value=mock_response)
             mock_client_cls.return_value = mock_client
 
-            from tenderai_bf.agents.nodes.fetch_tavily import fetch_tavily_search
+            from tenderai.agents.nodes.fetch_tavily import fetch_tavily_search
 
             result = asyncio.run(fetch_tavily_search(SOURCE_SEARCH, "run-001"))
 
@@ -100,7 +100,7 @@ def test_tavily_extract_success():
     mock_response.json.return_value = TAVILY_EXTRACT_RESPONSE
     mock_response.raise_for_status = MagicMock()
 
-    with patch("tenderai_bf.agents.nodes.fetch_tavily.settings") as mock_settings:
+    with patch("tenderai.agents.nodes.fetch_tavily.settings") as mock_settings:
         mock_settings.tavily.api_key.get_secret_value.return_value = "tvly-test-key"
         mock_settings.tavily.max_results = 10
         mock_settings.tavily.search_depth = "basic"
@@ -112,7 +112,7 @@ def test_tavily_extract_success():
             mock_client.post = AsyncMock(return_value=mock_response)
             mock_client_cls.return_value = mock_client
 
-            from tenderai_bf.agents.nodes.fetch_tavily import fetch_tavily_extract
+            from tenderai.agents.nodes.fetch_tavily import fetch_tavily_extract
 
             result = asyncio.run(fetch_tavily_extract(SOURCE_EXTRACT, "run-001"))
 
@@ -126,10 +126,10 @@ def test_tavily_extract_success():
 
 def test_tavily_missing_api_key():
     """Returns status=failed cleanly when TAVILY_API_KEY is not set."""
-    with patch("tenderai_bf.agents.nodes.fetch_tavily.settings") as mock_settings:
+    with patch("tenderai.agents.nodes.fetch_tavily.settings") as mock_settings:
         mock_settings.tavily.api_key.get_secret_value.return_value = ""
 
-        from tenderai_bf.agents.nodes.fetch_tavily import fetch_tavily_search
+        from tenderai.agents.nodes.fetch_tavily import fetch_tavily_search
 
         result = asyncio.run(fetch_tavily_search(SOURCE_SEARCH, "run-001"))
 
@@ -147,7 +147,7 @@ def test_tavily_rate_limit_non_fatal():
         "429", request=MagicMock(), response=mock_response
     )
 
-    with patch("tenderai_bf.agents.nodes.fetch_tavily.settings") as mock_settings:
+    with patch("tenderai.agents.nodes.fetch_tavily.settings") as mock_settings:
         mock_settings.tavily.api_key.get_secret_value.return_value = "tvly-test-key"
         mock_settings.tavily.max_results = 10
         mock_settings.tavily.search_depth = "basic"
@@ -159,7 +159,7 @@ def test_tavily_rate_limit_non_fatal():
             mock_client.post = AsyncMock(return_value=mock_response)
             mock_client_cls.return_value = mock_client
 
-            from tenderai_bf.agents.nodes.fetch_tavily import fetch_tavily_search
+            from tenderai.agents.nodes.fetch_tavily import fetch_tavily_search
 
             result = asyncio.run(fetch_tavily_search(SOURCE_SEARCH, "run-001"))
 
@@ -178,7 +178,7 @@ def test_tavily_empty_results():
     }
     mock_response.raise_for_status = MagicMock()
 
-    with patch("tenderai_bf.agents.nodes.fetch_tavily.settings") as mock_settings:
+    with patch("tenderai.agents.nodes.fetch_tavily.settings") as mock_settings:
         mock_settings.tavily.api_key.get_secret_value.return_value = "tvly-test-key"
         mock_settings.tavily.max_results = 10
         mock_settings.tavily.search_depth = "basic"
@@ -190,7 +190,7 @@ def test_tavily_empty_results():
             mock_client.post = AsyncMock(return_value=mock_response)
             mock_client_cls.return_value = mock_client
 
-            from tenderai_bf.agents.nodes.fetch_tavily import fetch_tavily_search
+            from tenderai.agents.nodes.fetch_tavily import fetch_tavily_search
 
             result = asyncio.run(fetch_tavily_search(SOURCE_SEARCH, "run-001"))
 

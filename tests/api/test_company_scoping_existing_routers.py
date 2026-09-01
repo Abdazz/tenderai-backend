@@ -9,10 +9,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from tenderai_bf.api.dependencies import get_password_hash
-from tenderai_bf.api.main import app
-from tenderai_bf.db import get_db
-from tenderai_bf.models import Base, Company, Country, Recipient, User
+from tenderai.api.dependencies import get_password_hash
+from tenderai.api.main import app
+from tenderai.db import get_db
+from tenderai.models import Base, Company, Country, Recipient, User
 
 
 @pytest.fixture(scope="function")
@@ -155,7 +155,7 @@ def test_create_company_admin_user_requires_company_id(client, db_session):
     assert resp.status_code == 400
 
 
-@patch("tenderai_bf.agents.get_pipeline")
+@patch("tenderai.agents.get_pipeline")
 def test_super_admin_manual_trigger_defaults_to_yulcom(
     mock_get_pipeline, client, db_session, monkeypatch
 ):
@@ -176,7 +176,7 @@ def test_super_admin_manual_trigger_defaults_to_yulcom(
     mock_harvest_pipeline.run.return_value = MagicMock(error_occurred=False)
     mock_get_pipeline.return_value = mock_harvest_pipeline
 
-    from tenderai_bf.models import Country
+    from tenderai.models import Country
 
     yulcom = Company(name="YULCOM Technologies", slug="yulcom", active=True)
     country = Country(name="Burkina Faso", code="BF", locale="fr")
@@ -196,7 +196,7 @@ def test_super_admin_manual_trigger_defaults_to_yulcom(
     db_session.commit()
     token = _login(client, "root", "rootpass123")
 
-    from tenderai_bf.agents import get_delivery_pipeline
+    from tenderai.agents import get_delivery_pipeline
 
     fake_result = MagicMock(error_occurred=False, warnings=[])
     captured = {}
@@ -216,7 +216,7 @@ def test_super_admin_manual_trigger_defaults_to_yulcom(
 
 
 def test_company_admin_cannot_trigger_delivery_for_another_company(client, db_session):
-    from tenderai_bf.models import Country
+    from tenderai.models import Country
 
     own_company = Company(name="Own Co", slug="own-co", active=True)
     other_company = Company(name="Other Co", slug="other-co", active=True)
@@ -249,7 +249,7 @@ def test_company_admin_cannot_trigger_delivery_for_another_company(client, db_se
 def test_source_write_endpoints_require_super_admin(client, db_session):
     """sources.py's new read-only enforcement: company_admin/company_viewer
     cannot create/update/delete sources; super_admin is not blocked."""
-    from tenderai_bf.models import Source
+    from tenderai.models import Source
 
     source = Source(
         name="Existing Source",
@@ -321,7 +321,7 @@ def test_source_write_endpoints_require_super_admin(client, db_session):
 def test_list_runs_filtered_to_own_company(client, db_session):
     """runs.py's list_runs: company_admin sees only run_type='delivery' runs
     for their own company; super_admin sees everything."""
-    from tenderai_bf.models import Run
+    from tenderai.models import Run
 
     company_a = Company(name="Runs Company A", slug="runs-company-a", active=True)
     company_b = Company(name="Runs Company B", slug="runs-company-b", active=True)
@@ -395,7 +395,7 @@ def test_list_runs_filtered_to_own_company(client, db_session):
 def test_list_reports_filtered_to_own_company(client, db_session):
     """reports.py's list_reports: company_admin sees only their own
     company's delivery reports; super_admin sees everything."""
-    from tenderai_bf.models import Run
+    from tenderai.models import Run
 
     company_a = Company(name="Reports Company A", slug="reports-company-a", active=True)
     company_b = Company(name="Reports Company B", slug="reports-company-b", active=True)
@@ -631,7 +631,7 @@ def test_anonymous_request_gets_401_not_unfiltered_data(client, db_session):
     presenting no Authorization header at all skipped the company filter
     entirely and got every company's runs/reports back. An anonymous
     request must now 401, not 200-with-all-data."""
-    from tenderai_bf.models import Run
+    from tenderai.models import Run
 
     db_session.add(
         Run(
@@ -654,7 +654,7 @@ def test_anonymous_request_gets_401_not_unfiltered_data(client, db_session):
 def test_company_viewer_cannot_delete_run(client, db_session):
     """I4: delete_run had no company/role scoping at all — a company_viewer
     of company A could delete company B's (or anyone's) run row."""
-    from tenderai_bf.models import Run
+    from tenderai.models import Run
 
     company_a = Company(name="Del Run Co A", slug="del-run-co-a", active=True)
     company_b = Company(name="Del Run Co B", slug="del-run-co-b", active=True)
@@ -692,7 +692,7 @@ def test_company_viewer_cannot_delete_run(client, db_session):
 def test_company_admin_cannot_delete_other_companys_run(client, db_session):
     """I4: symmetric to the viewer case — a company_admin of company A
     cannot delete company B's run even though company_admin can write."""
-    from tenderai_bf.models import Run
+    from tenderai.models import Run
 
     company_a = Company(name="Del Run Co A2", slug="del-run-co-a2", active=True)
     company_b = Company(name="Del Run Co B2", slug="del-run-co-b2", active=True)
@@ -730,7 +730,7 @@ def test_company_admin_cannot_delete_other_companys_run(client, db_session):
 def test_company_admin_can_delete_own_companys_run(client, db_session):
     """I4: the positive case — company_admin CAN delete a run belonging to
     their own company."""
-    from tenderai_bf.models import Run
+    from tenderai.models import Run
 
     company_a = Company(name="Del Run Co A3", slug="del-run-co-a3", active=True)
     db_session.add(company_a)
@@ -804,7 +804,7 @@ def test_update_user_promoting_to_super_admin_clears_company_and_country(
 ):
     """I5: symmetrically, promoting a user to super_admin via PATCH must
     clear their existing company_id/country_id, not leave them stale."""
-    from tenderai_bf.models import Country
+    from tenderai.models import Country
 
     company = Company(name="Promote Co", slug="promote-co", active=True)
     country = Country(name="Burkina Faso", code="BF", locale="fr")

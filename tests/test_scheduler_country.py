@@ -8,19 +8,19 @@ os.environ.setdefault("TENDERAI_ADMIN_PASSWORD", "test-admin-password-not-real")
 
 
 def test_get_scheduler_instance_returns_none_before_start():
-    import tenderai_bf.scheduler.schedule as sched_mod
+    import tenderai.scheduler.schedule as sched_mod
 
     sched_mod._scheduler_instance = None
-    from tenderai_bf.scheduler.schedule import get_scheduler_instance
+    from tenderai.scheduler.schedule import get_scheduler_instance
 
     assert get_scheduler_instance() is None
 
 
 def test_reschedule_country_job_does_nothing_when_scheduler_not_started():
-    import tenderai_bf.scheduler.schedule as sched_mod
+    import tenderai.scheduler.schedule as sched_mod
 
     sched_mod._scheduler_instance = None
-    from tenderai_bf.scheduler.schedule import reschedule_country_job
+    from tenderai.scheduler.schedule import reschedule_country_job
 
     # Should not raise
     reschedule_country_job(
@@ -29,8 +29,8 @@ def test_reschedule_country_job_does_nothing_when_scheduler_not_started():
 
 
 def test_reschedule_country_job_replaces_existing_job():
-    import tenderai_bf.scheduler.schedule as sched_mod
-    from tenderai_bf.scheduler.schedule import reschedule_country_job
+    import tenderai.scheduler.schedule as sched_mod
+    from tenderai.scheduler.schedule import reschedule_country_job
 
     mock_scheduler = MagicMock()
     mock_scheduler.get_job.return_value = MagicMock()  # job exists
@@ -54,8 +54,8 @@ def test_reschedule_country_job_replaces_existing_job():
 
 
 def test_reschedule_country_job_disabled_removes_without_readding():
-    import tenderai_bf.scheduler.schedule as sched_mod
-    from tenderai_bf.scheduler.schedule import reschedule_country_job
+    import tenderai.scheduler.schedule as sched_mod
+    from tenderai.scheduler.schedule import reschedule_country_job
 
     mock_scheduler = MagicMock()
     mock_scheduler.get_job.return_value = MagicMock()

@@ -12,10 +12,10 @@ import pytest  # noqa: E402
 from sqlalchemy import create_engine  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
 
-from tenderai_bf.agents.graph import TenderAIState  # noqa: E402
-from tenderai_bf.agents.nodes.email_report import email_report_node  # noqa: E402
-from tenderai_bf.db import Base  # noqa: E402
-from tenderai_bf.models import Recipient  # noqa: E402
+from tenderai.agents.graph import TenderAIState  # noqa: E402
+from tenderai.agents.nodes.email_report import email_report_node  # noqa: E402
+from tenderai.db import Base  # noqa: E402
+from tenderai.models import Recipient  # noqa: E402
 
 
 @pytest.fixture
@@ -54,14 +54,14 @@ def db_session(monkeypatch):
         return _Ctx()
 
     monkeypatch.setattr(
-        "tenderai_bf.agents.nodes.email_report.get_db_context", _fake_get_db_context
+        "tenderai.agents.nodes.email_report.get_db_context", _fake_get_db_context
     )
     yield session
     session.close()
 
 
-@patch("tenderai_bf.agents.nodes.email_report.send_report_email")
-@patch("tenderai_bf.agents.nodes.email_report.cfg")
+@patch("tenderai.agents.nodes.email_report.send_report_email")
+@patch("tenderai.agents.nodes.email_report.cfg")
 def test_email_report_filters_recipients_by_company(mock_cfg, mock_send, db_session):
     mock_cfg.return_value = None  # no extra "to_address" recipient
     mock_send.return_value = True

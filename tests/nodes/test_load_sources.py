@@ -11,8 +11,8 @@ os.environ.setdefault("TENDERAI_ADMIN_PASSWORD", "test-admin-password-not-real")
 # Imports below must follow the env var setup above (config validates on import).
 from unittest.mock import MagicMock, patch  # noqa: E402
 
-from tenderai_bf.agents.graph import TenderAIState  # noqa: E402
-from tenderai_bf.agents.nodes.load_sources import load_sources_node  # noqa: E402
+from tenderai.agents.graph import TenderAIState  # noqa: E402
+from tenderai.agents.nodes.load_sources import load_sources_node  # noqa: E402
 
 
 def test_load_sources_uses_db_not_yaml():
@@ -39,7 +39,7 @@ def test_load_sources_uses_db_not_yaml():
     mock_query.filter.return_value = mock_query
     mock_query.all.return_value = [mock_source]
 
-    with patch("tenderai_bf.agents.nodes.load_sources.get_db_context") as mock_ctx:
+    with patch("tenderai.agents.nodes.load_sources.get_db_context") as mock_ctx:
         mock_ctx.return_value.__enter__ = lambda s: mock_session
         mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
         result = load_sources_node(state)
@@ -58,7 +58,7 @@ def test_load_sources_fails_if_no_sources():
     mock_query.filter.return_value = mock_query
     mock_query.all.return_value = []
 
-    with patch("tenderai_bf.agents.nodes.load_sources.get_db_context") as mock_ctx:
+    with patch("tenderai.agents.nodes.load_sources.get_db_context") as mock_ctx:
         mock_ctx.return_value.__enter__ = lambda s: mock_session
         mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
         result = load_sources_node(state)

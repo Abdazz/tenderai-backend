@@ -7,11 +7,11 @@ os.environ.setdefault(
 os.environ.setdefault("TENDERAI_ADMIN_PASSWORD", "test-admin-password-not-real")
 
 
-@patch("tenderai_bf.scheduler.schedule.get_scheduler_instance")
+@patch("tenderai.scheduler.schedule.get_scheduler_instance")
 def test_reschedule_company_delivery_job_no_op_when_scheduler_not_started(
     mock_get_sched,
 ):
-    from tenderai_bf.scheduler.schedule import reschedule_company_delivery_job
+    from tenderai.scheduler.schedule import reschedule_company_delivery_job
 
     mock_get_sched.return_value = None
     # Must not raise even though the scheduler hasn't started.
@@ -20,18 +20,18 @@ def test_reschedule_company_delivery_job_no_op_when_scheduler_not_started(
     )
 
 
-@patch("tenderai_bf.scheduler.schedule.get_delivery_pipeline")
+@patch("tenderai.scheduler.schedule.get_delivery_pipeline")
 def test_scheduled_company_delivery_run_iterates_enabled_subscriptions(
     mock_get_pipeline,
 ):
-    from tenderai_bf.scheduler.schedule import scheduled_company_delivery_run
+    from tenderai.scheduler.schedule import scheduled_company_delivery_run
 
     mock_pipeline = MagicMock()
     mock_result = MagicMock(error_occurred=False, warnings=[])
     mock_pipeline.run.return_value = mock_result
     mock_get_pipeline.return_value = mock_pipeline
 
-    with patch("tenderai_bf.scheduler.schedule.get_session_factory") as mock_sf:
+    with patch("tenderai.scheduler.schedule.get_session_factory") as mock_sf:
         mock_session = MagicMock()
         mock_sf.return_value.return_value = mock_session
         mock_sub_1 = MagicMock(country_id=1, enabled=True)

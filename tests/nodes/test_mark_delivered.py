@@ -10,10 +10,10 @@ import pytest  # noqa: E402
 from sqlalchemy import create_engine  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
 
-from tenderai_bf.agents.graph import TenderAIState  # noqa: E402
-from tenderai_bf.agents.nodes.mark_delivered import mark_delivered_node  # noqa: E402
-from tenderai_bf.db import Base  # noqa: E402
-from tenderai_bf.models import Company, CompanyNoticeStatus  # noqa: E402
+from tenderai.agents.graph import TenderAIState  # noqa: E402
+from tenderai.agents.nodes.mark_delivered import mark_delivered_node  # noqa: E402
+from tenderai.db import Base  # noqa: E402
+from tenderai.models import Company, CompanyNoticeStatus  # noqa: E402
 
 
 @pytest.fixture
@@ -53,7 +53,7 @@ def db_session(monkeypatch):
         return _Ctx()
 
     monkeypatch.setattr(
-        "tenderai_bf.agents.nodes.mark_delivered.get_db_context", _fake_get_db_context
+        "tenderai.agents.nodes.mark_delivered.get_db_context", _fake_get_db_context
     )
     yield session
     session.close()

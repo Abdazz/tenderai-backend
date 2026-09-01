@@ -59,18 +59,16 @@ def test_crawl4ai_extracts_listings():
     """crawl4ai fetcher retourne listings avec champs standards."""
     mock_crawler = _make_crawler_mock(EXTRACTED_ITEMS)
 
-    with patch(
-        "tenderai_bf.agents.nodes.fetch_crawl4ai._CRAWL4AI_AVAILABLE", True
-    ), patch(
-        "tenderai_bf.agents.nodes.fetch_crawl4ai.AsyncWebCrawler",
+    with patch("tenderai.agents.nodes.fetch_crawl4ai._CRAWL4AI_AVAILABLE", True), patch(
+        "tenderai.agents.nodes.fetch_crawl4ai.AsyncWebCrawler",
         return_value=mock_crawler,
-    ), patch("tenderai_bf.agents.nodes.fetch_crawl4ai.LLMExtractionStrategy"), patch(
-        "tenderai_bf.agents.nodes.fetch_crawl4ai._get_llm_config",
+    ), patch("tenderai.agents.nodes.fetch_crawl4ai.LLMExtractionStrategy"), patch(
+        "tenderai.agents.nodes.fetch_crawl4ai._get_llm_config",
         return_value=("groq/llama-3.3-70b-versatile", "test-key"),
     ):
         result = _run(
             __import__(
-                "tenderai_bf.agents.nodes.fetch_crawl4ai", fromlist=["fetch_crawl4ai"]
+                "tenderai.agents.nodes.fetch_crawl4ai", fromlist=["fetch_crawl4ai"]
             ).fetch_crawl4ai(SOURCE, "run-test")
         )
 
@@ -86,7 +84,7 @@ def test_crawl4ai_extracts_listings():
 
 def test_crawl4ai_not_installed_returns_failed():
     """Si crawl4ai n'est pas installé → status failed avec message clair."""
-    import tenderai_bf.agents.nodes.fetch_crawl4ai as mod
+    import tenderai.agents.nodes.fetch_crawl4ai as mod
 
     original = mod._CRAWL4AI_AVAILABLE
     try:
@@ -103,15 +101,15 @@ def test_crawl4ai_empty_extraction_returns_failed():
     mock_crawler = _make_crawler_mock(None)
 
     with patch(
-        "tenderai_bf.agents.nodes.fetch_crawl4ai.AsyncWebCrawler",
+        "tenderai.agents.nodes.fetch_crawl4ai.AsyncWebCrawler",
         return_value=mock_crawler,
-    ), patch("tenderai_bf.agents.nodes.fetch_crawl4ai.LLMExtractionStrategy"), patch(
-        "tenderai_bf.agents.nodes.fetch_crawl4ai._get_llm_config",
+    ), patch("tenderai.agents.nodes.fetch_crawl4ai.LLMExtractionStrategy"), patch(
+        "tenderai.agents.nodes.fetch_crawl4ai._get_llm_config",
         return_value=("groq/llama-3.3-70b-versatile", "test-key"),
     ):
         result = _run(
             __import__(
-                "tenderai_bf.agents.nodes.fetch_crawl4ai", fromlist=["fetch_crawl4ai"]
+                "tenderai.agents.nodes.fetch_crawl4ai", fromlist=["fetch_crawl4ai"]
             ).fetch_crawl4ai(SOURCE, "run-test")
         )
 

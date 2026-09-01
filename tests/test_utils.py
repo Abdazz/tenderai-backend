@@ -5,14 +5,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tenderai_bf.utils.dates import (
+from tenderai.utils.dates import (
     format_french_date,
     get_burkina_faso_now,
     is_deadline_urgent,
     parse_deadline,
     parse_french_date,
 )
-from tenderai_bf.utils.robots import (
+from tenderai.utils.robots import (
     RobotsChecker,
     get_default_user_agent,
     validate_user_agent,
@@ -162,7 +162,7 @@ class TestPDFUtils:
     def test_pdf_file_detection(self):
         """Test PDF file detection."""
 
-        from tenderai_bf.utils.pdf import is_pdf_file
+        from tenderai.utils.pdf import is_pdf_file
 
         # Test file extension
         assert is_pdf_file("document.pdf") is False  # File doesn't exist
@@ -172,7 +172,7 @@ class TestPDFUtils:
     def test_clean_extracted_text(self):
         """Test text cleaning."""
 
-        from tenderai_bf.utils.pdf import clean_extracted_text
+        from tenderai.utils.pdf import clean_extracted_text
 
         # Test text cleaning
         dirty_text = (
@@ -186,7 +186,7 @@ class TestPDFUtils:
 
 
 def test_tavily_settings_defaults():
-    from tenderai_bf.config import settings
+    from tenderai.config import settings
 
     assert hasattr(settings, "tavily")
     assert settings.tavily.max_results == 10
@@ -195,7 +195,7 @@ def test_tavily_settings_defaults():
 
 def test_tavily_settings_api_key_from_env(monkeypatch):
     monkeypatch.setenv("TAVILY_API_KEY", "tvly-test-key")
-    from tenderai_bf.config import TavilySettings
+    from tenderai.config import TavilySettings
 
     s = TavilySettings()
     assert s.api_key.get_secret_value() == "tvly-test-key"

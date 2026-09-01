@@ -9,7 +9,7 @@ os.environ.setdefault(
 )
 os.environ.setdefault("TENDERAI_ADMIN_PASSWORD", "test-admin-password-not-real")
 
-from tenderai_bf.db import Base  # noqa: E402 — must follow the env var setup above
+from tenderai.db import Base  # noqa: E402 — must follow the env var setup above
 
 
 @pytest.fixture
@@ -21,8 +21,8 @@ def db():
 
 
 def test_company_store_get_section_returns_none_when_absent(db):
-    from tenderai_bf.company_store import CompanyStore
-    from tenderai_bf.models import Company
+    from tenderai.company_store import CompanyStore
+    from tenderai.models import Company
 
     company = Company(name="Test", slug="test-co")
     db.add(company)
@@ -31,8 +31,8 @@ def test_company_store_get_section_returns_none_when_absent(db):
 
 
 def test_company_store_put_and_get_section(db):
-    from tenderai_bf.company_store import CompanyStore
-    from tenderai_bf.models import Company
+    from tenderai.company_store import CompanyStore
+    from tenderai.models import Company
 
     company = Company(name="Test", slug="test-co2")
     db.add(company)
@@ -49,8 +49,8 @@ def test_company_store_put_and_get_section(db):
 
 
 def test_company_store_get_all_with_fallback_uses_global_for_missing(db):
-    from tenderai_bf.company_store import CompanyStore
-    from tenderai_bf.models import AppSettings, Company
+    from tenderai.company_store import CompanyStore
+    from tenderai.models import AppSettings, Company
 
     db.add(
         AppSettings(
@@ -68,8 +68,8 @@ def test_company_store_get_all_with_fallback_uses_global_for_missing(db):
 
 
 def test_company_store_get_all_with_fallback_company_overrides_global(db):
-    from tenderai_bf.company_store import CompanyStore
-    from tenderai_bf.models import AppSettings, Company
+    from tenderai.company_store import CompanyStore
+    from tenderai.models import AppSettings, Company
 
     db.add(
         AppSettings(
@@ -94,8 +94,8 @@ def test_company_store_get_all_with_fallback_company_overrides_global(db):
 
 
 def test_company_store_seed_from_global_copies_all_sections(db):
-    from tenderai_bf.company_store import CompanyStore
-    from tenderai_bf.models import AppSettings, Company
+    from tenderai.company_store import CompanyStore
+    from tenderai.models import AppSettings, Company
 
     db.add(
         AppSettings(

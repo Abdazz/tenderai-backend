@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 import requests
 
-from tenderai_bf.agents.nodes.parse_pdf_rag import (
+from tenderai.agents.nodes.parse_pdf_rag import (
     extract_text_from_pdf,
     parse_pdf_with_rag,
     split_into_chunks,

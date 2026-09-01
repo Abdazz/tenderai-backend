@@ -10,7 +10,7 @@ os.environ.setdefault(
 )
 os.environ.setdefault("TENDERAI_ADMIN_PASSWORD", "test-admin-password-not-real")
 
-from tenderai_bf.db import Base  # noqa: E402 — must follow the env var setup above
+from tenderai.db import Base  # noqa: E402 — must follow the env var setup above
 
 
 @pytest.fixture
@@ -80,7 +80,7 @@ def test_company_notice_status_table_has_expected_columns(db):
 def test_company_notice_status_unique_per_company_and_notice(db):
     import uuid
 
-    from tenderai_bf.models import Company, CompanyNoticeStatus, Notice, Run, Source
+    from tenderai.models import Company, CompanyNoticeStatus, Notice, Run, Source
 
     company = Company(name="Test Co", slug="test-co")
     db.add(company)

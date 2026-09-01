@@ -8,7 +8,7 @@ os.environ.setdefault("TENDERAI_ADMIN_PASSWORD", "test-admin-password-not-real")
 
 
 def test_tenderai_state_has_country_fields():
-    from tenderai_bf.agents.graph import TenderAIState
+    from tenderai.agents.graph import TenderAIState
 
     state = TenderAIState(country_id=1)
     assert state.country_id == 1
@@ -19,7 +19,7 @@ def test_tenderai_state_has_country_fields():
 
 def test_run_sets_country_id_on_state():
     """run() must inject country context into state before graph execution."""
-    from tenderai_bf.agents.graph import TenderAIGraph
+    from tenderai.agents.graph import TenderAIGraph
 
     mock_country = MagicMock()
     mock_country.id = 1
@@ -31,8 +31,8 @@ def test_run_sets_country_id_on_state():
         "email": {"to_address": "x@y.com"},
     }
 
-    with patch("tenderai_bf.agents.graph.get_db_context") as mock_db_ctx, patch(
-        "tenderai_bf.agents.graph.CountryStore"
+    with patch("tenderai.agents.graph.get_db_context") as mock_db_ctx, patch(
+        "tenderai.agents.graph.CountryStore"
     ) as mock_store:
         mock_session = MagicMock()
         mock_session.query.return_value.filter.return_value.first.return_value = (
@@ -61,7 +61,7 @@ def test_run_sets_country_id_on_state():
 
 
 def test_harvest_graph_has_no_classify_or_email_nodes():
-    from tenderai_bf.agents.graph import TenderAIGraph
+    from tenderai.agents.graph import TenderAIGraph
 
     graph = TenderAIGraph()
     node_names = set(graph.graph.nodes.keys())
@@ -74,8 +74,8 @@ def test_harvest_graph_has_no_classify_or_email_nodes():
 
 def test_load_sources_filters_by_country_id():
     """In DB mode, load_sources must query only sources belonging to state.country_id."""
-    from tenderai_bf.agents.graph import TenderAIState
-    from tenderai_bf.agents.nodes.load_sources import load_sources_node
+    from tenderai.agents.graph import TenderAIState
+    from tenderai.agents.nodes.load_sources import load_sources_node
 
     state = TenderAIState(country_id=42)
     state.country_config = {"pipeline": {}}
@@ -101,7 +101,7 @@ def test_load_sources_filters_by_country_id():
     mock_first.last_error_at = None
     mock_first.last_error_message = None
 
-    with patch("tenderai_bf.agents.nodes.load_sources.get_db_context") as mock_ctx:
+    with patch("tenderai.agents.nodes.load_sources.get_db_context") as mock_ctx:
         mock_ctx.return_value.__enter__ = lambda s: mock_session
         mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
 
@@ -116,8 +116,8 @@ def test_load_sources_filters_by_country_id():
 
 def test_classify_uses_company_keywords():
     """classify_with_keywords must use state.company_config['classification']['relevant_keywords']."""
-    from tenderai_bf.agents.graph import TenderAIState
-    from tenderai_bf.agents.nodes.classify import classify_with_keywords
+    from tenderai.agents.graph import TenderAIState
+    from tenderai.agents.nodes.classify import classify_with_keywords
 
     state = TenderAIState(country_id=1, company_id=1)
     state.country_config = {"pipeline": {"use_llm_classification": False}}
@@ -142,8 +142,8 @@ def test_classify_uses_company_keywords():
 
 def test_classify_uses_company_min_relevance_score():
     """Classify must use state.company_config['classification']['min_relevance_score']."""
-    from tenderai_bf.agents.graph import TenderAIState
-    from tenderai_bf.agents.nodes.classify import classify_with_keywords
+    from tenderai.agents.graph import TenderAIState
+    from tenderai.agents.nodes.classify import classify_with_keywords
 
     state = TenderAIState(country_id=1, company_id=1)
     state.country_config = {"pipeline": {"use_llm_classification": False}}
@@ -169,8 +169,8 @@ def test_summarize_uses_country_prompts():
     """generate_summary_with_llm must use state.country_config['prompts']['summarization']."""
     from unittest.mock import MagicMock, patch
 
-    from tenderai_bf.agents.graph import TenderAIState
-    from tenderai_bf.agents.nodes.summarize import generate_summary_with_llm
+    from tenderai.agents.graph import TenderAIState
+    from tenderai.agents.nodes.summarize import generate_summary_with_llm
 
     state = TenderAIState(country_id=1)
     state.country_config = {
@@ -185,7 +185,7 @@ def test_summarize_uses_country_prompts():
 
     item = {"title": "Test", "description": "Desc", "url": "http://x.com"}
 
-    with patch("tenderai_bf.agents.nodes.summarize.get_llm_instance") as mock_llm_fn:
+    with patch("tenderai.agents.nodes.summarize.get_llm_instance") as mock_llm_fn:
         mock_llm = MagicMock()
         mock_llm.invoke.return_value = MagicMock(content="Résumé test")
         mock_llm_fn.return_value = mock_llm
@@ -200,8 +200,8 @@ def test_email_report_uses_country_to_address():
     """email_report must use state.country_config['email']['to_address']."""
     from unittest.mock import patch
 
-    from tenderai_bf.agents.graph import TenderAIState
-    from tenderai_bf.agents.nodes.email_report import email_report_node
+    from tenderai.agents.graph import TenderAIState
+    from tenderai.agents.nodes.email_report import email_report_node
 
     state = TenderAIState(country_id=1)
     state.country_config = {
@@ -216,7 +216,7 @@ def test_email_report_uses_country_to_address():
     state.report_bytes = b"fake pdf"
     state.report_url = "http://minio/report.docx"
 
-    with patch("tenderai_bf.agents.nodes.email_report.send_report_email") as mock_send:
+    with patch("tenderai.agents.nodes.email_report.send_report_email") as mock_send:
         mock_send.return_value = True
 
         email_report_node(state)

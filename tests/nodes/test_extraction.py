@@ -4,7 +4,7 @@ import sys
 
 sys.path.insert(0, "/app/src")
 
-from tenderai_bf.agents.extraction import extract_tenders_structured
+from tenderai.agents.extraction import extract_tenders_structured
 
 # Sample French tender text
 sample_text = """
@@ -82,7 +82,7 @@ def test_parse_extract_tavily_search_item():
     """Tavily search item is normalized into a Notice-compatible dict."""
     from unittest.mock import MagicMock
 
-    from tenderai_bf.agents.nodes.parse_extract import parse_extract_node
+    from tenderai.agents.nodes.parse_extract import parse_extract_node
 
     state = MagicMock()
     state.error_occurred = False
@@ -117,7 +117,7 @@ def test_parse_extract_tavily_extract_item():
     """Tavily extract item is normalized into a Notice-compatible dict."""
     from unittest.mock import MagicMock
 
-    from tenderai_bf.agents.nodes.parse_extract import parse_extract_node
+    from tenderai.agents.nodes.parse_extract import parse_extract_node
 
     state = MagicMock()
     state.error_occurred = False
@@ -148,7 +148,7 @@ def test_parse_extract_tavily_extract_item():
 
 def test_parse_quotidien_structured_no_relevance_fields():
     """Structural extraction only — no relevance judgment embedded."""
-    from tenderai_bf.agents.nodes.parse_pdf_structured import TenderBlock
+    from tenderai.agents.nodes.parse_pdf_structured import TenderBlock
 
     # TenderBlock itself must no longer accept is_relevant/domain/relevance_score
     block_fields = TenderBlock.model_fields.keys()
@@ -161,7 +161,7 @@ def test_parse_quotidien_structured_no_relevance_fields():
 def test_parse_quotidien_structured_carries_source_name():
     import inspect
 
-    from tenderai_bf.agents.nodes.parse_pdf_structured import (
+    from tenderai.agents.nodes.parse_pdf_structured import (
         parse_quotidien_structured,
     )
 
@@ -170,7 +170,7 @@ def test_parse_quotidien_structured_carries_source_name():
 
 
 def test_parse_tavily_listing_no_relevance_fields():
-    from tenderai_bf.agents.nodes.parse_tavily_listing import TenderItem
+    from tenderai.agents.nodes.parse_tavily_listing import TenderItem
 
     item_fields = TenderItem.model_fields.keys()
     assert "is_relevant" not in item_fields
@@ -180,6 +180,6 @@ def test_parse_tavily_listing_no_relevance_fields():
 
 
 def test_ledevoir_ocr_prompt_has_no_relevance_field():
-    from tenderai_bf.agents.nodes.fetch_ledevoir import _OCR_PROMPT
+    from tenderai.agents.nodes.fetch_ledevoir import _OCR_PROMPT
 
     assert "is_relevant" not in _OCR_PROMPT

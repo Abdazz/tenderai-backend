@@ -244,7 +244,7 @@ To create a test for a new node:
 import sys
 sys.path.insert(0, '/app/src')
 
-from tenderai_bf.agents.nodes.yournode import your_function
+from tenderai.agents.nodes.yournode import your_function
 ```
 
 3. **Create sample data**:
@@ -293,7 +293,7 @@ TESTS = [
 
 ### Import errors
 ```python
-ModuleNotFoundError: No module named 'tenderai_bf'
+ModuleNotFoundError: No module named 'tenderai'
 ```
 **Solution:** Make sure `sys.path.insert(0, '/app/src')` is at the top of your test file
 

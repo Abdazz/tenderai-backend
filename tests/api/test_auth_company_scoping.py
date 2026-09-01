@@ -8,10 +8,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from tenderai_bf.api.dependencies import get_password_hash
-from tenderai_bf.api.main import app
-from tenderai_bf.db import get_db
-from tenderai_bf.models import Base, Company, User
+from tenderai.api.dependencies import get_password_hash
+from tenderai.api.main import app
+from tenderai.db import get_db
+from tenderai.models import Base, Company, User
 
 
 @pytest.fixture(scope="function")
@@ -85,7 +85,7 @@ def test_login_jwt_includes_company_id(client, db_session, two_companies):
     # the token directly to check the claim, which is the actual contract.
     from jose import jwt
 
-    from tenderai_bf.api.dependencies import ALGORITHM, SECRET_KEY
+    from tenderai.api.dependencies import ALGORITHM, SECRET_KEY
 
     payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
     assert payload["company_id"] == yulcom.id
@@ -109,7 +109,7 @@ def test_login_jwt_company_id_null_for_super_admin(client, db_session):
 
     from jose import jwt
 
-    from tenderai_bf.api.dependencies import ALGORITHM, SECRET_KEY
+    from tenderai.api.dependencies import ALGORITHM, SECRET_KEY
 
     payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
     assert payload["company_id"] is None

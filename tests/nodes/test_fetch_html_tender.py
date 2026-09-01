@@ -102,7 +102,7 @@ def _run(coro):
 
 def test_uemoa_extracts_two_items():
     """UEMOA source: extrait titre, deadline ISO et URL PDF pour chaque slide."""
-    from tenderai_bf.agents.nodes.fetch_html_tender import fetch_html_tender
+    from tenderai.agents.nodes.fetch_html_tender import fetch_html_tender
 
     mock_resp = _make_mock_response(UEMOA_HTML)
     mock_client = AsyncMock()
@@ -111,7 +111,7 @@ def test_uemoa_extracts_two_items():
     mock_client.get = AsyncMock(return_value=mock_resp)
 
     with patch(
-        "tenderai_bf.agents.nodes.fetch_html_tender.httpx.AsyncClient",
+        "tenderai.agents.nodes.fetch_html_tender.httpx.AsyncClient",
         return_value=mock_client,
     ):
         result = _run(fetch_html_tender(SOURCE_UEMOA, "run-test"))
@@ -129,7 +129,7 @@ def test_uemoa_extracts_two_items():
 
 def test_enabel_extracts_reference_and_deadline():
     """Enabel source: extrait référence depuis titre et deadline via deadline_text_prefix."""
-    from tenderai_bf.agents.nodes.fetch_html_tender import fetch_html_tender
+    from tenderai.agents.nodes.fetch_html_tender import fetch_html_tender
 
     mock_resp = _make_mock_response(ENABEL_HTML)
     mock_client = AsyncMock()
@@ -138,7 +138,7 @@ def test_enabel_extracts_reference_and_deadline():
     mock_client.get = AsyncMock(return_value=mock_resp)
 
     with patch(
-        "tenderai_bf.agents.nodes.fetch_html_tender.httpx.AsyncClient",
+        "tenderai.agents.nodes.fetch_html_tender.httpx.AsyncClient",
         return_value=mock_client,
     ):
         result = _run(fetch_html_tender(SOURCE_ENABEL, "run-test"))
@@ -153,7 +153,7 @@ def test_enabel_extracts_reference_and_deadline():
 
 def test_ssl_verify_false_passed_to_client():
     """ssl_verify=false dans patterns doit être transmis au AsyncClient."""
-    from tenderai_bf.agents.nodes.fetch_html_tender import fetch_html_tender
+    from tenderai.agents.nodes.fetch_html_tender import fetch_html_tender
 
     mock_resp = _make_mock_response(UEMOA_HTML)
     mock_client = AsyncMock()
@@ -162,7 +162,7 @@ def test_ssl_verify_false_passed_to_client():
     mock_client.get = AsyncMock(return_value=mock_resp)
 
     with patch(
-        "tenderai_bf.agents.nodes.fetch_html_tender.httpx.AsyncClient",
+        "tenderai.agents.nodes.fetch_html_tender.httpx.AsyncClient",
         return_value=mock_client,
     ) as mock_cls:
         _run(fetch_html_tender(SOURCE_UEMOA, "run-test"))
@@ -172,7 +172,7 @@ def test_ssl_verify_false_passed_to_client():
 
 def test_empty_page_returns_failed():
     """Page sans cards → status failed."""
-    from tenderai_bf.agents.nodes.fetch_html_tender import fetch_html_tender
+    from tenderai.agents.nodes.fetch_html_tender import fetch_html_tender
 
     mock_resp = _make_mock_response("<html><body></body></html>")
     mock_client = AsyncMock()
@@ -181,7 +181,7 @@ def test_empty_page_returns_failed():
     mock_client.get = AsyncMock(return_value=mock_resp)
 
     with patch(
-        "tenderai_bf.agents.nodes.fetch_html_tender.httpx.AsyncClient",
+        "tenderai.agents.nodes.fetch_html_tender.httpx.AsyncClient",
         return_value=mock_client,
     ):
         result = _run(fetch_html_tender(SOURCE_UEMOA, "run-test"))
@@ -192,7 +192,7 @@ def test_empty_page_returns_failed():
 
 def test_pagination_fetches_multiple_pages():
     """max_pages=2 doit déclencher deux requêtes GET avec pagination_url."""
-    from tenderai_bf.agents.nodes.fetch_html_tender import fetch_html_tender
+    from tenderai.agents.nodes.fetch_html_tender import fetch_html_tender
 
     source = {
         "name": "Enabel - Test Pagination",
@@ -217,7 +217,7 @@ def test_pagination_fetches_multiple_pages():
     mock_client.get = AsyncMock(return_value=mock_resp)
 
     with patch(
-        "tenderai_bf.agents.nodes.fetch_html_tender.httpx.AsyncClient",
+        "tenderai.agents.nodes.fetch_html_tender.httpx.AsyncClient",
         return_value=mock_client,
     ):
         result = _run(fetch_html_tender(source, "run-test"))

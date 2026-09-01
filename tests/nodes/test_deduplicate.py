@@ -4,7 +4,7 @@ import sys
 
 sys.path.insert(0, "/app/src")
 
-from tenderai_bf.agents.nodes.deduplicate import check_duplicate_with_llm
+from tenderai.agents.nodes.deduplicate import check_duplicate_with_llm
 
 # Sample tender pairs to test deduplication
 test_pairs = [
@@ -182,8 +182,8 @@ import hashlib  # noqa: E402
 
 import pytest  # noqa: E402
 
-from tenderai_bf.agents.graph import TenderAIState  # noqa: E402
-from tenderai_bf.agents.nodes.deduplicate import deduplicate_node  # noqa: E402
+from tenderai.agents.graph import TenderAIState  # noqa: E402
+from tenderai.agents.nodes.deduplicate import deduplicate_node  # noqa: E402
 
 COUNTRY_CONFIG_DEDUP = {
     "pipeline": {

@@ -13,10 +13,10 @@ from sqlalchemy import create_engine  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
 from sqlalchemy.pool import StaticPool  # noqa: E402
 
-from tenderai_bf.api.dependencies import get_password_hash  # noqa: E402
-from tenderai_bf.api.main import app  # noqa: E402
-from tenderai_bf.db import get_db  # noqa: E402
-from tenderai_bf.models import Base, Company, Recipient, User  # noqa: E402
+from tenderai.api.dependencies import get_password_hash  # noqa: E402
+from tenderai.api.main import app  # noqa: E402
+from tenderai.db import get_db  # noqa: E402
+from tenderai.models import Base, Company, Recipient, User  # noqa: E402
 
 
 @pytest.fixture(scope="function")

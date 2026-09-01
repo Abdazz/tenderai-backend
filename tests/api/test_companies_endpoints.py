@@ -8,10 +8,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from tenderai_bf.api.dependencies import get_password_hash
-from tenderai_bf.api.main import app
-from tenderai_bf.db import get_db
-from tenderai_bf.models import (
+from tenderai.api.dependencies import get_password_hash
+from tenderai.api.main import app
+from tenderai.db import get_db
+from tenderai.models import (
     Base,
     Company,
     CompanyCountrySubscription,
@@ -207,14 +207,14 @@ def test_delete_company_is_soft_delete(client, db_session, super_admin_token):
     assert resp.status_code == 204
 
     db_session.expire_all()
-    from tenderai_bf.models import Company as CompanyModel
+    from tenderai.models import Company as CompanyModel
 
     row = db_session.query(CompanyModel).filter(CompanyModel.id == company_id).first()
     assert row is not None  # not actually deleted
     assert row.active is False
 
 
-@patch("tenderai_bf.agents.get_delivery_pipeline")
+@patch("tenderai.agents.get_delivery_pipeline")
 def test_company_admin_can_trigger_run_for_own_company(
     mock_get_delivery_pipeline, client, db_session
 ):

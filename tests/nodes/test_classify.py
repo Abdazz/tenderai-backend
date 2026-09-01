@@ -4,7 +4,7 @@ import sys
 
 sys.path.insert(0, "/app/src")
 
-from tenderai_bf.agents.nodes.classify import classify_with_keywords, classify_with_llm
+from tenderai.agents.nodes.classify import classify_with_keywords, classify_with_llm
 
 # Sample tender items to classify
 sample_items = [
@@ -99,7 +99,7 @@ def test_keyword_classification(monkeypatch):
             pass
 
     monkeypatch.setattr(
-        "tenderai_bf.agents.nodes.classify.get_db_context", lambda: _NoDbCtx()
+        "tenderai.agents.nodes.classify.get_db_context", lambda: _NoDbCtx()
     )
 
     # Create mock state
@@ -159,7 +159,7 @@ def test_llm_classification(monkeypatch):
             pass
 
     monkeypatch.setattr(
-        "tenderai_bf.agents.nodes.classify.get_db_context", lambda: _NoDbCtx()
+        "tenderai.agents.nodes.classify.get_db_context", lambda: _NoDbCtx()
     )
 
     # Create mock state
@@ -223,7 +223,7 @@ os.environ.setdefault(
 )
 os.environ.setdefault("TENDERAI_ADMIN_PASSWORD", "test-admin-password-not-real")
 
-from tenderai_bf.agents.graph import TenderAIState  # noqa: E402
+from tenderai.agents.graph import TenderAIState  # noqa: E402
 
 COMPANY_CONFIG_CLASSIFY = {
     "classification": {
@@ -343,7 +343,7 @@ def test_classify_sets_unique_items_for_delivery_report(monkeypatch):
             pass
 
     monkeypatch.setattr(
-        "tenderai_bf.agents.nodes.classify.get_db_context", lambda: _NoDbCtx()
+        "tenderai.agents.nodes.classify.get_db_context", lambda: _NoDbCtx()
     )
 
     state = TenderAIState(
@@ -370,8 +370,8 @@ def test_classify_writes_company_notice_status_for_every_item(monkeypatch):
     from sqlalchemy import create_engine
     from sqlalchemy.orm import Session
 
-    from tenderai_bf.db import Base
-    from tenderai_bf.models import (
+    from tenderai.db import Base
+    from tenderai.models import (
         Company,
         CompanyNoticeStatus,
         Country,
@@ -432,7 +432,7 @@ def test_classify_writes_company_notice_status_for_every_item(monkeypatch):
         return _Ctx()
 
     monkeypatch.setattr(
-        "tenderai_bf.agents.nodes.classify.get_db_context", _fake_get_db_context
+        "tenderai.agents.nodes.classify.get_db_context", _fake_get_db_context
     )
 
     state = TenderAIState(

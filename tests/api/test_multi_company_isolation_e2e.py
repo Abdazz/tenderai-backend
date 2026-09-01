@@ -12,10 +12,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from tenderai_bf.api.dependencies import get_password_hash
-from tenderai_bf.api.main import app
-from tenderai_bf.db import get_db
-from tenderai_bf.models import Base, Company, CompanySettings, Country, Recipient, User
+from tenderai.api.dependencies import get_password_hash
+from tenderai.api.main import app
+from tenderai.db import get_db
+from tenderai.models import Base, Company, CompanySettings, Country, Recipient, User
 
 
 @pytest.fixture(scope="function")

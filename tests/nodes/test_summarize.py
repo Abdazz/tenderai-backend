@@ -4,7 +4,7 @@ import sys
 
 sys.path.insert(0, "/app/src")
 
-from tenderai_bf.agents.nodes.summarize import generate_summary_with_llm
+from tenderai.agents.nodes.summarize import generate_summary_with_llm
 
 # Sample tender to summarize
 sample_tender = {

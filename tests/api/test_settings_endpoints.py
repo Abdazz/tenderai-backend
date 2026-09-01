@@ -11,8 +11,8 @@ os.environ.setdefault(
 )
 os.environ.setdefault("TENDERAI_ADMIN_PASSWORD", "test-admin-password-not-real")
 
-from tenderai_bf.api.main import app  # noqa: E402 — must follow env var setup above
-from tenderai_bf.db import Base, get_db  # noqa: E402 — must follow env var setup above
+from tenderai.api.main import app  # noqa: E402 — must follow env var setup above
+from tenderai.db import Base, get_db  # noqa: E402 — must follow env var setup above
 
 
 @pytest.fixture
@@ -44,7 +44,7 @@ def client(test_db):
 
 def _auth_headers(client: TestClient) -> dict:
     """Create a test admin JWT directly."""
-    from tenderai_bf.api.dependencies import create_access_token
+    from tenderai.api.dependencies import create_access_token
 
     token = create_access_token({"sub": "testadmin", "role": "admin"})
     return {"Authorization": f"Bearer {token}"}
@@ -80,7 +80,7 @@ def test_put_section_validates_and_saves(client, test_db):
     res = client.put("/api/v1/admin/settings/pipeline", json=payload, headers=headers)
     assert res.status_code == 200
 
-    from tenderai_bf.settings_store import SettingsStore
+    from tenderai.settings_store import SettingsStore
 
     saved = SettingsStore.get_section(session, "pipeline")
     assert saved["min_relevance_score"] == 0.6

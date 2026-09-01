@@ -11,21 +11,21 @@ os.environ.setdefault("TENDERAI_ADMIN_PASSWORD", "test-admin-password-not-real")
 def test_country_create_schema_validates_name():
     from pydantic import ValidationError
 
-    from tenderai_bf.api.schemas.countries import CountryCreate
+    from tenderai.api.schemas.countries import CountryCreate
 
     with pytest.raises(ValidationError):
         CountryCreate(name="", code="BF", locale="fr")
 
 
 def test_country_create_schema_valid():
-    from tenderai_bf.api.schemas.countries import CountryCreate
+    from tenderai.api.schemas.countries import CountryCreate
 
     c = CountryCreate(name="Burkina Faso", code="BF", locale="fr")
     assert c.code == "BF"
 
 
 def test_country_update_schema_all_optional():
-    from tenderai_bf.api.schemas.countries import CountryUpdate
+    from tenderai.api.schemas.countries import CountryUpdate
 
     u = CountryUpdate()
     assert u.name is None
@@ -35,7 +35,7 @@ def test_country_update_schema_all_optional():
 def test_country_read_schema_from_orm():
     from datetime import datetime
 
-    from tenderai_bf.api.schemas.countries import CountryRead
+    from tenderai.api.schemas.countries import CountryRead
 
     obj = CountryRead(
         id=1,
@@ -55,8 +55,8 @@ def client():
     from sqlalchemy import create_engine
     from sqlalchemy.orm import Session
 
-    from tenderai_bf.api.main import app
-    from tenderai_bf.db import Base
+    from tenderai.api.main import app
+    from tenderai.db import Base
 
     engine = create_engine(
         "sqlite:///:memory:", connect_args={"check_same_thread": False}
@@ -67,7 +67,7 @@ def client():
         with Session(engine) as session:
             yield session
 
-    from tenderai_bf.api.dependencies import get_db
+    from tenderai.api.dependencies import get_db
 
     app.dependency_overrides[get_db] = override_db
     yield TestClient(app)
@@ -115,7 +115,7 @@ def test_get_country_not_found_returns_404_or_auth_required(client):
 
 
 def test_countries_router_registered():
-    from tenderai_bf.api.main import app
+    from tenderai.api.main import app
 
     paths = [r.path for r in app.routes]
     assert any("/admin/countries" in p for p in paths)

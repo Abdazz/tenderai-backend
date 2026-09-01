@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tenderai_bf.agents.graph import TenderAIState, create_pipeline_graph
+from tenderai.agents.graph import TenderAIState, create_pipeline_graph
 
 
 class TestPipelineIntegration:
@@ -85,7 +85,7 @@ class TestDatabaseIntegration:
         implementation instead of testing behavior.
         """
 
-        from tenderai_bf.db import get_db_context, init_database
+        from tenderai.db import get_db_context, init_database
 
         init_database()
 
@@ -100,7 +100,7 @@ class TestStorageIntegration:
     def test_minio_client_creation(self, mock_boto_client):
         """Test MinIO client creation."""
 
-        from tenderai_bf.storage.minio_client import MinIOClient
+        from tenderai.storage.minio_client import MinIOClient
 
         # Mock boto3 client
         mock_client = MagicMock()
@@ -121,7 +121,7 @@ class TestStorageIntegration:
     def test_file_upload(self, mock_boto_client):
         """Test file upload to storage."""
 
-        from tenderai_bf.storage.minio_client import MinIOClient
+        from tenderai.storage.minio_client import MinIOClient
 
         # Mock boto3 client. head_bucket succeeding (a plain MagicMock, no
         # ClientError raised) means ensure_bucket_exists() short-circuits to

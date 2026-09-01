@@ -4,7 +4,7 @@ import uuid
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
-from tenderai_bf.models import Base, User
+from tenderai.models import Base, User
 
 
 def test_role_rename_migration_logic():

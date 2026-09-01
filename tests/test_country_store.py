@@ -9,7 +9,7 @@ os.environ.setdefault(
 )
 os.environ.setdefault("TENDERAI_ADMIN_PASSWORD", "test-admin-password-not-real")
 
-from tenderai_bf.db import Base  # noqa: E402 — must follow env var setup above
+from tenderai.db import Base  # noqa: E402 — must follow env var setup above
 
 
 @pytest.fixture
@@ -64,8 +64,8 @@ def test_recipient_has_country_id_column(db):
 
 
 def test_country_store_get_section_returns_none_when_absent(db):
-    from tenderai_bf.country_store import CountryStore
-    from tenderai_bf.models import Country
+    from tenderai.country_store import CountryStore
+    from tenderai.models import Country
 
     country = Country(name="Test", code="XX", locale="fr")
     db.add(country)
@@ -74,8 +74,8 @@ def test_country_store_get_section_returns_none_when_absent(db):
 
 
 def test_country_store_put_and_get_section(db):
-    from tenderai_bf.country_store import CountryStore
-    from tenderai_bf.models import Country
+    from tenderai.country_store import CountryStore
+    from tenderai.models import Country
 
     country = Country(name="Test", code="TT", locale="fr")
     db.add(country)
@@ -88,8 +88,8 @@ def test_country_store_put_and_get_section(db):
 
 
 def test_country_store_get_all_with_fallback_uses_global_for_missing(db):
-    from tenderai_bf.country_store import CountryStore
-    from tenderai_bf.models import AppSettings, Country
+    from tenderai.country_store import CountryStore
+    from tenderai.models import AppSettings, Country
 
     # Insert global setting
     db.add(
@@ -109,8 +109,8 @@ def test_country_store_get_all_with_fallback_uses_global_for_missing(db):
 
 
 def test_country_store_get_all_with_fallback_country_overrides_global(db):
-    from tenderai_bf.country_store import CountryStore
-    from tenderai_bf.models import AppSettings, Country
+    from tenderai.country_store import CountryStore
+    from tenderai.models import AppSettings, Country
 
     db.add(
         AppSettings(
@@ -135,8 +135,8 @@ def test_country_store_get_all_with_fallback_country_overrides_global(db):
 
 
 def test_country_store_seed_from_global_copies_all_sections(db):
-    from tenderai_bf.country_store import CountryStore
-    from tenderai_bf.models import AppSettings, Country
+    from tenderai.country_store import CountryStore
+    from tenderai.models import AppSettings, Country
 
     db.add(
         AppSettings(

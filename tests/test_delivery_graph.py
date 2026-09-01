@@ -14,8 +14,8 @@ from sqlalchemy import create_engine  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
 from sqlalchemy.pool import StaticPool  # noqa: E402
 
-from tenderai_bf.db import Base  # noqa: E402
-from tenderai_bf.models import (  # noqa: E402
+from tenderai.db import Base  # noqa: E402
+from tenderai.models import (  # noqa: E402
     Company,
     CompanyNoticeStatus,
     Country,
@@ -25,7 +25,7 @@ from tenderai_bf.models import (  # noqa: E402
 
 
 def test_delivery_graph_node_sequence():
-    from tenderai_bf.agents.delivery_graph import DeliveryGraph
+    from tenderai.agents.delivery_graph import DeliveryGraph
 
     graph = DeliveryGraph()
     node_names = set(graph.graph.nodes.keys())
@@ -64,7 +64,7 @@ def test_delivery_graph_runs_end_to_end(db_session):
     mocked; the delivery-cursor fix (Finding #1) and the sources/stats fixes
     (Finding #3) are exercised through the whole graph, not just their own
     unit tests."""
-    from tenderai_bf.agents.delivery_graph import DeliveryGraph
+    from tenderai.agents.delivery_graph import DeliveryGraph
 
     country = Country(id=1, name="Burkina Faso", code="BF", locale="fr", active=True)
     company = Company(id=1, name="YULCOM Technologies", slug="yulcom", active=True)
@@ -118,23 +118,23 @@ def test_delivery_graph_runs_end_to_end(db_session):
     mock_storage_client.store_report.return_value = "https://minio/fake-report.docx"
 
     with patch(
-        "tenderai_bf.agents.delivery_graph.get_db_context", _shared_db_context
+        "tenderai.agents.delivery_graph.get_db_context", _shared_db_context
     ), patch(
-        "tenderai_bf.agents.nodes.select_new_notices.get_db_context",
+        "tenderai.agents.nodes.select_new_notices.get_db_context",
         _shared_db_context,
     ), patch(
-        "tenderai_bf.agents.nodes.classify.get_db_context", _shared_db_context
+        "tenderai.agents.nodes.classify.get_db_context", _shared_db_context
     ), patch(
-        "tenderai_bf.agents.nodes.mark_delivered.get_db_context", _shared_db_context
+        "tenderai.agents.nodes.mark_delivered.get_db_context", _shared_db_context
     ), patch(
-        "tenderai_bf.agents.delivery_graph.CountryStore"
+        "tenderai.agents.delivery_graph.CountryStore"
     ) as mock_country_store, patch(
-        "tenderai_bf.agents.delivery_graph.CompanyStore"
+        "tenderai.agents.delivery_graph.CompanyStore"
     ) as mock_company_store, patch(
-        "tenderai_bf.agents.nodes.compose_report.get_storage_client",
+        "tenderai.agents.nodes.compose_report.get_storage_client",
         return_value=mock_storage_client,
     ), patch(
-        "tenderai_bf.agents.nodes.email_report.send_report_email", return_value=True
+        "tenderai.agents.nodes.email_report.send_report_email", return_value=True
     ) as mock_send_email:
         mock_country_store.get_all_with_fallback.return_value = {
             "pipeline": {"use_llm_classification": False},

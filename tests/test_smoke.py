@@ -29,7 +29,7 @@ def test_imports():
 def test_settings_loading():
     """Test that settings can be loaded."""
 
-    from tenderai_bf.config import settings
+    from tenderai.config import settings
 
     # Basic settings should be available
     assert hasattr(settings, "app_name")
@@ -50,7 +50,7 @@ def test_settings_loading():
 def test_logging_setup():
     """Test that logging can be set up."""
 
-    from tenderai_bf.logging import configure_logging, get_logger
+    from tenderai.logging import configure_logging, get_logger
 
     # Setup logging
     configure_logging()
@@ -67,7 +67,7 @@ def test_logging_setup():
 def test_database_models():
     """Test that database models are defined."""
 
-    from tenderai_bf import models
+    from tenderai import models
 
     # Check main models exist
     assert hasattr(models, "Source")
@@ -87,7 +87,7 @@ def test_database_models():
 def test_schemas():
     """Test that Pydantic schemas are defined."""
 
-    from tenderai_bf import schemas
+    from tenderai import schemas
 
     # Check main schemas exist
     assert hasattr(schemas, "NoticeCreate")
@@ -99,7 +99,7 @@ def test_schemas():
 def test_pipeline_graph():
     """Test that pipeline graph can be created."""
 
-    from tenderai_bf.agents.graph import TenderAIState, create_pipeline_graph
+    from tenderai.agents.graph import TenderAIState, create_pipeline_graph
 
     # Create graph
     graph = create_pipeline_graph()
@@ -129,8 +129,8 @@ def test_pipeline_graph():
 def test_utility_functions():
     """Test that utility functions work."""
 
-    from tenderai_bf.utils.dates import get_burkina_faso_now, parse_french_date
-    from tenderai_bf.utils.robots import get_default_user_agent, validate_user_agent
+    from tenderai.utils.dates import get_burkina_faso_now, parse_french_date
+    from tenderai.utils.robots import get_default_user_agent, validate_user_agent
 
     # Date utilities
     now = get_burkina_faso_now()
@@ -153,7 +153,7 @@ def test_utility_functions():
 def test_cli_commands():
     """Test that CLI commands are defined."""
 
-    from tenderai_bf.cli import health_check, main, run_once
+    from tenderai.cli import health_check, main, run_once
 
     # Check CLI is defined
     assert main is not None
@@ -175,7 +175,7 @@ def test_file_structure():
     assert (project_root / ".gitignore").exists()
 
     # Source structure
-    src_dir = project_root / "src" / "tenderai_bf"
+    src_dir = project_root / "src" / "tenderai"
     assert src_dir.exists()
     assert (src_dir / "__init__.py").exists()
     assert (src_dir / "config.py").exists()
@@ -234,13 +234,13 @@ sources:
     mock_engine = MagicMock()
     mock_engine.connect.return_value = mock_conn
 
-    with patch("tenderai_bf.cli.Path") as mock_path_cls, patch(
-        "tenderai_bf.cli.get_engine", return_value=mock_engine
+    with patch("tenderai.cli.Path") as mock_path_cls, patch(
+        "tenderai.cli.get_engine", return_value=mock_engine
     ):
         mock_path_cls.return_value = yaml_file
         from click.testing import CliRunner
 
-        from tenderai_bf.cli import main
+        from tenderai.cli import main
 
         runner = CliRunner()
         result = runner.invoke(main, ["seed-sources"])
@@ -260,7 +260,7 @@ sources:
 def test_run_once_requires_company():
     from click.testing import CliRunner
 
-    from tenderai_bf.cli import main
+    from tenderai.cli import main
 
     runner = CliRunner()
     result = runner.invoke(main, ["run-once", "--country-code", "BF"])
