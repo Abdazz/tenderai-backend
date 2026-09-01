@@ -20,13 +20,13 @@ format: ## Format code with ruff
 	poetry run ruff check --fix src tests
 
 type-check: ## Run type checking with mypy
-	poetry run mypy src/tenderai_bf
+	poetry run mypy src/tenderai
 
 test: ## Run unit tests
 	poetry run pytest tests/ -v
 
 test-cov: ## Run tests with coverage
-	poetry run pytest tests/ --cov=tenderai_bf --cov-report=html --cov-report=term
+	poetry run pytest tests/ --cov=tenderai --cov-report=html --cov-report=term
 
 test-smoke: ## Run smoke tests only
 	poetry run pytest tests/test_smoke.py -v
@@ -79,22 +79,22 @@ reset-db: ## Reset database (WARNING: destroys data)
 	$(MAKE) migrate
 
 run-once: ## Execute pipeline once (defaults to BF/yulcom for local dev)
-	poetry run python -m tenderai_bf.cli run-once --country-code BF --company-code yulcom
+	poetry run python -m tenderai.cli run-once --country-code BF --company-code yulcom
 
 run-once-docker: ## Execute pipeline once using docker (defaults to BF/yulcom for local dev)
-	docker-compose exec api python -m tenderai_bf.cli run-once --country-code BF --company-code yulcom
+	docker-compose exec api python -m tenderai.cli run-once --country-code BF --company-code yulcom
 
 build-report: ## Generate report only
-	poetry run python -m tenderai_bf.cli build-report
+	poetry run python -m tenderai.cli build-report
 
 test-email: ## Test email configuration
-	poetry run python -m tenderai_bf.cli test-email
+	poetry run python -m tenderai.cli test-email
 
 init-db: ## Initialize database schema
-	poetry run python -m tenderai_bf.cli init-db
+	poetry run python -m tenderai.cli init-db
 
 scheduler: ## Start scheduler daemon
-	poetry run python -m tenderai_bf.scheduler.schedule
+	poetry run python -m tenderai.scheduler.schedule
 
 health: ## Check API health
 	@curl -f http://localhost:8000/health || echo "API not responding"

@@ -38,7 +38,7 @@ jobs:
           poetry run ruff format --check src tests
       - name: Type check
         continue-on-error: true
-        run: poetry run mypy src/tenderai_bf
+        run: poetry run mypy src/tenderai
       - name: Test
         run: poetry run pytest tests/ -v --no-cov -m "not slow and not integration"
 

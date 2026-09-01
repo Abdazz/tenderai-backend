@@ -9,7 +9,7 @@ description = "Multi-agent RFP harvester for Burkina Faso IT/Engineering tenders
 authors = ["YULCOM Technologies <dev@yulcom.com>"]
 license = "Proprietary"
 readme = "README.md"
-packages = [{include = "tenderai_bf", from = "src"}]
+packages = [{include = "tenderai", from = "src"}]
 
 [tool.poetry.dependencies]
 python = "^3.11"
@@ -94,8 +94,8 @@ playwright = ["playwright"]
 full = ["spacy", "playwright", "crawl4ai"]
 
 [tool.poetry.scripts]
-tenderai = "tenderai_bf.cli:main"
-tenderai-api = "tenderai_bf.api.main:app"
+tenderai = "tenderai.cli:main"
+tenderai-api = "tenderai.api.main:app"
 
 [tool.mypy]
 python_version = "3.11"
@@ -129,7 +129,7 @@ python_functions = ["test_*"]
 addopts = [
     "--strict-markers",
     "--strict-config",
-    "--cov=tenderai_bf",
+    "--cov=tenderai",
     "--cov-report=term-missing",
     "--cov-report=html",
     "--cov-fail-under=80",
