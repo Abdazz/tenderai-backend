@@ -586,12 +586,13 @@ def parse_extract_node(state) -> dict:
 
             # Handle RAG-based PDF parsing
             if parser_type == "pdf_rag":
+                source_name = item.get("source_name", "Unknown")
                 try:
                     from .parse_pdf_rag import parse_pdf_with_rag
 
                     rag_tenders = parse_pdf_with_rag(
                         pdf_path=item["url"],  # For logging/reference
-                        source_name=item.get("source_name", "Unknown"),
+                        source_name=source_name,
                         filename=item.get("title", "document.pdf"),
                         metadata={
                             "url": item["url"],
@@ -606,11 +607,32 @@ def parse_extract_node(state) -> dict:
                         llm_cfg=state.country_config.get("llm", {}),
                     )
                     parsed_items.extend(rag_tenders)
+                    if not rag_tenders:
+                        # constat #4: parse_pdf_with_rag catches every
+                        # per-chunk exception internally and just returns []
+                        # — it never raises, so this path is silent unless
+                        # explicitly surfaced here. No fallback actually
+                        # exists for pdf_rag (contrary to what used to be
+                        # logged); this is the run's only visible signal.
+                        state.add_warning(
+                            "parse_extract",
+                            "PDF RAG extraction produced 0 tenders — every "
+                            "chunk failed or the PDF had no extractable items",
+                            source_name=source_name,
+                            url=item["url"],
+                        )
                 except Exception as e:
                     logger.error(
-                        "RAG parsing failed, falling back to standard parsing",
+                        "RAG parsing raised unexpectedly",
                         error=str(e),
+                        source_name=source_name,
                         run_id=state.run_id,
+                    )
+                    state.add_warning(
+                        "parse_extract",
+                        f"PDF RAG extraction raised an exception: {e}",
+                        source_name=source_name,
+                        url=item["url"],
                     )
                     # Continue with other items
                     continue
