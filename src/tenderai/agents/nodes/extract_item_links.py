@@ -387,9 +387,16 @@ def extract_item_links_node(state) -> dict:
                             patterns.get("fetch_detail_with_playwright", False)
                         )
                         if _use_pw_detail:
-                            # Wrap as dicts so fetch_items routes them through Playwright
+                            # Wrap as dicts so fetch_items routes them through Playwright.
+                            # source_name carries through to persist_notices — without it,
+                            # detail pages fetched this way can never resolve a source_id
+                            # (constat #9: unique_items > 0 but notices_persisted stays 0).
                             links = [
-                                {"url": u, "source": "playwright_detail"}
+                                {
+                                    "url": u,
+                                    "source": "playwright_detail",
+                                    "source_name": source_name,
+                                }
                                 for u in url_list
                                 if isinstance(u, str)
                             ]

@@ -875,6 +875,12 @@ def parse_extract_node(state) -> dict:
                 )
 
                 if parsed_item:
+                    # Playwright detail-page items carry source_name from
+                    # extract_item_links; parse_html_item doesn't set it
+                    # itself (constat #9 — persist_notices can't resolve a
+                    # source_id without it).
+                    if item.get("source_name") and not parsed_item.get("source_name"):
+                        parsed_item["source_name"] = item["source_name"]
                     parsed_items.append(parsed_item)
                 else:
                     logger.error(

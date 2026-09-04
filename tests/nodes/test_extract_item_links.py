@@ -75,3 +75,34 @@ def test_html_tender_item_uses_listings_not_content():
 
     assert not state.error_occurred
     assert len(state.discovered_links) == 1
+
+
+def test_playwright_detail_links_carry_source_name():
+    """constat #9: playwright_links + fetch_detail_with_playwright must tag
+    each detail URL with source_name, or persist_notices can never resolve
+    a source_id for it later (unique_items > 0 but notices_persisted stays 0)."""
+    import json
+
+    items_raw = [
+        {
+            "status": "success",
+            "source": {
+                "name": "Achats Canada",
+                "patterns": {"fetch_detail_with_playwright": True},
+            },
+            "content": json.dumps(
+                [
+                    "https://achatscanada.canada.ca/notice/1",
+                    "https://achatscanada.canada.ca/notice/2",
+                ]
+            ),
+            "url": "https://achatscanada.canada.ca/fr/occasions-de-marche",
+            "parser_type": "playwright_links",
+        }
+    ]
+    state = eil.extract_item_links_node(_base_state(items_raw))
+
+    assert not state.error_occurred
+    assert len(state.discovered_links) == 2
+    for link in state.discovered_links:
+        assert link["source_name"] == "Achats Canada"

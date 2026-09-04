@@ -15,8 +15,13 @@ from .fetch_joffres import extract_joffres_detail
 logger = get_logger(__name__)
 
 
-async def _fetch_playwright_detail_items(urls: list[str], run_id: str) -> list[dict]:
-    """Fetch individual detail pages via Playwright for sites that block plain HTTP clients."""
+async def _fetch_playwright_detail_items(links: list[dict], run_id: str) -> list[dict]:
+    """Fetch individual detail pages via Playwright for sites that block plain HTTP clients.
+
+    links: [{"url": ..., "source_name": ...}, ...] — source_name must be
+    carried onto every returned item (all paths, including failures) or
+    persist_notices can never resolve a source_id for it (constat #9).
+    """
     try:
         from playwright.async_api import async_playwright
     except ImportError:
@@ -25,19 +30,20 @@ async def _fetch_playwright_detail_items(urls: list[str], run_id: str) -> list[d
         )
         return [
             {
-                "url": u,
+                "url": link.get("url"),
+                "source_name": link.get("source_name"),
                 "content": None,
                 "status": "failed",
                 "error": "playwright not installed",
                 "fetched_at": datetime.utcnow().isoformat(),
                 "parser_type": "html",
             }
-            for u in urls
+            for link in links
         ]
 
     semaphore = asyncio.Semaphore(5)  # max 5 concurrent pages
 
-    async def _fetch_one(url: str, context) -> dict:
+    async def _fetch_one(url: str, source_name: str | None, context) -> dict:
         async with semaphore:
             page = await context.new_page()
             try:
@@ -48,6 +54,7 @@ async def _fetch_playwright_detail_items(urls: list[str], run_id: str) -> list[d
                 )  # full HTML so parse_extract can use CSS selectors
                 return {
                     "url": url,
+                    "source_name": source_name,
                     "content": content,
                     "status": "success",
                     "fetched_at": datetime.utcnow().isoformat(),
@@ -62,6 +69,7 @@ async def _fetch_playwright_detail_items(urls: list[str], run_id: str) -> list[d
                 )
                 return {
                     "url": url,
+                    "source_name": source_name,
                     "content": None,
                     "status": "failed",
                     "error": str(e),
@@ -86,7 +94,10 @@ async def _fetch_playwright_detail_items(urls: list[str], run_id: str) -> list[d
             "**/*.{png,jpg,jpeg,gif,webp,svg,ico,woff,woff2,ttf}",
             lambda route: route.abort(),
         )
-        tasks = [_fetch_one(url, context) for url in urls]
+        tasks = [
+            _fetch_one(link.get("url"), link.get("source_name"), context)
+            for link in links
+        ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         await browser.close()
 
@@ -94,7 +105,8 @@ async def _fetch_playwright_detail_items(urls: list[str], run_id: str) -> list[d
         r
         if not isinstance(r, Exception)
         else {
-            "url": urls[i],
+            "url": links[i].get("url"),
+            "source_name": links[i].get("source_name"),
             "content": None,
             "status": "failed",
             "error": str(r),
@@ -355,7 +367,9 @@ def fetch_items_node(state) -> dict:
             ):
                 tavily_items.append(link)
             elif isinstance(link, dict) and link.get("source") == "playwright_detail":
-                playwright_detail_urls.append(link.get("url"))
+                playwright_detail_urls.append(
+                    {"url": link.get("url"), "source_name": link.get("source_name")}
+                )
             else:
                 # Regular URL
                 url = link if isinstance(link, str) else link.get("url")
