@@ -2,7 +2,7 @@
 
 import hashlib
 import tempfile
-import time
+import uuid
 from datetime import datetime
 from typing import Any
 
@@ -360,10 +360,16 @@ def parse_pdf_with_rag(
 
                         # Add tenders from this chunk
                         chunk_tenders = []
-                        for j, tender in enumerate(extraction.tenders, 1):
+                        for tender in extraction.tenders:
                             tender_dict = {
                                 **tender.dict(),
-                                "id": f"{source_name}_{i}_{j}",
+                                # Notice.id is String(36), sized for a UUID —
+                                # the old f"{source_name}_{i}_{j}" id could
+                                # run well past 36 chars and fail every
+                                # INSERT silently (only reachable once
+                                # extraction itself started working; never
+                                # observed before today).
+                                "id": str(uuid.uuid4()),
                                 "source": source_name,
                                 "chunk_index": i,
                             }
@@ -530,9 +536,9 @@ def parse_pdf_with_rag(
             logger.info("LLM extraction disabled or no context available")
 
         # Ensure all tenders have required fields and map to report format
-        for idx, tender in enumerate(tenders):
+        for tender in tenders:
             if isinstance(tender, dict):
-                tender.setdefault("id", f"{source_name}_{idx}_{int(time.time())}")
+                tender.setdefault("id", str(uuid.uuid4()))
                 tender.setdefault("source", source_name)
                 tender.setdefault("extracted_at", datetime.now().isoformat())
 
