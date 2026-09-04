@@ -15,6 +15,7 @@ class SourceBase(BaseModel):
     parser_type: str = Field(default="html", max_length=50)
     rate_limit: str = Field(default="10/m", pattern=r"^\d+/[smhd]$")
     enabled: bool = True
+    disabled_reason: str | None = None
     patterns: dict[str, Any] | None = None
 
 
@@ -33,6 +34,7 @@ class SourceUpdate(BaseModel):
     parser_type: str | None = Field(None, max_length=50)
     rate_limit: str | None = Field(None, pattern=r"^\d+/[smhd]$")
     enabled: bool | None = None
+    disabled_reason: str | None = None
     patterns: dict[str, Any] | None = None
 
 

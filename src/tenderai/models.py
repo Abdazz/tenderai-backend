@@ -38,6 +38,7 @@ class Source(Base):
         String(20), nullable=False, default="10/m"
     )  # requests per minute
     enabled = Column(Boolean, nullable=False, default=True, index=True)
+    disabled_reason = Column(Text, nullable=True)  # why enabled=False, if it is
     country_id = Column(Integer, ForeignKey("countries.id"), nullable=True, index=True)
 
     # Parsing configuration (stored as JSON)
