@@ -2,7 +2,7 @@
 
 Backend de TenderAI — API FastAPI, pipeline LangGraph (`agents/graph.py`), classification IA, génération de rapports DOCX, livraison email.
 
-Ce repo fait partie d'une architecture à 3 repos : `tenderai-backend` (ce repo), `tenderai-frontend`, `tenderai-infra`. Le développement local de ce repo est autonome (`make setup` démarre postgres/minio/api/worker). Pour un test d'intégration full-stack avec le frontend, voir `tenderai-infra`.
+Ce repo fait partie d'une architecture à 3 repos : `tenderai-backend` (ce repo), `tenderai-frontend`, `tenderai-infra`. `tenderai-infra` est la racine — ce repo et `tenderai-frontend` vivent comme sous-dossiers gitignorés à l'intérieur. Le développement local de ce repo est autonome (`make setup` démarre postgres/minio/api/worker). Pour un test d'intégration full-stack avec le frontend, voir `tenderai-infra`.
 
 ## Commands
 
