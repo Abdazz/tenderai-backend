@@ -208,15 +208,17 @@ def extract_item_links_node(state) -> dict:
 
         # Process each successful fetch
         for item in state.items_raw:
-            # html-tender/crawl4ai items carry data in "listings", not "content"
-            has_data = item["content"] or item.get("listings")
+            # html-tender/crawl4ai items carry data in "listings", not "content";
+            # a failed fetch (see fetch_quotidien.py etc.) carries neither key at
+            # all — item["content"] would KeyError on it (constat #19).
+            has_data = item.get("content") or item.get("listings")
             if item["status"] != "success" or not has_data:
                 continue
 
             source = item["source"]
             source_name = source["name"]
             base_url = source.get("base_url", item["url"])
-            content = item["content"]
+            content = item.get("content")
             patterns = source.get("patterns", {})
             # Item's parser_type may override source's (e.g. playwright → playwright_links)
             parser_type = item.get("parser_type") or source.get("parser_type", "html")
