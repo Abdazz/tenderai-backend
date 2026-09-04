@@ -137,6 +137,8 @@ def extract_joffres_detail(html_content: str, detail_url: str) -> dict:
                 r"(?:N°|N\s*°)\s*([0-9-/A-Z]+)",
                 r"DAO\s+([0-9-]+)",
                 r"Demande de prix\s+N[°\s]*([0-9-/A-Z]+)",
+                # PNUD/UNDP notices use "Reference Number : XXX" — no "N°" (constat #22)
+                r"Reference Number\s*:?\s*([0-9A-Z-/]+)",
             ]
             for pattern in ref_patterns:
                 match = re.search(pattern, desc_text, re.IGNORECASE)
