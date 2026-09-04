@@ -17,6 +17,7 @@ import uuid
 from ...db import get_db_context
 from ...logging import get_logger
 from ...models import Notice
+from ...utils.dates import parse_flexible_date
 from ...utils.node_logger import clear_node_output, log_node_output
 
 logger = get_logger(__name__)
@@ -58,6 +59,7 @@ def persist_notices_node(state) -> dict:
 
     persisted_count = 0
     skipped_count = 0
+    failed_count = 0
 
     try:
         with get_db_context() as db:
@@ -81,8 +83,10 @@ def persist_notices_node(state) -> dict:
                     ref_no=item.get("ref_no") or item.get("reference"),
                     entity=item.get("entity"),
                     category=item.get("category"),
-                    published_at=item.get("published_at"),
-                    deadline_at=item.get("deadline_at") or item.get("deadline"),
+                    published_at=parse_flexible_date(item.get("published_at")),
+                    deadline_at=parse_flexible_date(
+                        item.get("deadline_at") or item.get("deadline")
+                    ),
                     location=item.get("location"),
                     budget_xof=item.get("budget_xof"),
                     currency=item.get("currency"),
@@ -92,10 +96,28 @@ def persist_notices_node(state) -> dict:
                     duplicate_of_id=item.get("duplicate_of_id"),
                     url=item.get("url") or "",
                 )
-                db.add(notice)
-                persisted_count += 1
 
-            db.commit()
+                # Per-item commit: one malformed item must never take down the
+                # rest of the run's already-collected, valid notices with it.
+                try:
+                    db.add(notice)
+                    db.commit()
+                    persisted_count += 1
+                except Exception as e:
+                    db.rollback()
+                    failed_count += 1
+                    logger.error(
+                        "Failed to persist item — skipped",
+                        error=str(e),
+                        item_id=item.get("id"),
+                        run_id=state.run_id,
+                    )
+                    state.add_warning(
+                        "persist_notices",
+                        "Failed to persist item — skipped",
+                        item_id=item.get("id"),
+                        error=str(e),
+                    )
 
         state.update_stats(
             notices_persisted=persisted_count,
@@ -104,7 +126,11 @@ def persist_notices_node(state) -> dict:
 
         log_node_output(
             "persist_notices",
-            {"persisted": persisted_count, "skipped": skipped_count},
+            {
+                "persisted": persisted_count,
+                "skipped": skipped_count,
+                "failed": failed_count,
+            },
             run_id=state.run_id,
         )
 
@@ -112,6 +138,7 @@ def persist_notices_node(state) -> dict:
             "Persist notices completed",
             persisted=persisted_count,
             skipped=skipped_count,
+            failed=failed_count,
             run_id=state.run_id,
         )
 

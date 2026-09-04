@@ -181,3 +181,80 @@ def test_persist_notices_skips_unresolvable_source_with_warning(db_session):
     assert len(notices) == 0
     assert len(result.warnings) == 1
     assert result.warnings[0]["step"] == "persist_notices"
+
+
+def test_persist_notices_isolates_failed_item(db_session):
+    """One item's commit failure must not take down the rest of the batch —
+    the finding #1 regression (one malformed row destroyed the whole run)."""
+    # Pre-seed a notice with id "dup-id" so the second item's INSERT collides
+    # on the primary key and fails at commit time, after the first item's
+    # own commit has already succeeded.
+    db_session.add(
+        Notice(
+            id="dup-id",
+            source_id=10,
+            run_id="run-1",
+            title="Pre-existing",
+            content_hash=_h("pre-existing"),
+            url="https://dgcmef.gov.bf/notice/pre-existing",
+        )
+    )
+    db_session.commit()
+
+    state = TenderAIState(
+        run_id="run-1",
+        country_id=1,
+        sources=[{"id": 10, "name": "DGCMEF Burkina Faso", "country_id": 1}],
+        unique_items=[
+            {
+                "id": "dup-id",
+                "title": "Colliding notice",
+                "url": "https://dgcmef.gov.bf/notice/dup",
+                "content_hash": _h("dup"),
+                "source_name": "DGCMEF Burkina Faso",
+                "is_duplicate": False,
+            },
+            {
+                "id": "item-ok",
+                "title": "Should still persist",
+                "url": "https://dgcmef.gov.bf/notice/ok",
+                "content_hash": _h("ok"),
+                "source_name": "DGCMEF Burkina Faso",
+                "is_duplicate": False,
+            },
+        ],
+    )
+    result = persist_notices_node(state)
+    assert not result.error_occurred
+
+    notices = db_session.query(Notice).all()
+    assert {n.id for n in notices} == {"dup-id", "item-ok"}
+    assert result.stats.notices_persisted == 1
+    assert len(result.warnings) == 1
+    assert result.warnings[0]["item_id"] == "dup-id"
+
+
+def test_persist_notices_parses_day_first_dates(db_session):
+    """A raw 'DD-MM-YYYY' string (UNGM's normalized format) must be stored
+    as a real day-first date, never handed unparsed to Postgres for its
+    datestyle to guess at — the finding #1/#11 crash and silent-swap bug."""
+    state = TenderAIState(
+        run_id="run-1",
+        country_id=1,
+        sources=[{"id": 10, "name": "DGCMEF Burkina Faso", "country_id": 1}],
+        unique_items=[
+            {
+                "id": "item-date",
+                "title": "UNICEF China Tender",
+                "url": "https://ungm.org/notice/1",
+                "content_hash": _h("date-item"),
+                "source_name": "DGCMEF Burkina Faso",
+                "deadline_at": "29-09-2026",
+                "is_duplicate": False,
+            },
+        ],
+    )
+    result = persist_notices_node(state)
+    assert not result.error_occurred
+    notice = db_session.query(Notice).one()
+    assert (notice.deadline_at.day, notice.deadline_at.month) == (29, 9)

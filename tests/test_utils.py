@@ -10,6 +10,7 @@ from tenderai.utils.dates import (
     get_burkina_faso_now,
     is_deadline_urgent,
     parse_deadline,
+    parse_flexible_date,
     parse_french_date,
 )
 from tenderai.utils.robots import (
@@ -94,6 +95,26 @@ class TestDateUtils:
         # Deadline in 10 days (not urgent)
         normal_deadline = now + timedelta(days=10)
         assert is_deadline_urgent(normal_deadline, urgency_days=7) is False
+
+    def test_parse_flexible_date_day_first_never_swapped(self):
+        """UNGM-style DD-MM-YYYY must stay day-first — this is the finding #11
+        regression: Postgres's own datestyle would silently swap day<->month
+        for day <= 12 if a raw string like this reached the DB unparsed."""
+        date = parse_flexible_date("29-09-2026")
+        assert (date.day, date.month, date.year) == (29, 9, 2026)
+
+        date = parse_flexible_date("05-11-2026")
+        assert (date.day, date.month, date.year) == (5, 11, 2026)
+
+    def test_parse_flexible_date_formats(self):
+        assert parse_flexible_date("2026-09-29").day == 29
+        assert parse_flexible_date("29/09/2026").day == 29
+        assert parse_flexible_date("29-Sep-2026").month == 9
+
+    def test_parse_flexible_date_invalid_returns_none(self):
+        assert parse_flexible_date("not a date") is None
+        assert parse_flexible_date("") is None
+        assert parse_flexible_date(None) is None
 
 
 class TestRobotsUtils:

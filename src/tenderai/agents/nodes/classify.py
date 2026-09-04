@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from ...db import get_db_context
 from ...logging import get_logger, log_classification
 from ...models import CompanyNoticeStatus
+from ...utils.dates import parse_flexible_date
 from ...utils.llm_utils import get_llm_instance
 from ...utils.node_logger import clear_node_output, log_node_output
 from .._cfg import cfg, company_cfg
@@ -152,32 +153,7 @@ def _parse_deadline(item: dict) -> datetime | None:
                     raw = date_match.group(1)
                     break
 
-    if not raw:
-        return None
-
-    raw_str = str(raw).strip()
-
-    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%d-%m-%Y", "%d/%m/%Y"):
-        try:
-            return datetime.strptime(raw_str[:10], fmt).replace(tzinfo=UTC)
-        except ValueError:
-            continue
-
-    # Handle "DD-Mon-YY" and "DD-Mon-YYYY" (e.g. "08-Jun-26", "08-Jun-2026")
-    import calendar
-
-    month_abbr = {m.lower(): i for i, m in enumerate(calendar.month_abbr) if m}
-    m = re.match(r"(\d{1,2})-([A-Za-z]{3})-(\d{2,4})$", raw_str)
-    if m:
-        day, mon, yr = int(m.group(1)), m.group(2).lower(), int(m.group(3))
-        if mon in month_abbr:
-            year = 2000 + yr if yr < 100 else yr
-            try:
-                return datetime(year, month_abbr[mon], day, tzinfo=UTC)
-            except ValueError:
-                pass
-
-    return None
+    return parse_flexible_date(raw)
 
 
 def _is_expired(item: dict) -> bool:

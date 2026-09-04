@@ -153,6 +153,41 @@ def parse_deadline(
         return None
 
 
+def parse_flexible_date(raw: str | None) -> datetime | None:
+    """Parse a date string in any of the pipeline's known raw formats into a datetime.
+
+    Handles "%Y-%m-%d", "%Y/%m/%d", "%d-%m-%Y", "%d/%m/%Y" (always day-first —
+    never ambiguous like a bare string handed to Postgres's datestyle would be),
+    plus "DD-Mon-YY"/"DD-Mon-YYYY" (e.g. UNGM's "29-Sep-2026"). Returns None,
+    never raises, so callers can safely store the result in a nullable column.
+    """
+    if not raw:
+        return None
+
+    raw_str = str(raw).strip()
+
+    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%d-%m-%Y", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(raw_str[:10], fmt).replace(tzinfo=UTC)
+        except ValueError:
+            continue
+
+    import calendar
+
+    month_abbr = {m.lower(): i for i, m in enumerate(calendar.month_abbr) if m}
+    m = re.match(r"(\d{1,2})-([A-Za-z]{3})-(\d{2,4})$", raw_str)
+    if m:
+        day, mon, yr = int(m.group(1)), m.group(2).lower(), int(m.group(3))
+        if mon in month_abbr:
+            year = 2000 + yr if yr < 100 else yr
+            try:
+                return datetime(year, month_abbr[mon], day, tzinfo=UTC)
+            except ValueError:
+                pass
+
+    return None
+
+
 def get_burkina_faso_now() -> datetime:
     """Get current datetime in Burkina Faso timezone.
 
