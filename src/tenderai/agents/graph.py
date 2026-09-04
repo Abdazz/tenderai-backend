@@ -14,6 +14,7 @@ from ..db import get_db_context
 from ..logging import get_logger, log_run_complete, log_run_error, log_run_start
 from ..models import Country as CountryModel, Run
 from ..schemas import RunStatistics
+from .nodes.collection_alert import check_and_alert
 from .nodes.deduplicate import deduplicate_node
 from .nodes.extract_item_links import extract_item_links_node
 from .nodes.fetch_items import fetch_items_node
@@ -394,6 +395,11 @@ class TenderAIGraph:
                     status=run_status,
                     warnings_count=len(final_state.warnings),
                 )
+
+            # constat #12: alert on a silently-dead collection (0 persisted
+            # despite real unique items, or a source failing outright) —
+            # this is what let BF stay broken 3+ weeks unnoticed.
+            check_and_alert(final_state, run_id)
 
             return final_state
 
