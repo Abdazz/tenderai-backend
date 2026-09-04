@@ -65,15 +65,19 @@ def _extract_image_urls(html: str, max_days: int = 7) -> list[str]:
             continue
         seen.add(base)
 
-        # Try to extract date from URL path (YYYY-MM-DD pattern)
+        # Try to extract date from URL path (YYYY-MM-DD pattern). A missing
+        # or unparseable date can't be confirmed recent — exclude it rather
+        # than let it bypass max_days entirely and get reprocessed forever
+        # (constat #25).
         m = re.search(r"(\d{4}-\d{2}-\d{2})", base)
-        if m:
-            try:
-                img_date = datetime.strptime(m.group(1), "%Y-%m-%d").replace(tzinfo=UTC)
-                if img_date < cutoff:
-                    continue
-            except ValueError:
-                pass
+        if not m:
+            continue
+        try:
+            img_date = datetime.strptime(m.group(1), "%Y-%m-%d").replace(tzinfo=UTC)
+        except ValueError:
+            continue
+        if img_date < cutoff:
+            continue
 
         urls.append(url)
 
@@ -96,8 +100,10 @@ async def _ocr_image_with_groq(
         logger.error("GROQ_API_KEY not set — cannot do OCR", run_id=run_id)
         return []
 
-    # Use llama-4-scout which supports vision
-    vision_model = "meta-llama/llama-4-scout-17b-16e-instruct"
+    # meta-llama/llama-4-scout-17b-16e-instruct was retired by Groq (404
+    # model_not_found) — qwen/qwen3.8-27b is a currently-active vision model,
+    # verified live against this exact prompt/parsing (constat #5).
+    vision_model = "qwen/qwen3.8-27b"
 
     b64 = _image_to_base64(image_bytes)
     payload = {
