@@ -16,9 +16,7 @@ from tenderai.agents.nodes import extract_item_links as eil  # noqa: E402
 
 
 def _base_state(items_raw):
-    state = TenderAIState(run_id="run-test", country_id=1, items_raw=items_raw)
-    state.country_config = {"pipeline": {"max_items_per_run": 1000}}
-    return state
+    return TenderAIState(run_id="run-test", country_id=1, items_raw=items_raw)
 
 
 def test_failed_fetch_item_with_no_content_key_does_not_crash():
@@ -106,3 +104,47 @@ def test_playwright_detail_links_carry_source_name():
     assert len(state.discovered_links) == 2
     for link in state.discovered_links:
         assert link["source_name"] == "Achats Canada"
+
+
+def test_no_cross_source_cap_starves_later_sources():
+    """A dominant early source (e.g. Achats Canada with 150 links) must not
+    crowd out a smaller source appearing later in items_raw. The old global
+    max_items_per_run truncation cut the *combined* list at the end, so
+    whichever source came first in items_raw filled the whole budget and
+    every other source's links were silently dropped even though they'd
+    fetched successfully — this is what was actually happening in
+    production once TAVILY_API_KEY was set and every CA source started
+    succeeding, but only Achats Canada's notices ever reached the DB."""
+    import json
+
+    big_source_links = [
+        f"https://achatscanada.canada.ca/notice/{i}" for i in range(150)
+    ]
+    items_raw = [
+        {
+            "status": "success",
+            "source": {"name": "Achats Canada", "patterns": {}},
+            "content": json.dumps(big_source_links),
+            "url": "https://achatscanada.canada.ca/fr/occasions-de-marche",
+            "parser_type": "playwright_links",
+        },
+        {
+            "status": "success",
+            "source": {"name": "Palladium Group - Tenders", "patterns": {}},
+            "content": json.dumps(
+                [{"url": "https://thepalladiumgroup.com/tenders/1", "title": "T1"}]
+            ),
+            "url": "https://thepalladiumgroup.com/tenders",
+            "parser_type": "tavily_extract",
+        },
+    ]
+    state = eil.extract_item_links_node(_base_state(items_raw))
+
+    assert not state.error_occurred
+    assert len(state.discovered_links) == 151
+    palladium_links = [
+        link
+        for link in state.discovered_links
+        if isinstance(link, dict) and "thepalladiumgroup" in link.get("url", "")
+    ]
+    assert len(palladium_links) == 1

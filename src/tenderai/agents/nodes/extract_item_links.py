@@ -7,7 +7,6 @@ from selectolax.parser import HTMLParser
 
 from ...logging import get_logger
 from ...utils.node_logger import clear_node_output, log_node_output
-from .._cfg import cfg
 
 logger = get_logger(__name__)
 
@@ -601,19 +600,14 @@ def extract_item_links_node(state) -> dict:
                     source_name=source_name,
                 )
 
-        # Use the list as-is (already contains validated items)
+        # Use the list as-is (already contains validated items). No overall
+        # cap here — it used to truncate the combined multi-source list,
+        # which meant whichever source came first in state.items_raw (e.g.
+        # Achats Canada) filled the entire budget and starved every other
+        # source out even when they fetched successfully. Each source's own
+        # pagination config (max_pages, pagination_url) is what actually
+        # bounds how many links it can contribute.
         discovered_links = all_links
-
-        # Apply max items limit
-        max_items = cfg(state, "pipeline", "max_items_per_run")
-        if len(discovered_links) > max_items:
-            logger.error(
-                "Too many links discovered, limiting",
-                total_found=len(discovered_links),
-                limit=max_items,
-                run_id=state.run_id,
-            )
-            discovered_links = discovered_links[:max_items]
 
         # Update state
         state.discovered_links = discovered_links
