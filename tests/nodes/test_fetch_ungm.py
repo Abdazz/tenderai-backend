@@ -68,7 +68,9 @@ def test_fetch_ungm_accumulates_until_empty_page():
     assert mock_client.post.call_count == 3  # stopped after the empty page
     assert {i["notice_id"] for i in items} == {"1", "2", "3", "4"}
     # PageIndex must actually increment across calls
-    page_indexes = [call.kwargs["json"]["PageIndex"] for call in mock_client.post.call_args_list]
+    page_indexes = [
+        call.kwargs["json"]["PageIndex"] for call in mock_client.post.call_args_list
+    ]
     assert page_indexes == [0, 1, 2]
 
 
@@ -79,9 +81,7 @@ def test_fetch_ungm_stops_at_max_pages():
     mock_client = AsyncMock()
     mock_client.__aenter__ = AsyncMock(return_value=mock_client)
     mock_client.__aexit__ = AsyncMock(return_value=False)
-    mock_client.post = AsyncMock(
-        return_value=_make_mock_response(_page_html("1"))
-    )
+    mock_client.post = AsyncMock(return_value=_make_mock_response(_page_html("1")))
 
     with patch(
         "tenderai.agents.nodes.fetch_ungm.httpx.AsyncClient",
