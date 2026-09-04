@@ -233,3 +233,42 @@ def test_pagination_fetches_multiple_pages():
     ), "page 2 URL should use pagination_url template"
     # Both pages return the same HTML so 2 listings total
     assert len(result["listings"]) == 2
+
+
+def test_pagination_start_1_covers_0_indexed_sites():
+    """UEMOA constat #6: pagination_start=1 must fetch page=1..max_pages (not
+    skip page=1 the way the Enabel-tuned default of 2 would)."""
+    from tenderai.agents.nodes.fetch_html_tender import fetch_html_tender
+
+    source = {
+        "name": "UEMOA - Test Pagination",
+        "list_url": "https://www.uemoa.int/appel-d-offre",
+        "parser_type": "html-tender",
+        "patterns": {
+            "card_selector": "div.swiper-slide div.news-box",
+            "title_selector": "div.new-txt p",
+            "max_pages": 3,
+            "pagination_start": 1,
+            "pagination_url": "https://www.uemoa.int/appel-d-offre?page={page}",
+        },
+    }
+
+    mock_resp = _make_mock_response(UEMOA_HTML)
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    mock_client.get = AsyncMock(return_value=mock_resp)
+
+    with patch(
+        "tenderai.agents.nodes.fetch_html_tender.httpx.AsyncClient",
+        return_value=mock_client,
+    ):
+        _run(fetch_html_tender(source, "run-test"))
+
+    # list_url (implicit page 0) + page=1 + page=2 + page=3 = 4 requests
+    assert mock_client.get.call_count == 4
+    called_urls = [str(call.args[0]) for call in mock_client.get.call_args_list]
+    assert called_urls[0] == "https://www.uemoa.int/appel-d-offre"
+    assert "page=1" in called_urls[1]
+    assert "page=2" in called_urls[2]
+    assert "page=3" in called_urls[3]

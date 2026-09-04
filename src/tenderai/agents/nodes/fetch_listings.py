@@ -216,7 +216,10 @@ async def fetch_single_listing(
             ungm_settings = source.get("patterns", {}).get("ungm_settings", {})
             country_ids = ungm_settings.get("country_ids", [COUNTRY_BURKINA_FASO])
             page_size = ungm_settings.get("page_size", 50)
-            listings = await fetch_ungm_listings(country_ids, page_size=page_size)
+            max_pages = ungm_settings.get("max_pages", 10)
+            listings = await fetch_ungm_listings(
+                country_ids, page_size=page_size, max_pages=max_pages
+            )
             logger.info(
                 "UNGM listings fetched",
                 source=source_name,

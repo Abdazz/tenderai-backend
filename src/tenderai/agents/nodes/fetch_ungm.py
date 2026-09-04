@@ -21,48 +21,59 @@ COUNTRY_BURKINA_FASO = 2324
 
 
 async def fetch_ungm_listings(
-    country_ids: list[int], page_size: int = 50
+    country_ids: list[int], page_size: int = 50, max_pages: int = 10
 ) -> list[dict]:
-    """Call UNGM's public search endpoint and return parsed notices."""
-    payload = {
-        "PageIndex": 0,
-        "PageSize": page_size,
-        "Title": "",
-        "Description": "",
-        "Reference": "",
-        "PublishedFrom": "",
-        "PublishedTo": "",
-        "DeadlineFrom": "",
-        "DeadlineTo": "",
-        "Countries": country_ids,
-        "Agencies": [],
-        "UNSPSCs": [],
-        "NoticeTypes": [],
-        "SortField": "DatePublished",
-        "SortAscending": False,
-        "isPicker": False,
-        "NoticeTypeIds": [],
-        "NoticeStatuses": [],
-    }
+    """Call UNGM's public search endpoint and return parsed notices.
+
+    The endpoint caps results at ~15 rows/page regardless of PageSize, so a
+    single request only ever returns a fraction of the active notices —
+    loop PageIndex until a page comes back empty (end of results) or
+    max_pages is hit, whichever happens first.
+    """
+    all_items: list[dict] = []
 
     async with httpx.AsyncClient(
         timeout=httpx.Timeout(30.0), follow_redirects=True
     ) as client:
-        resp = await client.post(
-            UNGM_SEARCH_URL,
-            json=payload,
-            headers={
-                "Accept": "text/html, */*; q=0.01",
-                "Content-Type": "application/json",
-                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
-                "X-Requested-With": "XMLHttpRequest",
-                "Referer": "https://www.ungm.org/Public/Notice",
-            },
-        )
-        resp.raise_for_status()
-        html_content = resp.text
+        for page_index in range(max_pages):
+            payload = {
+                "PageIndex": page_index,
+                "PageSize": page_size,
+                "Title": "",
+                "Description": "",
+                "Reference": "",
+                "PublishedFrom": "",
+                "PublishedTo": "",
+                "DeadlineFrom": "",
+                "DeadlineTo": "",
+                "Countries": country_ids,
+                "Agencies": [],
+                "UNSPSCs": [],
+                "NoticeTypes": [],
+                "SortField": "DatePublished",
+                "SortAscending": False,
+                "isPicker": False,
+                "NoticeTypeIds": [],
+                "NoticeStatuses": [],
+            }
+            resp = await client.post(
+                UNGM_SEARCH_URL,
+                json=payload,
+                headers={
+                    "Accept": "text/html, */*; q=0.01",
+                    "Content-Type": "application/json",
+                    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+                    "X-Requested-With": "XMLHttpRequest",
+                    "Referer": "https://www.ungm.org/Public/Notice",
+                },
+            )
+            resp.raise_for_status()
+            page_items = extract_ungm_listings(resp.text)
+            if not page_items:
+                break
+            all_items.extend(page_items)
 
-    return extract_ungm_listings(html_content)
+    return all_items
 
 
 def extract_ungm_listings(html_content: str) -> list[dict]:

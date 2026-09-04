@@ -3,7 +3,7 @@
 Tous les paramètres d'extraction sont lus depuis source["patterns"] :
   card_selector, title_selector, deadline_selector, deadline_attribute,
   deadline_text_prefix, pdf_selector, entity, location,
-  ssl_verify, max_pages, pagination_url
+  ssl_verify, max_pages, pagination_url, pagination_start
 """
 
 import re
@@ -41,10 +41,14 @@ async def fetch_html_tender(source: dict, run_id: str) -> dict:
     ssl_verify = patterns.get("ssl_verify", True)
     max_pages = int(patterns.get("max_pages", 1))
     pagination_url = patterns.get("pagination_url")
+    # Some sites number pages from 0 (e.g. UEMOA's "?page=0" == list_url); the
+    # default of 2 matches 1-indexed sites like Enabel's "/page/2/" where the
+    # first extra page after list_url is literally numbered 2.
+    pagination_start = int(patterns.get("pagination_start", 2))
 
     urls = [list_url]
     if max_pages > 1 and pagination_url:
-        for page in range(2, max_pages + 1):
+        for page in range(pagination_start, max_pages + 1):
             urls.append(pagination_url.format(page=page))
 
     listings: list[dict] = []
