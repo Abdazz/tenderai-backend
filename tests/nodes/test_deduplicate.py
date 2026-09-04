@@ -242,3 +242,104 @@ def test_deduplicate_fails_hard_if_config_missing():
     )
     with pytest.raises(RuntimeError, match="Missing DB config"):
         deduplicate_node(state)
+
+
+COUNTRY_CONFIG_HASH_SIMILARITY = {
+    **COUNTRY_CONFIG_DEDUP,
+    "pipeline": {
+        **COUNTRY_CONFIG_DEDUP["pipeline"],
+        "deduplication_method": "hash_similarity",
+        "deduplication_threshold": 0.75,
+    },
+}
+
+
+def test_hash_similarity_trusts_differing_reference_numbers():
+    """constat #13: two items with different reference numbers must not be
+    merged just because their title text is superficially similar (addenda,
+    boilerplate templates) — real cases hit up to 99.1% text similarity."""
+    state = TenderAIState(
+        country_id=1,
+        country_config=COUNTRY_CONFIG_HASH_SIMILARITY,
+        items_parsed=[
+            {
+                "id": "a",
+                "title": "Addendum au marché de fourniture de data center",
+                "reference": "DAOI-N022-2026",
+                "content_hash": "hash-a",
+            },
+            {
+                "id": "b",
+                "title": "Addendum au marché de fourniture de data center",
+                "reference": "DAOI-N071-2026",
+                "content_hash": "hash-b",
+            },
+        ],
+    )
+    result = deduplicate_node(state)
+    unique_ids = {i["id"] for i in result.unique_items}
+    assert unique_ids == {"a", "b"}
+
+
+def test_hash_similarity_still_merges_same_reference_number():
+    state = TenderAIState(
+        country_id=1,
+        country_config=COUNTRY_CONFIG_HASH_SIMILARITY,
+        items_parsed=[
+            {
+                "id": "a",
+                "title": "Fourniture de matériel informatique",
+                "reference": "AO-2026-042",
+                "content_hash": "hash-a",
+            },
+            {
+                "id": "b",
+                "title": "Fourniture matériel informatique (republication)",
+                "reference": "AO-2026-042",
+                "content_hash": "hash-b",
+            },
+        ],
+    )
+    result = deduplicate_node(state)
+    unique_ids = {i["id"] for i in result.unique_items}
+    assert unique_ids == {"a"}
+
+
+def test_deduplicate_logs_discarded_items_with_reason(monkeypatch):
+    """constat #23: discarded items must be logged with their reason, not
+    just silently dropped — previously only survivors were logged."""
+    logged = {}
+
+    def _fake_log_node_output(node_name, data, run_id=None, append=False):
+        logged[node_name] = data
+
+    monkeypatch.setattr(
+        "tenderai.agents.nodes.deduplicate.log_node_output", _fake_log_node_output
+    )
+
+    state = TenderAIState(
+        country_id=1,
+        country_config=COUNTRY_CONFIG_HASH_SIMILARITY,
+        items_parsed=[
+            {
+                "id": "a",
+                "title": "Fourniture de matériel informatique",
+                "reference": "AO-2026-042",
+                "content_hash": "hash-a",
+            },
+            {
+                "id": "b",
+                "title": "Fourniture matériel informatique (republication)",
+                "reference": "AO-2026-042",
+                "content_hash": "hash-b",
+            },
+        ],
+    )
+    deduplicate_node(state)
+
+    assert "deduplicate_discarded" in logged
+    discarded = logged["deduplicate_discarded"]
+    assert len(discarded) == 1
+    assert discarded[0]["id"] == "b"
+    assert discarded[0]["duplicate_reason"] == "same_reference_number"
+    assert discarded[0]["duplicate_of_id"] == "a"

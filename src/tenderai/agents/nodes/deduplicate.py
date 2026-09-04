@@ -183,12 +183,25 @@ def deduplicate_node(state) -> dict:
                             or unique_item.get("ref_no")
                             or ""
                         ).strip()
-                        if item_ref and unique_ref and item_ref == unique_ref:
-                            is_duplicate = True
-                            duplicate_reason = "same_reference_number"
-                            item["duplicate_of_id"] = unique_item.get("id", "unknown")
-                            break
-                        # Fallback: text similarity
+                        if item_ref and unique_ref:
+                            if item_ref == unique_ref:
+                                is_duplicate = True
+                                duplicate_reason = "same_reference_number"
+                                item["duplicate_of_id"] = unique_item.get(
+                                    "id", "unknown"
+                                )
+                                break
+                            # Both items have a reference and they differ —
+                            # trust that as proof they're distinct tenders,
+                            # even if boilerplate title text looks similar
+                            # (addenda/"Avis de..." templates). Falling
+                            # through to fuzzy text similarity here is what
+                            # produced the constat #13 false positives (up
+                            # to 99.1% similarity between genuinely different
+                            # notices).
+                            continue
+                        # Fallback: text similarity, only when we can't make
+                        # a definitive call from reference numbers alone.
                         unique_text = unique_item.get(
                             "tender_object", unique_item.get("title", "")
                         )
@@ -306,8 +319,24 @@ def deduplicate_node(state) -> dict:
             dedupe_time_seconds=time.time() - start_time,
         )
 
-        # Log output to JSON
+        # Log output to JSON — survivors and, separately, what got discarded
+        # and why (constat #23: previously only survivors were logged, so
+        # the constat #13 false positives had to be reconstructed by hand).
         log_node_output("deduplicate", unique_items, run_id=state.run_id)
+        log_node_output(
+            "deduplicate_discarded",
+            [
+                {
+                    "id": discarded.get("id"),
+                    "title": discarded.get("title"),
+                    "reference": discarded.get("reference") or discarded.get("ref_no"),
+                    "duplicate_reason": discarded.get("duplicate_reason"),
+                    "duplicate_of_id": discarded.get("duplicate_of_id"),
+                }
+                for discarded in similar_items
+            ],
+            run_id=state.run_id,
+        )
 
         logger.info(
             "Deduplicate completed",
