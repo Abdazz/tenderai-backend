@@ -304,6 +304,36 @@ def test_hash_similarity_still_merges_same_reference_number():
     assert unique_ids == {"a"}
 
 
+def test_hash_similarity_merges_same_reference_across_different_sources():
+    """constat #24: the same tender published on two different portals
+    (audit's real example: UNDP-BFA-00734 on both Joffres.net and UNGM)
+    must dedup identically to a same-source repost — matching is purely on
+    reference/content, deduplicate_node never branches on source_name."""
+    state = TenderAIState(
+        country_id=1,
+        country_config=COUNTRY_CONFIG_HASH_SIMILARITY,
+        items_parsed=[
+            {
+                "id": "a",
+                "title": "Procurement of Office Supplies for UNDP Burkina Faso",
+                "reference": "UNDP-BFA-00734",
+                "content_hash": "hash-a",
+                "source_name": "UNGM - UN Global Marketplace (Burkina Faso)",
+            },
+            {
+                "id": "b",
+                "title": "Procurement of Office Supplies for UNDP Burkina Faso",
+                "reference": "UNDP-BFA-00734",
+                "content_hash": "hash-b",
+                "source_name": "Joffres.net - Page de Recherche",
+            },
+        ],
+    )
+    result = deduplicate_node(state)
+    unique_ids = {i["id"] for i in result.unique_items}
+    assert unique_ids == {"a"}
+
+
 def test_deduplicate_logs_discarded_items_with_reason(monkeypatch):
     """constat #23: discarded items must be logged with their reason, not
     just silently dropped — previously only survivors were logged."""
