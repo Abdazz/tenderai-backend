@@ -8,10 +8,13 @@ Relevance is judged later, per-company, by classify_node in the delivery graph.
 """
 
 import hashlib
+import ipaddress
 import json
 import re
+import socket
 import uuid
 from datetime import datetime
+from urllib.parse import urlparse
 
 import httpx
 from pydantic import BaseModel, Field
@@ -37,15 +40,51 @@ _DEADLINE_LABEL_RE = re.compile(
 )
 
 
-def _fetch_detail_deadline(url: str, source_name: str, run_id: str) -> str | None:
+def _is_safe_detail_url(url: str, allowed_hostname: str) -> bool:
+    """Restrict detail-page fetches to the source's own host over http(s),
+    resolving to a public address.
+
+    `url` comes from LLM-extracted page content, not admin-controlled DB
+    config — unlike every other fetch in this pipeline. Without this check
+    a manipulated or malicious listing page could point tender_url at an
+    internal service (SSRF) via an absolute URL, since the resolution logic
+    above uses an absolute tender_url as-is with no origin restriction.
+    """
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            return False
+        if not parsed.hostname or parsed.hostname.lower() != allowed_hostname.lower():
+            return False
+        for info in socket.getaddrinfo(parsed.hostname, None):
+            ip = ipaddress.ip_address(info[4][0])
+            if not ip.is_global:
+                return False
+    except Exception:
+        return False
+    return True
+
+
+def _fetch_detail_deadline(
+    url: str, allowed_hostname: str, source_name: str, run_id: str
+) -> str | None:
     """Best-effort fetch of a tender's detail page to recover a deadline the
     listing page didn't carry. Never raises — returns None on any failure."""
+    if not _is_safe_detail_url(url, allowed_hostname):
+        logger.debug(
+            "Skipping detail page fetch — not same-host/public",
+            url=url,
+            source=source_name,
+            run_id=run_id,
+        )
+        return None
+
     try:
         resp = httpx.get(
             url,
             headers={"User-Agent": "Mozilla/5.0 (compatible; TenderAI/1.0)"},
             timeout=10.0,
-            follow_redirects=True,
+            follow_redirects=False,
         )
         resp.raise_for_status()
         text = HTMLParser(resp.text).body.text(separator=" ", strip=True)
@@ -261,10 +300,9 @@ def parse_tavily_listing(
     )
 
     # Pre-compute base origin from source_url for resolving relative paths
-    from urllib.parse import urlparse
-
     _parsed_base = urlparse(source_url)
     _base_origin = f"{_parsed_base.scheme}://{_parsed_base.netloc}"
+    _source_hostname = _parsed_base.hostname or ""
 
     results = []
     for i, tender in enumerate(tenders):
@@ -281,7 +319,9 @@ def parse_tavily_listing(
 
         deadline = tender.deadline
         if not deadline and item_url != source_url:
-            deadline = _fetch_detail_deadline(item_url, source_name, run_id)
+            deadline = _fetch_detail_deadline(
+                item_url, _source_hostname, source_name, run_id
+            )
 
         item = {
             "id": str(uuid.uuid4()),
