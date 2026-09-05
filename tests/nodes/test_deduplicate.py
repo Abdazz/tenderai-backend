@@ -191,7 +191,6 @@ COUNTRY_CONFIG_DEDUP = {
         "min_relevance_score": 0.3,
         "deduplication_method": "hash_only",
         "deduplication_threshold": 0.85,
-        "max_items_per_run": 100,
         "pdf_timeout": 30,
         "max_file_size_mb": 10,
     },

@@ -200,7 +200,6 @@ class ProcessingSettings(BaseSettings):
     use_llm_classification: bool = Field(
         default=True, description="Use LLM for classification instead of keywords"
     )
-    max_items_per_run: int = Field(default=100)
     deduplication_threshold: float = Field(default=0.85)
     deduplication_method: str = Field(
         default="hash_similarity",

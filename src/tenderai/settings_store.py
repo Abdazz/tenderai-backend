@@ -42,7 +42,6 @@ class SettingsStore:
 
         sections_data: dict[str, dict] = {
             "pipeline": {
-                "max_items_per_run": s.processing.max_items_per_run,
                 "min_relevance_score": s.processing.min_relevance_score,
                 "deduplication_threshold": s.processing.deduplication_threshold,
                 "deduplication_method": s.processing.deduplication_method,

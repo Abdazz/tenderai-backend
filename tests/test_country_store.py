@@ -138,11 +138,7 @@ def test_country_store_seed_from_global_copies_all_sections(db):
     from tenderai.country_store import CountryStore
     from tenderai.models import AppSettings, Country
 
-    db.add(
-        AppSettings(
-            section="pipeline", data={"max_items_per_run": 100}, updated_by="test"
-        )
-    )
+    db.add(AppSettings(section="pipeline", data={"pdf_timeout": 30}, updated_by="test"))
     db.add(AppSettings(section="llm", data={"provider": "groq"}, updated_by="test"))
     db.commit()
     country = Country(name="Seed", code="SD", locale="fr")
@@ -150,6 +146,4 @@ def test_country_store_seed_from_global_copies_all_sections(db):
     db.commit()
     seeded = CountryStore.seed_from_global(db, country.id)
     assert set(seeded) == {"pipeline", "llm"}
-    assert CountryStore.get_section(db, country.id, "pipeline") == {
-        "max_items_per_run": 100
-    }
+    assert CountryStore.get_section(db, country.id, "pipeline") == {"pdf_timeout": 30}

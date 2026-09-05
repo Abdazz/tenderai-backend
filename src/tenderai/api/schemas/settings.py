@@ -16,7 +16,6 @@ LLM_PROVIDERS = {"groq", "openai", "ollama"}
 
 
 class PipelineSettingsSchema(BaseModel):
-    max_items_per_run: int = Field(ge=1, le=10000)
     min_relevance_score: float = Field(ge=0.0, le=1.0)
     deduplication_threshold: float = Field(ge=0.0, le=1.0)
     deduplication_method: str

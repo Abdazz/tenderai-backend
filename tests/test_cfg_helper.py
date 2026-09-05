@@ -25,7 +25,6 @@ def make_state(**country_config_override):
                 "min_relevance_score": 0.5,
                 "deduplication_method": "hash_only",
                 "deduplication_threshold": 0.85,
-                "max_items_per_run": 100,
                 "pdf_timeout": 30,
                 "max_file_size_mb": 10,
             },
@@ -46,7 +45,7 @@ def make_state(**country_config_override):
 
 def test_cfg_returns_existing_value():
     state = make_state()
-    assert cfg(state, "pipeline", "max_items_per_run") == 100
+    assert cfg(state, "pipeline", "pdf_timeout") == 30
 
 
 def test_cfg_missing_section_raises():

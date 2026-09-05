@@ -69,7 +69,6 @@ def test_put_section_validates_and_saves(client, test_db):
     session, _ = test_db
     headers = _auth_headers(client)
     payload = {
-        "max_items_per_run": 200,
         "min_relevance_score": 0.6,
         "deduplication_threshold": 0.8,
         "deduplication_method": "hash_similarity",
@@ -84,7 +83,6 @@ def test_put_section_validates_and_saves(client, test_db):
 
     saved = SettingsStore.get_section(session, "pipeline")
     assert saved["min_relevance_score"] == 0.6
-    assert saved["max_items_per_run"] == 200
 
 
 def test_put_section_rejects_invalid_payload(client):

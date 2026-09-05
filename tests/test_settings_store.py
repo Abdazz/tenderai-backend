@@ -118,7 +118,6 @@ def test_pipeline_section_roundtrip(db):
         db,
         "pipeline",
         {
-            "max_items_per_run": 100,
             "min_relevance_score": new_score,
             "deduplication_threshold": 0.75,
             "deduplication_method": "hash_similarity",
