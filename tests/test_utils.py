@@ -111,6 +111,11 @@ class TestDateUtils:
         assert parse_flexible_date("29/09/2026").day == 29
         assert parse_flexible_date("29-Sep-2026").month == 9
 
+    def test_parse_flexible_date_full_month_name(self):
+        """Palladium detail pages read "Closing date: 12 August 2026" (constat #21)."""
+        date = parse_flexible_date("12 August 2026")
+        assert (date.day, date.month, date.year) == (12, 8, 2026)
+
     def test_parse_flexible_date_invalid_returns_none(self):
         assert parse_flexible_date("not a date") is None
         assert parse_flexible_date("") is None

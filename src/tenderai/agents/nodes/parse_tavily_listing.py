@@ -13,15 +13,69 @@ import re
 import uuid
 from datetime import datetime
 
+import httpx
 from pydantic import BaseModel, Field
+from selectolax.parser import HTMLParser
 
 from ...logging import get_logger
+from ...utils.dates import parse_flexible_date
 from ...utils.llm_utils import get_llm_instance
 
 logger = get_logger(__name__)
 
 # Safety cap: ~70 K tokens at 5.5 ch/token, leaves room for prompt + output.
 _MAX_INPUT_CHARS = 200_000
+
+# Bilingual "deadline" label patterns seen on tender detail pages (e.g.
+# Palladium's "Closing date: 12 August 2026") — constat #21: listing pages
+# for some tavily_extract sources don't carry reference/deadline, only the
+# individual detail page does.
+_DEADLINE_LABEL_RE = re.compile(
+    r"(?:closing date|deadline|date limite|date but[oô]ir)\s*[:\-]?\s*"
+    r"([0-9]{1,2}[\s/-][A-Za-zÀ-ÿ]+[\s/-][0-9]{2,4}|[0-9]{4}[/-][0-9]{1,2}[/-][0-9]{1,2})",
+    re.IGNORECASE,
+)
+
+
+def _fetch_detail_deadline(url: str, source_name: str, run_id: str) -> str | None:
+    """Best-effort fetch of a tender's detail page to recover a deadline the
+    listing page didn't carry. Never raises — returns None on any failure."""
+    try:
+        resp = httpx.get(
+            url,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; TenderAI/1.0)"},
+            timeout=10.0,
+            follow_redirects=True,
+        )
+        resp.raise_for_status()
+        text = HTMLParser(resp.text).body.text(separator=" ", strip=True)
+    except Exception as e:
+        logger.debug(
+            "Detail page fetch for deadline enrichment failed",
+            url=url,
+            source=source_name,
+            error=str(e),
+            run_id=run_id,
+        )
+        return None
+
+    match = _DEADLINE_LABEL_RE.search(text)
+    if not match:
+        return None
+
+    raw_date = match.group(1).strip()
+    parsed = parse_flexible_date(raw_date)
+    if not parsed:
+        return None
+
+    logger.info(
+        "Recovered deadline from detail page",
+        url=url,
+        source=source_name,
+        raw_date=raw_date,
+        run_id=run_id,
+    )
+    return parsed.strftime("%Y-%m-%d")
 
 
 class TenderItem(BaseModel):
@@ -225,6 +279,10 @@ def parse_tavily_listing(
                 raw_url = urljoin(source_url, raw_url)
         item_url = raw_url or source_url
 
+        deadline = tender.deadline
+        if not deadline and item_url != source_url:
+            deadline = _fetch_detail_deadline(item_url, source_name, run_id)
+
         item = {
             "id": str(uuid.uuid4()),
             "url": item_url,
@@ -241,8 +299,8 @@ def parse_tavily_listing(
             "entity": tender.entity,
             "reference": tender.reference,
             "ref_no": tender.reference,
-            "deadline": tender.deadline,
-            "deadline_at": tender.deadline,
+            "deadline": deadline,
+            "deadline_at": deadline,
             "description": tender.description,
             "is_results_notice": tender.is_results_notice,
         }

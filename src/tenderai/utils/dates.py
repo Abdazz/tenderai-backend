@@ -172,6 +172,13 @@ def parse_flexible_date(raw: str | None) -> datetime | None:
         except ValueError:
             continue
 
+    # "12 August 2026" — full month name, e.g. Palladium's "Closing date" field
+    for fmt in ("%d %B %Y", "%d %b %Y"):
+        try:
+            return datetime.strptime(raw_str, fmt).replace(tzinfo=UTC)
+        except ValueError:
+            continue
+
     import calendar
 
     month_abbr = {m.lower(): i for i, m in enumerate(calendar.month_abbr) if m}
